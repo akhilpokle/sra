@@ -1,0 +1,21 @@
+<!--
+  Long Service Award — 5 Year Milestone Overlay
+  Mount snippet for a Liferay Web Content fragment.
+  ---------------------------------------------------------------------------
+  Paste this whole block into the fragment. It carries the mount point plus
+  the asset tags, loaded here rather than via the theme (project decision).
+
+  Replace the two REPLACE_WITH_ASSET_PATH placeholders below with the actual
+  hosted URLs for lsa-experience.css / lsa-experience.js (e.g. Documents &
+  Media URLs, or a static resource path) once that's decided — see
+  handoff.md.
+
+  Load order matters: the stylesheet must load before the script runs, so
+  the overlay never renders unstyled for a frame.
+-->
+
+<link rel="stylesheet" href="REPLACE_WITH_ASSET_PATH/lsa-experience.css">
+
+<div id="lsa-mount"></div>
+
+<script src="REPLACE_WITH_ASSET_PATH/lsa-experience.js" defer></script>

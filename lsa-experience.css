@@ -1,0 +1,159 @@
+/* ==========================================================================
+   Long Service Award — 5 Year Milestone Overlay
+   Stylesheet for an overlay that shares the live Liferay intranet page.
+   --------------------------------------------------------------------------
+   NAMESPACING CONTRACT — do not break these rules:
+
+   1. Every class and id in this file MUST start with "lsa-".
+   2. Every rule MUST be scoped beneath the single root container
+      (.lsa-root), so nothing can apply to Liferay markup.
+   3. NO bare tag selectors. Never style body, div, h1, canvas, button, etc.
+      without a prefixed ancestor or a prefixed class of their own.
+   4. Nothing in here may modify, reset, or override Liferay's own styles.
+
+   Scope: desktop only, viewport width >= 1024px. The JavaScript refuses to
+   mount below that width, so no responsive rules below 1024px belong here.
+   ========================================================================== */
+
+.lsa-root {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+}
+
+/* Stacking order inside .lsa-root. These z-indexes are load-bearing, not
+   cosmetic: the card MUST paint beneath the canvas so the fireworks can
+   cover it and then clear away to reveal it. Without this the card paints
+   above the fireworks (DOM order) and can only ever animate in on top.
+     0 backdrop  <  1 card  <  2 canvas  <  3 prompt  <  4 close button      */
+
+.lsa-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(23, 39, 51, 0.60) 0%, rgba(69, 118, 153, 0.60) 100%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.lsa-prompt {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: #FFFFFF;
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.6);
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.lsa-prompt--hidden {
+  opacity: 0;
+}
+
+/* PLACEHOLDER DIMENSIONS — 800x460 is a stand-in; the real card size is not
+   designed yet. If these change, update CARD_W / CARD_H in lsa-experience.js
+   too — they size the finale's glow.
+
+   Sits at z-index 1, beneath the canvas. No scale/zoom: the card must never
+   appear to animate in. It fades up SLOWLY (1.2s) while the finale's
+   sparkles are still dense and already fading, so the two overlap and there
+   is no discrete moment where the card "appears". */
+.lsa-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 800px;
+  height: 460px;
+  background: #FFFFFF;
+  border-radius: 16px;
+  opacity: 0;
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 1.2s ease-in;
+}
+
+.lsa-card--visible {
+  opacity: 1;
+}
+
+/* STOPGAP, not a design decision: the card surface became white this round,
+   and the contents below were all white-on-transparent — which would render
+   the card blank. These colours exist only so the placeholder stays legible.
+   Medallion, copy and card styling are a separate, still-deferred pass. */
+
+.lsa-card__medallion {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 24px;
+  background: #E8EAED;
+  border-radius: 12px;
+}
+
+.lsa-card__line1 {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  color: #172733;
+}
+
+.lsa-card__accent {
+  width: 60px;
+  height: 3px;
+  background: #E11931;
+  margin: 12px auto;
+  border-radius: 2px;
+}
+
+.lsa-card__line2 {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: #B8952E;
+}
+
+.lsa-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lsa-close {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  z-index: 4;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}

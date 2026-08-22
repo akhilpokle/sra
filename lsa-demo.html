@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<!--
+  ===========================================================================
+  LOCAL DEMO / TEST HARNESS — NOT FOR LIFERAY DEPLOYMENT
+  ===========================================================================
+  This file exists only so the overlay can be run and verified on a local
+  machine, and so the experience can be shown to stakeholders before it is
+  deployed. It is NOT part of the Liferay deliverable and must never be
+  uploaded to the intranet.
+
+  The Liferay deliverable is only these three:
+      lsa-experience.css
+      lsa-experience.js
+      lsa-mount.html   (the mount markup, pasted into a Web Content fragment)
+
+  bg.png is a static SCREENSHOT of the intranet, standing in for the real
+  page. On the real intranet there is no background image — the live Liferay
+  page is the backdrop, sitting in the DOM behind the overlay.
+
+  The <style> and <script> blocks below are demo-only. They are deliberately
+  kept here, out of lsa-experience.css / .js, so nothing about the tuning
+  panel can ever reach production. The spec's no-inline-code rule exists
+  because the Liferay page enforces a CSP; this local file has no CSP and
+  ships nowhere.
+
+  data-lsa-dev on <html> is what opts this page into the experience's dev
+  hook (window.__lsaDev). lsa-mount.html does NOT set it, so on the intranet
+  that hook never activates and no global is created.
+-->
+<html lang="en" data-lsa-dev>
+<head>
+  <meta charset="utf-8">
+  <title>LSA Overlay — Local Demo Stage</title>
+
+  <style>
+    /* Stand-in intranet backdrop. Demo-only — see comment above. */
+    html, body { margin: 0; padding: 0; height: 100%; }
+
+    body {
+      background-image: url("bg.png");
+      background-size: cover;
+      background-position: top center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      background-color: #1b2733; /* matches the screenshot's dark sidebar */
+    }
+
+    /* ---- Dev tuning panel. Demo-only. -------------------------------- */
+    /* Sits above the overlay (.lsa-root is z-index 999999). */
+    #dev {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 340px;
+      z-index: 1000000;
+      background: #12161c; color: #d7dde5;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border-left: 1px solid #2b333d;
+      display: flex; flex-direction: column;
+      transition: transform .18s ease;
+    }
+    #dev.collapsed { transform: translateX(340px); }
+
+    #dev-toggle {
+      position: absolute; left: -34px; top: 12px;
+      width: 34px; height: 34px; cursor: pointer;
+      background: #12161c; color: #d7dde5;
+      border: 1px solid #2b333d; border-right: none;
+      border-radius: 6px 0 0 6px; font-size: 15px; line-height: 1;
+    }
+
+    #dev-head {
+      padding: 10px 12px; border-bottom: 1px solid #2b333d;
+      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    }
+    #dev-head strong { font-size: 12px; letter-spacing: .04em; flex: 1 0 100%; color: #f0f4f8; }
+    #dev-stats { flex: 1 0 100%; color: #7c8896; font-size: 11px; }
+
+    #dev button {
+      background: #1e2937; color: #d7dde5; border: 1px solid #34404e;
+      border-radius: 4px; padding: 5px 9px; cursor: pointer; font: inherit;
+    }
+    #dev button:hover { background: #27364a; }
+    #dev button.primary { background: #1d4ed8; border-color: #2b5bea; color: #fff; }
+    #dev button.primary:hover { background: #2559e8; }
+
+    #dev-body { overflow-y: auto; flex: 1; padding: 4px 0 40px; }
+
+    #dev details { border-bottom: 1px solid #1e242c; }
+    #dev summary {
+      padding: 7px 12px; cursor: pointer; color: #9fb0c4;
+      text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px;
+      user-select: none;
+    }
+    #dev summary:hover { background: #171d25; color: #cfd9e5; }
+    #dev details[open] > summary { color: #e2e8f0; background: #171d25; }
+    #dev .sec { padding: 4px 12px 10px; }
+
+    #dev .row { display: grid; grid-template-columns: 1fr 52px; gap: 6px; align-items: center; margin: 5px 0; }
+    #dev .row > label { color: #93a2b4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #dev .row > .val { text-align: right; color: #ffd479; font-variant-numeric: tabular-nums; }
+    #dev .row input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: #ffd479; }
+    #dev .row.inline { grid-template-columns: 1fr auto; }
+    #dev .row.inline input[type=color] { width: 52px; height: 22px; padding: 0; border: 1px solid #34404e; background: none; }
+    #dev .row.inline select {
+      background: #1e2937; color: #ffd479; border: 1px solid #34404e;
+      border-radius: 3px; padding: 2px 4px; font: inherit;
+    }
+    #dev textarea {
+      width: 100%; height: 150px; background: #0c1015; color: #a8ffb0;
+      border: 1px solid #2b333d; border-radius: 4px; padding: 8px;
+      font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; resize: vertical;
+    }
+    #dev .hint { color: #6b7885; padding: 0 12px 8px; font-size: 11px; }
+    #dev-missing { padding: 16px 12px; color: #ff9a9a; }
+  </style>
+
+  <!-- Overlay styles. Must load before the script mounts anything. -->
+  <link rel="stylesheet" href="lsa-experience.css">
+</head>
+<body>
+
+  <!-- Same mount markup that goes into the Liferay Web Content fragment. -->
+  <div id="lsa-mount"></div>
+
+  <!-- Overlay behaviour. External file, matching the CSP rule in production. -->
+  <script src="lsa-experience.js" defer></script>
+
+  <!-- ===================================================================
+       DEV TUNING PANEL — demo-only, never deployed.
+       Drives window.__lsaDev, which lsa-experience.js only exposes when
+       <html data-lsa-dev> is present (i.e. never in production).
+       =================================================================== -->
+  <script>
+  (function () {
+    'use strict';
+
+    // Control schema. Each entry: [path, label, min, max, step].
+    // Booleans and colours are detected from the current value's type/format.
+    //
+    // Everything under Sparkles is a MULTIPLIER applied uniformly to all
+    // three scenes, so one control moves the whole show consistently. The
+    // per-scene base values still live in CFG.generations (they have to
+    // differ — the cascade is multiplicative) but are not tuned individually.
+    var SECTIONS = [
+      ['Show', true, [
+        ['years', 'Years (= rocket count)', 5, 25, 5],
+        ['physics.maxParticles', 'Max particles (perf cap)', 400, 6000, 100],
+        // Enum rows: an array in the 3rd slot becomes a <select>.
+        ['layers.mode', 'Show layer',
+          ['composite', 'particles', 'trail', 'glow', 'smoke']],
+        ['sparkleGlow.mode', 'Glow style', ['gradient', 'sparkle']]
+      ]],
+      ['Rocket', true, [
+        ['rocket.flightFrames', 'Flight time (frames)', 25, 150, 1],
+        ['rocket.flightJitter', 'Burst spread (frames)', 0, 30, 1],
+        ['rocket.gravity', 'Rocket gravity', 0.004, 0.06, 0.001],
+        ['rocket.fanCardMultiple', 'Fan width', 0.4, 2.5, 0.05],
+        ['rocket.burstAboveCard', 'Burst height', -0.4, 0.8, 0.01],
+        ['rocket.burstDepthIntoCard', 'Burst height spread', 0.02, 1.2, 0.01],
+        ['rocket.headSize', 'Head size', 1, 10, 0.5],
+        ['rocket.headGlow', 'Head glow', 0, 30, 1],
+        ['rocket.trail', 'Rocket trail'],
+        ['rocket.trailLife', 'Trail length (frames)', 3, 60, 1],
+        ['rocket.trailSize', 'Trail thickness', 0.5, 6, 0.5]
+      ]],
+      ['Trail', true, [
+        ['trail.enabled', 'Trail layer'],
+        // Floored at 0.05: an 8-bit canvas fade stalls at ~0.5/fade, so
+        // slower than this leaves a heavy permanent ghost (0.005 sticks at
+        // half opacity). See updateTrail() in lsa-experience.js.
+        ['trail.fade', 'Fade per frame', 0.05, 0.4, 0.01],
+        ['trail.alpha', 'Stamp opacity', 0.05, 1, 0.05]
+      ]],
+      ['Smoke', true, [
+        ['smoke.enabled', 'Smoke layer'],
+        ['smoke.perBurstMin', 'Puffs per burst (min)', 0, 40, 1],
+        ['smoke.perBurstMax', 'Puffs per burst (max)', 0, 60, 1],
+        ['smoke.sizeMin', 'Puff size (min)', 1, 30, 1],
+        ['smoke.sizeMax', 'Puff size (max)', 2, 60, 1],
+        ['smoke.rise', 'Rise rate', 0, 0.1, 0.001],
+        ['smoke.growth', 'Growth per frame', 0, 0.5, 0.01],
+        ['smoke.lifeDecay', 'Life decay', 0.002, 0.06, 0.001],
+        ['smoke.maxAlpha', 'Max opacity', 0, 0.8, 0.01],
+        ['smoke.dragX', 'Drag (horizontal)', 0.8, 1, 0.005],
+        ['smoke.dragY', 'Drag (vertical)', 0.8, 1, 0.005],
+        ['smoke.maxCount', 'Max puffs', 50, 1200, 50]
+      ]],
+      ['Sparkles', true, [
+        ['sparkle.densityScale', 'Number of sparkles x', 0.2, 3, 0.05],
+        ['sparkle.sizeScale', 'Sparkle size x', 0.3, 3, 0.05],
+        ['sparkle.lifeScale', 'Sparkle life x', 0.3, 3, 0.05],
+        ['sparkle.speedScale', 'Sparkle speed x', 0.3, 3, 0.05],
+        ['sparkle.breakScale', 'Cascade amount x', 0, 2.5, 0.05],
+        ['sparkle.glowSize', 'Glow size (1 = off)', 1, 5, 0.1],
+        ['sparkle.glowAlpha', 'Glow strength', 0, 1, 0.02],
+        ['sparkleGlow.downscale', 'Sparkle-mode pixel size', 2, 12, 1],
+        ['sparkle.trailLength', 'Sparkle trail length', 0, 8, 0.25],
+        ['physics.gravity', 'Gravity', 0, 0.5, 0.005],
+        ['physics.friction', 'Drag (lower = snappier)', 0.82, 1, 0.005],
+        ['sparkle.lifeJitter', 'Life jitter', 0, 0.5, 0.01],
+        ['colorJitter.hue', 'Colour jitter — hue', 0, 40, 1],
+        ['colorJitter.sat', 'Colour jitter — saturation', 0, 40, 1],
+        ['colorJitter.light', 'Colour jitter — lightness', 0, 40, 1]
+      ]],
+      ['Shapes', false, [
+        ['willow.speedFactor', 'Willow speed x', 0.1, 1.5, 0.05],
+        ['willow.lifeFactor', 'Willow life x', 0.5, 3, 0.1],
+        ['willow.gravityScale', 'Willow droop', 0.5, 4, 0.1],
+        ['willow.sizeFactor', 'Willow size x', 0.3, 2, 0.05],
+        ['palmSpokes', 'Palm spokes', 3, 16, 1]
+      ]],
+      ['Colours', true, [
+        ['colors.red', 'DBS red'],
+        ['colors.gold', 'DBS gold'],
+        ['colors.blue', 'POSB blue'],
+        ['colors.tintRed', 'Tint — red'],
+        ['colors.tintGold', 'Tint — gold'],
+        ['colors.tintBlue', 'Tint — blue']
+      ]]
+    ];
+
+    var dev, body, statsEl, out, D;
+
+    function get(path) {
+      return path.split('.').reduce(function (o, k) { return o[k]; }, D.cfg);
+    }
+    function set(path, v) {
+      var keys = path.split('.');
+      var last = keys.pop();
+      keys.reduce(function (o, k) { return o[k]; }, D.cfg)[last] = v;
+    }
+    function isColor(v) { return typeof v === 'string' && v.charAt(0) === '#'; }
+
+    function makeRow(path, label, min, max, step, onChange) {
+      var cur = get(path);
+      var row = document.createElement('div');
+      row.className = 'row' + (typeof cur === 'boolean' || isColor(cur) ? ' inline' : '');
+
+      var lab = document.createElement('label');
+      lab.textContent = label;
+      row.appendChild(lab);
+
+      var input, valEl;
+      if (Array.isArray(min)) {
+        // Enum row — `min` holds the option list.
+        row.className = 'row inline';
+        input = document.createElement('select');
+        min.forEach(function (opt) {
+          var o = document.createElement('option');
+          o.value = opt; o.textContent = opt;
+          if (cur === opt) o.selected = true;
+          input.appendChild(o);
+        });
+        input.addEventListener('change', function () {
+          set(path, input.value);
+          if (onChange) onChange();
+        });
+        row.appendChild(input);
+      } else if (typeof cur === 'boolean') {
+        input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = cur;
+        input.addEventListener('change', function () { set(path, input.checked); if (onChange) onChange(); });
+        row.appendChild(input);
+      } else if (isColor(cur)) {
+        input = document.createElement('input');
+        input.type = 'color';
+        input.value = cur;
+        input.addEventListener('input', function () { set(path, input.value); if (onChange) onChange(); });
+        row.appendChild(input);
+      } else {
+        valEl = document.createElement('span');
+        valEl.className = 'val';
+        valEl.textContent = cur;
+        row.appendChild(valEl);
+
+        input = document.createElement('input');
+        input.type = 'range';
+        input.min = min; input.max = max; input.step = step;
+        input.value = cur;
+        input.addEventListener('input', function () {
+          var v = parseFloat(input.value);
+          set(path, v);
+          valEl.textContent = v;
+          if (onChange) onChange();
+        });
+        row.appendChild(input);
+      }
+      return row;
+    }
+
+    // Exports exactly the values the panel exposes — built from SECTIONS
+    // itself, so the export can never drift out of sync with the controls.
+    // Everything else in CFG stays at its code default and is not printed,
+    // which keeps this short enough to paste comfortably.
+    function dumpSettings() {
+      var o = {};
+      SECTIONS.forEach(function (s) {
+        s[2].forEach(function (r) {
+          var keys = r[0].split('.');
+          var last = keys.pop();
+          var node = keys.reduce(function (acc, k) {
+            acc[k] = acc[k] || {};
+            return acc[k];
+          }, o);
+          node[last] = get(r[0]);
+        });
+      });
+      out.value = JSON.stringify(o, null, 2);
+    }
+
+    function build() {
+      dev = document.createElement('div');
+      dev.id = 'dev';
+
+      var toggle = document.createElement('button');
+      toggle.id = 'dev-toggle';
+      toggle.textContent = '⚙';
+      toggle.title = 'Show/hide tuning panel';
+      toggle.addEventListener('click', function () { dev.classList.toggle('collapsed'); });
+      dev.appendChild(toggle);
+
+      var head = document.createElement('div');
+      head.id = 'dev-head';
+      var title = document.createElement('strong');
+      title.textContent = 'FIREWORKS TUNING';
+      head.appendChild(title);
+
+      var replay = document.createElement('button');
+      replay.className = 'primary';
+      replay.textContent = '▶ Replay';
+      replay.addEventListener('click', function () { D.restart(); });
+      head.appendChild(replay);
+
+      var reset = document.createElement('button');
+      reset.textContent = 'Reset';
+      reset.addEventListener('click', function () {
+        applySettings(DEFAULTS);
+        rebuildBody();
+        D.rebuildPalettes();
+        D.restart();
+      });
+      head.appendChild(reset);
+
+      var copy = document.createElement('button');
+      copy.textContent = 'Copy settings';
+      copy.addEventListener('click', function () {
+        dumpSettings();
+        out.select();
+        try { document.execCommand('copy'); } catch (e) { /* fall back to manual select */ }
+        copy.textContent = 'Copied ✓';
+        setTimeout(function () { copy.textContent = 'Copy settings'; }, 1200);
+      });
+      head.appendChild(copy);
+
+      statsEl = document.createElement('div');
+      statsEl.id = 'dev-stats';
+      head.appendChild(statsEl);
+      dev.appendChild(head);
+
+      body = document.createElement('div');
+      body.id = 'dev-body';
+      dev.appendChild(body);
+
+      rebuildBody();
+      document.body.appendChild(dev);
+      tickStats();
+    }
+
+    function rebuildBody() {
+      body.innerHTML = '';
+
+      SECTIONS.forEach(function (s) {
+        var det = document.createElement('details');
+        if (s[1]) det.open = true;
+        var sum = document.createElement('summary');
+        sum.textContent = s[0];
+        det.appendChild(sum);
+
+        var sec = document.createElement('div');
+        sec.className = 'sec';
+        s[2].forEach(function (r) {
+          // Anything touching colour needs the LUTs (and the baked glow
+          // sprites) recompiled before the change is visible.
+          var recolours = r[0].indexOf('colors.') === 0 || r[0].indexOf('colorJitter.') === 0;
+          sec.appendChild(makeRow(r[0], r[1], r[2], r[3], r[4], function () {
+            if (recolours) D.rebuildPalettes();
+            dumpSettings();
+          }));
+        });
+        det.appendChild(sec);
+        body.appendChild(det);
+      });
+
+      // Export box.
+      var det = document.createElement('details');
+      det.open = true;
+      var sum = document.createElement('summary');
+      sum.textContent = 'Settings (copy & paste this)';
+      det.appendChild(sum);
+      var hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'Updates as you tune. Paste this into chat to lock the values in.';
+      det.appendChild(hint);
+      var sec = document.createElement('div');
+      sec.className = 'sec';
+      out = document.createElement('textarea');
+      out.spellcheck = false;
+      sec.appendChild(out);
+      det.appendChild(sec);
+      body.appendChild(det);
+
+      dumpSettings();
+    }
+
+    // Deep-assign so the live CFG object identity is preserved — the
+    // experience holds a reference to it, so it must be mutated, not replaced.
+    function applySettings(src, dst) {
+      dst = dst || D.cfg;
+      Object.keys(src).forEach(function (k) {
+        var v = src[k];
+        if (Array.isArray(v)) {
+          if (!Array.isArray(dst[k])) dst[k] = [];
+          dst[k].length = v.length;
+          v.forEach(function (item, i) {
+            if (item && typeof item === 'object') {
+              dst[k][i] = dst[k][i] || {};
+              applySettings(item, dst[k][i]);
+            } else { dst[k][i] = item; }
+          });
+        } else if (v && typeof v === 'object') {
+          dst[k] = dst[k] || {};
+          applySettings(v, dst[k]);
+        } else {
+          dst[k] = v;
+        }
+      });
+    }
+
+    var frames = 0, lastFpsAt = performance.now(), fps = 0;
+    function tickStats() {
+      frames++;
+      var now = performance.now();
+      if (now - lastFpsAt >= 500) {
+        fps = Math.round(frames * 1000 / (now - lastFpsAt));
+        frames = 0; lastFpsAt = now;
+        var s = D.stats();
+        statsEl.textContent = fps + ' fps · ' + s.particles + ' particles · ' +
+                              s.rockets + ' rockets in flight';
+      }
+      requestAnimationFrame(tickStats);
+    }
+
+    var DEFAULTS;
+    function init() {
+      D = window.__lsaDev;
+      DEFAULTS = JSON.parse(JSON.stringify(D.cfg)); // snapshot before any tuning
+      build();
+    }
+
+    if (window.__lsaDev) init();
+    else document.addEventListener('lsa-dev-ready', init, { once: true });
+
+    // The experience refuses to mount below 1024px, so the hook never appears.
+    setTimeout(function () {
+      if (!window.__lsaDev) {
+        var m = document.createElement('div');
+        m.id = 'dev-missing';
+        m.textContent = 'Overlay did not mount — the experience requires a viewport ' +
+                        'of at least 1024px wide. Widen the window and reload.';
+        var wrap = document.createElement('div');
+        wrap.id = 'dev';
+        wrap.appendChild(m);
+        document.body.appendChild(wrap);
+      }
+    }, 800);
+  })();
+  </script>
+</body>
+</html>
