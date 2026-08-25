@@ -14,182 +14,23 @@
 
    Scope: desktop only, viewport width >= 1024px. Below that the script must
    do nothing at all: no DOM insertion, no listeners, no storage writes.
+   --------------------------------------------------------------------------
+   The fireworks engine below is the fireworks lab (lab/fireworks-lab.html on
+   the fireworks-lab branch), brought over as-is. Its tuned values are in `cfg`.
+
+   Exactly one thing had to change to work as an overlay rather than a
+   standalone stage: the lab composites onto an opaque navy fill, because
+   additive blending needs real pixels underneath to add to. Here that fill
+   would hide the page and the backdrop behind it, so the composite clears to
+   transparent instead and the browser composites the result over the backdrop.
    ========================================================================== */
 
 (function () {
   'use strict';
 
-  // ---- Vocabulary — used consistently in this file and in the docs -------
-  //   ROCKET  — the firework that travels up and bursts.
-  //   SPARKLE — the elements thrown out when a rocket bursts.
-  // The shared `particles` pool below backs THREE different things: rocket
-  // trails, cursor sparks, and sparkles. Only burst products are "sparkles",
-  // so the pool itself keeps the generic name.
-
-  var EMPLOYEE_NAME = 'Timothy Tan';
   var MIN_WIDTH = 1024;
 
   if (window.innerWidth < MIN_WIDTH) return;
-
-  // One rocket per year. Past 25 this approach stops working — 30+ rockets is
-  // neither readable as a count nor affordable to render, and needs a
-  // different visual treatment. Tracked as a TODO in progress.md.
-  var MAX_SUPPORTED_YEARS = 25;
-
-  // ======================================================================
-  // CFG — every tunable value in one place.
-  //
-  // Values are read live (per frame / per spawn), not cached into locals, so
-  // the local dev control panel can tune the show while it runs. That costs
-  // a property lookup in the hot loops, which is immaterial next to the
-  // canvas work, and it is what makes the tuning panel possible at all.
-  //
-  // Colours are stored as hex here and compiled into lookup tables by
-  // rebuildPalettes() — call that after changing any colour.
-  // ======================================================================
-  var CFG = {
-    // The milestone. Single source of truth: drives BOTH the rocket count
-    // and the card copy, so the two can never disagree.
-    years: 5,
-
-    // Physics follows the Hanabi reference: heavy drag so bursts snap out and
-    // then hang, rather than drifting apart. Note the interaction — total
-    // displacement from an initial speed v is v/(1-friction), so this drag
-    // (10v) reaches a fifth as far as the old 0.98 (50v) did. Generation
-    // speeds below are scaled up to compensate. Terminal fall settles at
-    // gravity/(1-friction) = 1.8 px/frame, which is the "hang".
-    physics: {
-      gravity: 0.2,       // per-frame downward pull on sparkles
-      friction: 0.9,      // per-frame velocity damping (drag)
-      maxParticles: 2800  // hard ceiling; past it spawns are dropped
-    },
-
-    // Which layer to show. 'composite' is the real thing; the others isolate
-    // one layer for tuning, matching the reference's isolation toggles.
-    layers: { mode: 'composite' }, // composite | particles | trail | glow | smoke
-
-    // Persistent trail buffer. Faded with destination-out (which ERASES
-    // alpha) rather than a black fillRect (which PAINTS black) — that
-    // distinction is why the Step 3 attempt at this darkened the backdrop
-    // and this one cannot. See handoff.md.
-    trail: {
-      enabled: true,
-      // The reference uses 0.05. We use a faster fade because an 8-bit canvas
-      // fade stalls at ~0.5/fade and never reaches zero: at 0.05 the residue
-      // sticks at 9/255 and, measured over a full show, 88% of the screen
-      // ends up permanently lit. 0.12 puts the floor at ~4/255 while still
-      // giving a visible trail. See updateTrail().
-      fade: 0.12,   // alpha erased per frame
-      alpha: 0.6    // opacity particles are stamped into the trail at
-    },
-
-    // Sparkle glow. 'gradient' is the linear radial falloff; 'sparkle' is the
-    // reference's trick — downscale the particle layer, then upscale it with
-    // smoothing off so the pixels that survive read as twinkle.
-    sparkleGlow: { mode: 'gradient', downscale: 4 },
-
-    smoke: {
-      enabled: true,
-      perBurstMin: 12, perBurstMax: 20,
-      sizeMin: 3, sizeMax: 8,
-      spreadX: 20, spreadY: 12.5,
-      velX: 2.0, velYMax: 0.2,
-      rise: 0.015,          // vy -= rise, per frame
-      dragX: 0.95, dragY: 0.92,
-      driftX: 0.02, driftY: 0.01,
-      growth: 0.08,         // size += growth, per frame
-      lifeDecay: 0.012,     // ~83 frames
-      maxAlpha: 0.25,
-      maxCount: 500
-    },
-
-    // Per-sparkle HSL variation around the brand hues, so a burst is not a
-    // flat block of one colour. Applied at spawn by picking from pre-built
-    // variants — never per frame.
-    colorJitter: { hue: 5, sat: 10, light: 10, variants: 12 },
-
-    rocket: {
-      flightFrames: 75,       // ascent time; velocity is solved from this
-      flightJitter: 6,        // +/- frames, i.e. the spread across scene 2
-      gravity: 0.02,
-      // Launch fan, as a fraction of viewport width. Kept under 0.5 so the
-      // fan always sits inside the central half of the screen — at 0.55 on a
-      // 1024px display the fan was wider than that band, putting rockets out
-      // at the edges and diluting the dense-middle shape.
-      fanMaxWidthFrac: 0.45,
-      fanCardMultiple: 1.1,   // ...capped to this multiple of card width
-      burstAboveCard: 0.06,   // burst zone top, in card-heights above card top
-      burstDepthIntoCard: 0.28,
-      headSize: 3,
-      headGlow: 10,
-      trail: true,            // rockets leave a trail of spawned particles
-      trailLife: 20,
-      trailSize: 2
-    },
-
-    // These apply UNIFORMLY across all three generations. The generations
-    // keep different base counts internally because the cascade is
-    // multiplicative — making them equal would blow the particle budget
-    // several times over — but everything the panel exposes is a multiplier
-    // on top, so one control moves every scene consistently.
-    sparkle: {
-      densityScale: 1.0,  // x on every generation's sparkle count
-      sizeScale: 1.0,     // x on sparkle size
-      lifeScale: 1.0,     // x on sparkle life
-      speedScale: 1.0,    // x on sparkle speed
-      breakScale: 1.0,    // x on how much each generation cascades onward
-      lifeJitter: 0.10,   // +/-10% so a generation dies as a wave, not a pop
-      glowSize: 2.2,      // halo radius as a multiple of sparkle size (<=1 off)
-      glowAlpha: 0.35,    // halo opacity
-      trailLength: 0      // motion-trail length factor (0 = round dot)
-    },
-
-    colors: {
-      red: '#E11931',      // DBS main
-      gold: '#D4AF37',     // DBS Treasures
-      blue: '#1C6FD1',     // POSB — PLACEHOLDER hex, see handoff.md row K
-      tintRed: '#FF6B7F',
-      tintGold: '#F2DA91',
-      tintBlue: '#8FC2F5'
-    },
-
-    // One row per scene. `palette` names a key in PALETTES (see below).
-    generations: [
-      // Speeds are ~5x the pre-Hanabi values: the heavier drag reaches a
-      // fifth as far for the same initial speed, so these keep the burst
-      // radius while gaining the snap-and-hang motion.
-      { label: 'Scene 2 — rocket burst',
-        shapes: ['peony', 'palm', 'ring'],
-        count: 90, speedMin: 8, speedMax: 26, size: 3.6, life: 70,
-        palette: 'open', breakFraction: 0.30, flashRadius: 170 },
-      { label: 'Scene 3 — second wave',
-        shapes: ['peony', 'ring'],
-        count: 12, speedMin: 6, speedMax: 17, size: 3.0, life: 62,
-        palette: 'build', breakFraction: 0.18, flashRadius: 0 },
-      { label: 'Scene 4 — density peak',
-        shapes: ['willow'],
-        count: 11, speedMin: 5, speedMax: 13, size: 2.8, life: 90,
-        palette: 'climax', breakFraction: 0, flashRadius: 0 }
-    ],
-
-    // Soft radial glow pooling over the card. Times are ms after the last
-    // rocket bursts.
-    glow: { start: 2300, rise: 500, decay: 1500, peakAlpha: 0.45, radius: 560 },
-
-    // Card fade begins this long after the last rocket bursts. Tuned to land
-    // at generation 2's coverage peak, not before it.
-    card: { fadeStart: 2700 },
-
-    cursorSpark: { enabled: true, interval: 3, count: 2, life: 30, size: 3 },
-
-    fuse: { burnDuration: 1500, igniteRadius: 40 },
-
-    willow: { speedFactor: 0.55, lifeFactor: 1.5, gravityScale: 1.5, sizeFactor: 0.8 },
-
-    palmSpokes: 7
-  };
-
-  function rocketCount() { return Math.min(CFG.years, MAX_SUPPORTED_YEARS); }
 
   // "Show once" gating is intentionally NOT done here. Per project decision,
   // that flag must be set and checked on the backend (e.g. a per-user "has
@@ -199,1037 +40,23 @@
   var root = document.createElement('div');
   root.className = 'lsa-root';
 
+  // The overlay itself: a blurred gradient veil over whatever the page is
+  // showing underneath.
   var backdrop = document.createElement('div');
   backdrop.className = 'lsa-backdrop';
   root.appendChild(backdrop);
-
-  // Reusable particle pool: avoids allocating a new object per spark/rocket.
-  var particles = [];
-  var particlePool = [];
-
-  // `lut` is a colour lookup table (see makeLut) rather than a single colour —
-  // sparkles shift colour as they die. Callers set the optional fields on the
-  // returned particle; they are reset here because pooled objects otherwise
-  // carry stale values (a recycled sparkle keeping an old breakGen would
-  // re-break forever).
-  function spawnParticle(x, y, vx, vy, life, size, lut) {
-    if (particles.length >= CFG.physics.maxParticles) return null;
-    var p = particlePool.pop() || {};
-    p.x = x;
-    p.y = y;
-    p.vx = vx;
-    p.vy = vy;
-    p.life = life;
-    p.maxLife = life;
-    p.size = size;
-    p.lut = lut;
-    p.alpha = 1;
-    p.gravityScale = 1;
-    p.breakGen = -1; // generation to spawn on death; -1 = this sparkle just dies
-    particles.push(p);
-    return p;
-  }
-
-  function updateParticles() {
-    for (var i = particles.length - 1; i >= 0; i--) {
-      var p = particles[i];
-      p.vy += CFG.physics.gravity * p.gravityScale;
-      p.vx *= CFG.physics.friction;
-      p.vy *= CFG.physics.friction;
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life -= 1;
-      p.alpha = Math.max(p.life / p.maxLife, 0);
-
-      if (p.life <= 0) {
-        // A sparkle flagged as a breaker spawns the NEXT generation where it
-        // died — this is what turns one rocket burst into the successive
-        // waves of scenes 3 and 4. New sparkles append past the current
-        // index, so the reverse loop won't revisit them this frame.
-        if (p.breakGen >= 0) spawnSparkleBurst(p.x, p.y, p.breakGen);
-
-        // Swap-and-pop rather than splice: O(1) instead of O(n) shifting per
-        // death. Draw order doesn't matter under additive blending, and at
-        // climax density splice was the dominant per-frame cost. Safe with
-        // this reverse loop — the element moved into i has already been
-        // processed this frame.
-        particles[i] = particles[particles.length - 1];
-        particles.pop();
-        particlePool.push(p);
-      }
-    }
-  }
 
   var canvas = document.createElement('canvas');
   canvas.className = 'lsa-canvas';
   root.appendChild(canvas);
   var ctx = canvas.getContext('2d');
 
-  // ---- Offscreen layer buffers -------------------------------------------
-  // The reference stacks four <canvas> elements. We keep ONE visible canvas
-  // and composite from offscreen buffers instead: the card sits *behind* the
-  // canvas in the z-stack, so four DOM layers would each need their own
-  // z-index, teardown and resize handling for no gain.
-  //
-  //   trailBuf     full res, PERSISTENT — faded a little each frame
-  //   particleBuf  full res, cleared each frame; also the glow's source
-  //   glowBuf      1/downscale res, smoothing off — the sparkle trick
-  //   smokeBuf     half res — smoke is soft, half res is invisible in the
-  //                result and saves a lot of fill on large displays
-  function makeBuffer() {
-    var c = document.createElement('canvas');
-    return { canvas: c, ctx: c.getContext('2d') };
-  }
-
-  var trailBuf = makeBuffer();
-  var particleBuf = makeBuffer();
-  var glowBuf = makeBuffer();
-  var smokeBuf = makeBuffer();
-
-  function sizeBuffers(w, h) {
-    trailBuf.canvas.width = w;   trailBuf.canvas.height = h;
-    particleBuf.canvas.width = w; particleBuf.canvas.height = h;
-
-    var d = Math.max(1, CFG.sparkleGlow.downscale);
-    glowBuf.canvas.width = Math.max(1, Math.round(w / d));
-    glowBuf.canvas.height = Math.max(1, Math.round(h / d));
-    glowBuf.ctx.imageSmoothingEnabled = false;
-
-    smokeBuf.canvas.width = Math.max(1, Math.round(w / 2));
-    smokeBuf.canvas.height = Math.max(1, Math.round(h / 2));
-    // Resizing a canvas clears it, so the trail history is lost on resize.
-    // Acceptable, and far simpler than trying to preserve and rescale it.
-  }
-
-  // Fuse cord tuning. A short curved cord near bottom-center: fuseBase is
-  // the launch point, fuseTip is the free end the user lights.
-  var fuseBase, fuseTip, fuseControl;
-  var fuseLit = false;
-  var fuseBurned = false;
-  var burnStartTime = null;
-
-  function computeFusePoints() {
-    var baseX = canvas.width / 2;
-    var baseY = canvas.height - 40;
-    fuseBase = { x: baseX, y: baseY };
-    fuseTip = { x: baseX + 50, y: baseY - 100 };
-    fuseControl = { x: baseX + 15, y: baseY - 55 };
-  }
-
-  function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    sizeBuffers(canvas.width, canvas.height);
-    computeFusePoints();
-  }
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
-
-  var promptEl = document.createElement('div');
-  promptEl.className = 'lsa-prompt';
-  promptEl.textContent = 'Move your cursor to light the fuse ✨';
-  root.appendChild(promptEl);
-
-  var cardEl = document.createElement('div');
-  cardEl.className = 'lsa-card';
-
-  var medallionEl = document.createElement('div');
-  medallionEl.className = 'lsa-card__medallion';
-  // Placeholder white rectangle. Swap for the real medallion component here
-  // once supplied — see handoff.md "Medallion assets".
-  cardEl.appendChild(medallionEl);
-
-  var line1El = document.createElement('p');
-  line1El.className = 'lsa-card__line1';
-  line1El.textContent = 'Congratulations, ' + EMPLOYEE_NAME + '!';
-  cardEl.appendChild(line1El);
-
-  var accentEl = document.createElement('div');
-  accentEl.className = 'lsa-card__accent';
-  cardEl.appendChild(accentEl);
-
-  var line2El = document.createElement('p');
-  line2El.className = 'lsa-card__line2';
-  // Reads from CFG.years so the copy can never disagree with the rocket count.
-  line2El.textContent = 'Celebrating ' + CFG.years + ' Years with us';
-  cardEl.appendChild(line2El);
-
-  root.appendChild(cardEl);
-
-  function revealCard() {
-    cardEl.classList.add('lsa-card--visible');
-  }
-
-  // `g` is the particle-layer buffer, not the visible canvas — so the fuse,
-  // rocket heads and sparkles all feed the trail and glow layers together.
-  function drawFuse(g) {
-    // Once the fuse has burned down it's consumed — stop drawing it, so no
-    // cord is left sitting over the card during the reveal.
-    if (fuseBurned) return;
-    g.save();
-    g.strokeStyle = '#8a6d3b';
-    g.lineWidth = 4;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(fuseBase.x, fuseBase.y);
-    g.quadraticCurveTo(fuseControl.x, fuseControl.y, fuseTip.x, fuseTip.y);
-    g.stroke();
-
-    g.beginPath();
-    g.fillStyle = fuseLit ? '#FFFFFF' : '#D4AF37';
-    g.shadowColor = '#D4AF37';
-    g.shadowBlur = 12;
-    g.arc(fuseTip.x, fuseTip.y, 6, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
-  }
-
-  function checkFuseIgnition() {
-    if (fuseLit || cursorX === null) return;
-    var dx = cursorX - fuseTip.x;
-    var dy = cursorY - fuseTip.y;
-    if (Math.sqrt(dx * dx + dy * dy) <= CFG.fuse.igniteRadius) {
-      fuseLit = true;
-      burnStartTime = performance.now();
-      promptEl.classList.add('lsa-prompt--hidden');
-    }
-  }
-
-  // Point along the fuse's curve at t=0 (base) .. t=1 (tip).
-  function pointOnFuseCurve(t) {
-    var mt = 1 - t;
-    return {
-      x: mt * mt * fuseBase.x + 2 * mt * t * fuseControl.x + t * t * fuseTip.x,
-      y: mt * mt * fuseBase.y + 2 * mt * t * fuseControl.y + t * t * fuseTip.y
-    };
-  }
-
-  function updateFuseBurn(g) {
-    if (!fuseLit || fuseBurned) return;
-    var progress = Math.min((performance.now() - burnStartTime) / CFG.fuse.burnDuration, 1);
-    var pt = pointOnFuseCurve(1 - progress); // travels tip -> base
-
-    g.save();
-    g.fillStyle = '#FFFFFF';
-    g.shadowColor = '#D4AF37';
-    g.shadowBlur = 16;
-    g.beginPath();
-    g.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
-    g.fill();
-    g.restore();
-
-    if (progress >= 1) {
-      fuseBurned = true;
-      startFireworksSequence();
-    }
-  }
-
-  var WHITE = '#FFFFFF';
-
-  // Sparkles shift colour as they burn out. Building an rgb() string per
-  // sparkle per frame would allocate thousands of strings a second, so each
-  // colour journey is baked once into a small lookup table of prebuilt
-  // strings and the draw loop just indexes it by remaining life. Index 0 is
-  // the death colour, LUT_STEPS-1 the birth colour.
-  var LUT_STEPS = 10;
-
-  function hexToRgb(hex) {
-    return [
-      parseInt(hex.slice(1, 3), 16),
-      parseInt(hex.slice(3, 5), 16),
-      parseInt(hex.slice(5, 7), 16)
-    ];
-  }
-
-  function makeLut(birthHex, deathHex) {
-    var a = hexToRgb(birthHex);
-    var b = hexToRgb(deathHex);
-    var lut = [];
-    for (var i = 0; i < LUT_STEPS; i++) {
-      var t = i / (LUT_STEPS - 1); // 0 at death .. 1 at birth
-      lut.push('rgb(' +
-        Math.round(b[0] + (a[0] - b[0]) * t) + ',' +
-        Math.round(b[1] + (a[1] - b[1]) * t) + ',' +
-        Math.round(b[2] + (a[2] - b[2]) * t) + ')');
-    }
-    return lut;
-  }
-
-  // Colour journeys, birth -> death. Real fireworks burn white-hot then cool
-  // into their pigment, which is what most of these mimic. Palettes widen as
-  // the show escalates. Rebuilt from CFG.colors, so the dev panel can change
-  // a brand hex and have every generation pick it up.
-  var PALETTES = {};
-  var LUT_WHITE;
-  var SPARK_LUTS; // cursor-spark colours, so they follow the brand gold too
-
-  // ---- HSL jitter ---------------------------------------------------------
-  // The reference varies each particle's colour slightly around its palette
-  // entry (hue +/-5, saturation +/-10 clamped 30-100, lightness +/-10 clamped
-  // 30-90), which stops a burst reading as a flat block of one colour.
-  //
-  // We keep the brand hues and jitter around THOSE. To preserve the LUT
-  // system's no-per-frame-allocation property, the variants are pre-built at
-  // init and one is picked per sparkle at spawn — never computed per frame.
-  function rgbToHsl(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    var max = Math.max(r, g, b), min = Math.min(r, g, b);
-    var h = 0, s = 0, l = (max + min) / 2;
-    var d = max - min;
-    if (d !== 0) {
-      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
-      else if (max === g) h = (b - r) / d + 2;
-      else h = (r - g) / d + 4;
-      h *= 60;
-    }
-    return [h, s * 100, l * 100];
-  }
-
-  function hslToHex(h, s, l) {
-    h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
-    var c = (1 - Math.abs(2 * l - 1)) * s;
-    var x = c * (1 - Math.abs (((h / 60) % 2) - 1));
-    var m = l - c / 2;
-    var rgb = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
-            : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
-    function hx(v) {
-      var n = Math.round((v + m) * 255);
-      n = n < 0 ? 0 : n > 255 ? 255 : n;
-      return (n < 16 ? '0' : '') + n.toString(16);
-    }
-    return '#' + hx(rgb[0]) + hx(rgb[1]) + hx(rgb[2]);
-  }
-
-  function jitterHex(hex) {
-    var J = CFG.colorJitter;
-    var rgb = hexToRgb(hex);
-    var hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
-    var h = hsl[0] + (Math.random() - 0.5) * 2 * J.hue;
-    var s = Math.min(100, Math.max(30, hsl[1] + (Math.random() - 0.5) * 2 * J.sat));
-    var l = Math.min(90, Math.max(30, hsl[2] + (Math.random() - 0.5) * 2 * J.light));
-    return hslToHex(h, s, l);
-  }
-
-  // Builds `variants` LUTs for one birth->death journey, each with the death
-  // colour jittered. Returned as a flat list the palettes concatenate.
-  function makeLutVariants(birthHex, deathHex) {
-    var out = [];
-    var n = Math.max(1, CFG.colorJitter.variants);
-    for (var i = 0; i < n; i++) {
-      // Variant 0 is the exact brand colour, so the palette is always
-      // anchored on-brand even if the jitter is turned up.
-      out.push(i === 0 ? makeLut(birthHex, deathHex)
-                       : makeLut(jitterHex(birthHex), jitterHex(deathHex)));
-    }
-    return out;
-  }
-
-  function rebuildPalettes() {
-    var c = CFG.colors;
-    var gold = makeLutVariants(WHITE, c.gold);
-    var goldDeep = makeLutVariants(c.tintGold, c.gold);
-    var red = makeLutVariants(c.tintRed, c.red);
-    var blue = makeLutVariants(c.tintBlue, c.blue);
-    var blueWhite = makeLutVariants(WHITE, c.blue);
-    var redGold = makeLutVariants(c.gold, c.red);
-    LUT_WHITE = makeLut(WHITE, WHITE);
-
-    PALETTES.open = gold.concat([LUT_WHITE], goldDeep);
-    PALETTES.build = gold.concat(red, [LUT_WHITE], redGold, goldDeep);
-    PALETTES.climax = gold.concat(red, blue, [LUT_WHITE], redGold, blueWhite, goldDeep);
-    SPARK_LUTS = [gold[0], LUT_WHITE];
-    glowSprites = {}; // colours changed — the baked glow sprites are stale
-  }
-  rebuildPalettes();
-
-  // ---- Smoke -------------------------------------------------------------
-  // Grey puffs that rise and expand after each burst, per the reference.
-  // Its own pool and cap, separate from the sparkle budget.
-  //
-  // One deliberate deviation: the reference builds a radial gradient per
-  // smoke particle per frame. At 500 particles that is 500 gradient objects
-  // a frame. We bake one soft-puff sprite at init and blit it scaled —
-  // visually the same, far cheaper. (Same fix already applied to the
-  // sparkle glow.)
-  var smokeParticles = [];
-  var smokePool = [];
-  var smokeSprite = null;
-
-  function buildSmokeSprite() {
-    var PX = 64;
-    var c = document.createElement('canvas');
-    c.width = c.height = PX;
-    var g = c.getContext('2d');
-    var r = PX / 2;
-    var grad = g.createRadialGradient(r, r, 0, r, r, r);
-    grad.addColorStop(0, 'rgba(180,180,180,1)');
-    grad.addColorStop(1, 'rgba(180,180,180,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, PX, PX);
-    smokeSprite = c;
-  }
-  buildSmokeSprite();
-
-  function spawnSmoke(x, y) {
-    var S = CFG.smoke;
-    if (!S.enabled) return;
-    var n = S.perBurstMin + Math.floor(Math.random() * (S.perBurstMax - S.perBurstMin + 1));
-
-    for (var i = 0; i < n; i++) {
-      if (smokeParticles.length >= S.maxCount) return;
-      var s = smokePool.pop() || {};
-      s.x = x + (Math.random() - 0.5) * 2 * S.spreadX;
-      s.y = y + (Math.random() - 0.5) * 2 * S.spreadY;
-      s.vx = (Math.random() - 0.5) * 2 * S.velX;
-      s.vy = -Math.random() * S.velYMax;
-      s.size = S.sizeMin + Math.random() * (S.sizeMax - S.sizeMin);
-      s.life = 1;
-      smokeParticles.push(s);
-    }
-  }
-
-  function updateSmoke() {
-    var S = CFG.smoke;
-    for (var i = smokeParticles.length - 1; i >= 0; i--) {
-      var s = smokeParticles[i];
-      s.vy -= S.rise;
-      s.vx += (Math.random() - 0.5) * S.driftX;
-      s.vy += (Math.random() - 0.5) * S.driftY;
-      s.vx *= S.dragX;
-      s.vy *= S.dragY;
-      s.x += s.vx;
-      s.y += s.vy;
-      s.size += S.growth;
-      s.life -= S.lifeDecay;
-
-      var offscreen = s.x < -50 || s.x > canvas.width + 50 || s.y > canvas.height + 50;
-      if (s.life <= 0 || offscreen) {
-        smokeParticles[i] = smokeParticles[smokeParticles.length - 1];
-        smokeParticles.pop();
-        smokePool.push(s);
-      }
-    }
-  }
-
-  function drawSmoke() {
-    var S = CFG.smoke;
-    var g = smokeBuf.ctx;
-    g.clearRect(0, 0, smokeBuf.canvas.width, smokeBuf.canvas.height);
-    if (!S.enabled || !smokeParticles.length) return;
-
-    // Buffer is half res, so everything is drawn at half scale.
-    for (var i = 0; i < smokeParticles.length; i++) {
-      var s = smokeParticles[i];
-      var lf = Math.max(s.life, 0);
-      var alpha = Math.min(S.maxAlpha, lf * S.maxAlpha * Math.sqrt(lf));
-      if (alpha <= 0) continue;
-      var r = s.size / 2;
-
-      g.globalCompositeOperation = 'source-over';
-      g.globalAlpha = alpha * 0.7;
-      g.drawImage(smokeSprite, (s.x - r) / 2, (s.y - r) / 2, s.size, s.size);
-
-      // Subtler second pass, as in the reference, to break up the puffs.
-      g.globalCompositeOperation = 'multiply';
-      g.globalAlpha = alpha * 0.3;
-      g.drawImage(smokeSprite, (s.x - r) / 2, (s.y - r) / 2, s.size, s.size);
-    }
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-  }
-
-  var rockets = [];
-  var flashes = [];
-
-  // Burst shapes. All four run through the same spawnParticle — the only
-  // differences are how angle, speed, life and gravity are distributed.
-  var SHAPE_PEONY = 'peony';   // even radial spray — the classic round burst
-  var SHAPE_RING = 'ring';     // evenly spaced angles at near-fixed speed
-  var SHAPE_WILLOW = 'willow'; // slow, long-lived, heavy — arcs then droops
-  var SHAPE_PALM = 'palm';     // a few thick spokes instead of an even spray
-
-  // Milestone scaling, applied ONLY at generation 0 (the rocket bursts) —
-  // applying it at every generation would compound through the cascade.
-  //
-  // This holds the TOTAL generation-0 sparkle count roughly constant across
-  // milestones (~450), rather than making a 25-year show denser. That is
-  // deliberate: the particle budget, not the milestone, is the binding
-  // constraint — measured peaks sit at the MAX_PARTICLES ceiling at every
-  // milestone regardless. Letting counts scale up just means the cap clips
-  // them unpredictably, dropping sparkles and leaving gaps in the very
-  // coverage the reveal depends on. What visibly scales with the milestone is
-  // the number of rockets you see go up, which is the point.
-  function sparkleScale() { return Math.min(1, 5 / rocketCount()); }
-
-  // ---- Generations = scenes ----------------------------------------------
-  // The generation table lives in CFG.generations — one row per scene. A
-  // sparkle carries only `breakGen`; when a flagged sparkle dies it spawns
-  // that generation where it died. The chain terminates on its own because
-  // the last generation has no successor — no separate depth cap to keep in
-  // sync.
-  function spawnSparkleBurst(x, y, depth) {
-    var gen = CFG.generations[depth];
-    if (!gen) return;
-
-    var S = CFG.sparkle;
-    var genScale = (depth === 0 ? sparkleScale() : 1) * S.densityScale;
-    var count = Math.max(1, Math.round(gen.count * genScale));
-    var shape = gen.shapes[(Math.random() * gen.shapes.length) | 0];
-    var nextGen = CFG.generations[depth + 1] ? depth + 1 : -1;
-    var luts = PALETTES[gen.palette] || PALETTES.open;
-    var w = CFG.willow;
-    var jitter = S.lifeJitter;
-    // Global multipliers — applied after the per-generation and per-shape
-    // values so one panel control moves every scene by the same proportion.
-    var breakChance = Math.min(1, gen.breakFraction * S.breakScale);
-
-    for (var i = 0; i < count; i++) {
-      var angle, speed;
-      var life = gen.life;
-      var size = gen.size;
-      var gravityScale = 1;
-
-      if (shape === SHAPE_RING) {
-        angle = (i / count) * Math.PI * 2;
-        speed = gen.speedMax * (0.92 + Math.random() * 0.16);
-      } else if (shape === SHAPE_PALM) {
-        var spokes = CFG.palmSpokes;
-        angle = ((i % spokes) / spokes) * Math.PI * 2 + (Math.random() - 0.5) * 0.22;
-        speed = gen.speedMin + Math.random() * (gen.speedMax - gen.speedMin);
-      } else if (shape === SHAPE_WILLOW) {
-        angle = Math.random() * Math.PI * 2;
-        speed = (gen.speedMin + Math.sqrt(Math.random()) * (gen.speedMax - gen.speedMin)) * w.speedFactor;
-        life = Math.round(gen.life * w.lifeFactor);
-        // The droop. Tuned to fall visibly but still hang over the card long
-        // enough to cover it — heavier than this and willow drains out of the
-        // card area before the reveal finishes.
-        gravityScale = w.gravityScale;
-        size = gen.size * w.sizeFactor;
-      } else { // peony
-        // sqrt(random) gives a uniform-area distribution across the disc.
-        // A plain uniform radius (what this used to do) piles particles up
-        // toward the centre; this fills the burst evenly. From the reference.
-        angle = Math.random() * Math.PI * 2;
-        speed = gen.speedMin + Math.sqrt(Math.random()) * (gen.speedMax - gen.speedMin);
-      }
-
-      // Life jitter. Without it every sparkle in a generation dies on the
-      // same frame, so the next generation spawns as one mechanical pop; the
-      // jitter spreads each scene into a short wave while keeping the
-      // generations clearly separate.
-      life = Math.round(life * S.lifeScale * (1 - jitter + Math.random() * jitter * 2));
-      size = size * S.sizeScale;
-      speed = speed * S.speedScale;
-
-      var p = spawnParticle(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
-                            Math.max(2, life), size, luts[(Math.random() * luts.length) | 0]);
-      if (!p) break; // hit the particle cap — degrade density, not framerate
-
-      p.gravityScale = gravityScale;
-      if (nextGen >= 0 && Math.random() < breakChance) p.breakGen = nextGen;
-    }
-  }
-
-  function spawnFlash(x, y, maxRadius, life) {
-    flashes.push({ x: x, y: y, maxRadius: maxRadius, life: life, maxLife: life });
-  }
-
-  // Rockets carry no burst spec: every rocket bursts as generation 0.
-  function launchRocket(x, targetY, vy) {
-    rockets.push({ x: x, y: canvas.height - 20, vy: vy, targetY: targetY });
-  }
-
-  function updateRockets(g) {
-    for (var i = rockets.length - 1; i >= 0; i--) {
-      var r = rockets[i];
-      var rk = CFG.rocket;
-      r.vy += rk.gravity;
-      r.y += r.vy;
-
-      if (rk.trail) {
-        spawnParticle(r.x, r.y, (Math.random() - 0.5) * 0.5, Math.random() * 0.5,
-                      rk.trailLife, rk.trailSize, LUT_WHITE);
-      }
-
-      g.save();
-      g.fillStyle = '#FFFFFF';
-      g.shadowColor = CFG.colors.gold;
-      g.shadowBlur = rk.headGlow;
-      g.beginPath();
-      g.arc(r.x, r.y, rk.headSize, 0, Math.PI * 2);
-      g.fill();
-      g.restore();
-
-      if (r.y <= r.targetY) {
-        spawnSparkleBurst(r.x, r.y, 0); // scene 2
-        spawnSmoke(r.x, r.y);
-        var fr = CFG.generations[0].flashRadius;
-        if (fr) spawnFlash(r.x, r.y, fr, 30);
-        rockets.splice(i, 1);
-      }
-    }
-  }
-
-  function updateFlashes() {
-    for (var i = flashes.length - 1; i >= 0; i--) {
-      var f = flashes[i];
-      f.life -= 1;
-      var t = 1 - f.life / f.maxLife;
-      var ringAlpha = 1 - t;
-      var flashAlpha = Math.max(1 - t * 5, 0);
-
-      ctx.save();
-      if (flashAlpha > 0) {
-        ctx.globalAlpha = flashAlpha;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.maxRadius * 0.3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = ringAlpha;
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, f.maxRadius * t, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-
-      if (f.life <= 0) flashes.splice(i, 1);
-    }
-  }
-
-  // ---- The show ----------------------------------------------------------
-  // Everything after the fuse burns down runs off ONE clock (showStartTime)
-  // and is driven from the rAF loop, not setTimeout — the reveal must be
-  // frame-exact against what's actually on screen, and an rAF-only show
-  // pauses with a backgrounded tab instead of playing out unseen.
-  //
-  // ALL rockets launch on the same frame (scene 1). Everything after that is
-  // the cascade: generation 0 is scene 2, generation 1 scene 3, generation 2
-  // scene 4, and scene 5 is those last sparkles dying off the card. See
-  // CFG.generations — the show's whole structure lives in that one table.
-
-  // Rocket burst geometry is anchored to the CARD, not to viewport fractions
-  // (see CFG.rocket.burstAboveCard / burstDepthIntoCard). The card is a fixed
-  // pixel size, so viewport-relative heights put the bursts far above it on a
-  // large display — the cascade then arrives late and thin, and coverage is
-  // still climbing when the card starts fading. The range is also kept
-  // narrow: rockets decelerate near apex, so a wide height range turns into a
-  // ragged spread of burst times.
-  //
-  // Flight time is specified directly (CFG.rocket.flightFrames) and the
-  // launch velocity solved for it, rather than choosing a speed and letting
-  // height decide timing. Choosing a speed couples burst HEIGHT to burst
-  // TIME, so varying heights made scene 2's spread balloon to 400-500ms and
-  // drift with viewport size. Solving for time decouples them: heights stay
-  // free, the spread is exactly flightJitter, and it is identical on every
-  // screen. It also cannot stall short of its target the way a fixed speed
-  // can, because the velocity is an exact solution rather than an estimate.
-
-  // Exact initial velocity to reach targetY in n frames under the same
-  // per-frame integration updateRockets uses:
-  //   vy += g;  y += vy   =>   y(n) = y0 + n*vy0 + g*n*(n+1)/2
-  function velocityForFlight(y0, targetY, n) {
-    return (targetY - y0 - CFG.rocket.gravity * n * (n + 1) / 2) / n;
-  }
-
-  // Card footprint — MUST match .lsa-card's width/height in the stylesheet.
-  // Used to place the bursts and size the glow so it pools over the card
-  // rather than washing the whole viewport.
-  var CARD_W = 800;
-  var CARD_H = 460;
-
-  // Safety net only: guarantees the card is never left unrevealed if a rocket
-  // somehow never bursts.
-  var REVEAL_FALLBACK_AT = 12000;
-
-  var showStartTime = null;
-  var launched = false;
-  var allBurstTime = null; // when the last rocket burst — end of scene 2
-  var cardRevealed = false;
-
-  function startFireworksSequence() {
-    showStartTime = performance.now();
-  }
-
-  // Scene 1 — every rocket goes off at once.
-  function launchAllRockets() {
-    var rk = CFG.rocket;
-    var n = rocketCount();
-    var launchY = canvas.height - 20; // matches launchRocket's own launch point
-    var cardTop = canvas.height / 2 - CARD_H / 2;
-    var fanWidth = Math.min(canvas.width * rk.fanMaxWidthFrac, CARD_W * rk.fanCardMultiple);
-
-    // Flight times are a deterministic ladder across the jitter range, then
-    // shuffled. Drawing each independently at random can collapse: with only
-    // five rockets it will sometimes pick five near-identical values and
-    // scene 2 lands as one mechanical pop (measured as low as 17ms spread).
-    // The ladder guarantees the spread; the shuffle keeps burst order
-    // uncorrelated from position, so it doesn't read as a left-to-right sweep.
-    var flightTimes = [];
-    for (var k = 0; k < n; k++) {
-      var f = n > 1 ? k / (n - 1) : 0.5;
-      flightTimes.push(Math.max(12, Math.round(rk.flightFrames + (f - 0.5) * 2 * rk.flightJitter)));
-    }
-    for (var a = flightTimes.length - 1; a > 0; a--) {
-      var b = Math.floor(Math.random() * (a + 1));
-      var tmp = flightTimes[a]; flightTimes[a] = flightTimes[b]; flightTimes[b] = tmp;
-    }
-
-    for (var i = 0; i < n; i++) {
-      // Even fan across the width, jittered so rockets don't stack up.
-      var t = n > 1 ? i / (n - 1) : 0.5;
-      var x = canvas.width / 2 + (t - 0.5) * fanWidth + (Math.random() - 0.5) * 40;
-      var targetY = cardTop - CARD_H * rk.burstAboveCard +
-                    Math.random() * CARD_H * (rk.burstAboveCard + rk.burstDepthIntoCard);
-      launchRocket(x, targetY, velocityForFlight(launchY, targetY, flightTimes[i]));
-    }
-  }
-
-  function updateShow() {
-    if (showStartTime === null) return;
-    var now = performance.now();
-    var elapsed = now - showStartTime;
-
-    if (!launched) {
-      launched = true;
-      launchAllRockets();
-    }
-
-    // Scene 2 ends when the last rocket has burst. Note this runs before
-    // updateRockets in the frame, so rockets launched above are still in
-    // flight here and this can't fire early on the launch frame.
-    if (allBurstTime === null && rockets.length === 0) allBurstTime = now;
-
-    if (cardRevealed) return;
-    var ready = allBurstTime !== null && now - allBurstTime >= CFG.card.fadeStart;
-    if (ready || elapsed >= REVEAL_FALLBACK_AT) {
-      cardRevealed = true;
-      revealCard();
-    }
-  }
-
-  // Clears the show and replays it from the first rocket. Used by the local
-  // dev panel's replay button; nothing in production calls it.
-  function restartShow() {
-    for (var i = 0; i < particles.length; i++) particlePool.push(particles[i]);
-    particles.length = 0;
-    for (var j = 0; j < smokeParticles.length; j++) smokePool.push(smokeParticles[j]);
-    smokeParticles.length = 0;
-    rockets.length = 0;
-    flashes.length = 0;
-    // The trail is persistent, so a replay must wipe it or the previous run
-    // bleeds into the new one.
-    trailBuf.ctx.clearRect(0, 0, trailBuf.canvas.width, trailBuf.canvas.height);
-    trailCleared = false;
-    launched = false;
-    allBurstTime = null;
-    cardRevealed = false;
-    cardEl.classList.remove('lsa-card--visible');
-    line2El.textContent = 'Celebrating ' + CFG.years + ' Years with us';
-    showStartTime = performance.now();
-  }
-
-  // A soft radial glow pooling over the card — deliberately NOT a
-  // full-viewport white flash, which read as "the screen went white". It is
-  // sized to the card's footprint, never reaches the viewport edges, and is
-  // drawn additively so it looks like the sparkles' own light rather than
-  // paint laid over the screen.
-  function updateCentreGlow() {
-    if (allBurstTime === null) return;
-    var G = CFG.glow;
-    if (G.peakAlpha <= 0) return;
-    var t = performance.now() - allBurstTime - G.start;
-    if (t < 0) return;
-
-    var alpha;
-    if (t < G.rise) {
-      alpha = (t / G.rise) * G.peakAlpha;
-    } else {
-      var d = (t - G.rise) / G.decay;
-      if (d >= 1) return;
-      alpha = (1 - d * d) * G.peakAlpha;
-    }
-
-    var cx = canvas.width / 2;
-    var cy = canvas.height / 2;
-    var R = G.radius;
-    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-    g.addColorStop(0, 'rgba(255,252,242,' + alpha.toFixed(3) + ')');
-    g.addColorStop(0.55, 'rgba(255,240,200,' + (alpha * 0.55).toFixed(3) + ')');
-    g.addColorStop(1, 'rgba(255,235,180,0)');
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = g;
-    ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
-    ctx.restore();
-  }
-
-  // Cursor spark trail tuning. (Sparks, not sparkles — these follow the
-  // cursor and are unrelated to rocket bursts.)
-
-  var cursorX = null;
-  var cursorY = null;
-  var frameCount = 0;
-
-  // Global cursor tracking, not bound to the canvas — this same position
-  // feeds the fuse proximity check in a later step, so there is only ever
-  // one mousemove listener.
-  function onMouseMove(e) {
-    cursorX = e.clientX;
-    cursorY = e.clientY;
-  }
-  window.addEventListener('mousemove', onMouseMove);
-
-  function spawnSparkBurst() {
-    var cs = CFG.cursorSpark;
-    for (var i = 0; i < cs.count; i++) {
-      var angle = Math.random() * Math.PI * 2;
-      var speed = Math.random() * 1.5;
-      var lut = SPARK_LUTS[Math.floor(Math.random() * SPARK_LUTS.length)];
-      spawnParticle(cursorX, cursorY, Math.cos(angle) * speed, Math.sin(angle) * speed,
-                    cs.life, cs.size, lut);
-    }
-  }
-
-  // Glow sprites. The halo is a radial gradient — full colour at the centre
-  // falling linearly to fully transparent at the edge — so it reads as glow
-  // rather than as a bigger solid dot, which is what a flat-alpha circle
-  // looked like.
-  //
-  // It is baked into a small offscreen canvas per colour and blitted with
-  // drawImage, rather than building a gradient per sparkle per frame: at
-  // these densities that would mean creating thousands of gradient objects
-  // every frame. There are only ~70 distinct colours across all the LUTs, so
-  // the cache stays small. Cleared by rebuildPalettes() when colours change.
-  var GLOW_SPRITE_PX = 64;
-  var glowSprites = {};
-
-  function glowSprite(color) {
-    var sprite = glowSprites[color];
-    if (sprite) return sprite;
-
-    sprite = document.createElement('canvas');
-    sprite.width = sprite.height = GLOW_SPRITE_PX;
-    var g = sprite.getContext('2d');
-    var r = GLOW_SPRITE_PX / 2;
-    var grad = g.createRadialGradient(r, r, 0, r, r, r);
-    // Fade to the SAME colour at zero alpha, not to transparent black —
-    // canvas interpolates gradients in non-premultiplied RGBA, so fading to
-    // rgba(0,0,0,0) would drag the midtones through grey.
-    grad.addColorStop(0, color);
-    grad.addColorStop(1, color.replace('rgb(', 'rgba(').replace(')', ',0)'));
-    g.fillStyle = grad;
-    g.fillRect(0, 0, GLOW_SPRITE_PX, GLOW_SPRITE_PX);
-
-    glowSprites[color] = sprite;
-    return sprite;
-  }
-
-  // Additive ('lighter') blending throughout: overlapping sparkles brighten
-  // and blend rather than occluding, which is what gives the dense bursts
-  // their bloom.
-  //
-  // Two optional per-sparkle effects, both controlled from CFG.sparkle:
-  //   glow   — the gradient halo above, drawn behind each sparkle. Doubles
-  //            the draw calls when on, so it is the first thing to turn down
-  //            if framerate suffers.
-  //   trail  — draws each sparkle as a short line from where it was to where
-  //            it is, instead of a dot. Deliberately done by stretching the
-  //            existing sparkle rather than spawning trail particles: a trail
-  //            particle per sparkle per frame would multiply the particle
-  //            count several-fold and blow the budget outright.
-  function drawParticles(g) {
-    var S = CFG.sparkle;
-    var glowOn = CFG.sparkleGlow.mode === 'gradient' && S.glowSize > 1 && S.glowAlpha > 0;
-    var trail = S.trailLength;
-
-    g.save();
-    g.globalCompositeOperation = 'lighter';
-    if (trail > 0) g.lineCap = 'round';
-
-    for (var i = 0; i < particles.length; i++) {
-      var p = particles[i];
-      // Colour is read from the particle's LUT by remaining life, so sparkles
-      // shift colour as they burn out. No per-frame string building.
-      var color = p.lut[(p.alpha * (LUT_STEPS - 1)) | 0];
-
-      if (glowOn) {
-        var gr = p.size * S.glowSize;
-        g.globalAlpha = p.alpha * S.glowAlpha;
-        g.drawImage(glowSprite(color), p.x - gr, p.y - gr, gr * 2, gr * 2);
-      }
-
-      g.globalAlpha = p.alpha;
-      if (trail > 0) {
-        g.strokeStyle = color;
-        g.lineWidth = p.size * 2;
-        g.beginPath();
-        g.moveTo(p.x - p.vx * trail, p.y - p.vy * trail);
-        g.lineTo(p.x, p.y);
-        g.stroke();
-      } else {
-        g.fillStyle = color;
-        g.beginPath();
-        g.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        g.fill();
-      }
-    }
-    g.restore();
-  }
-
-  // ---- Layer passes -------------------------------------------------------
-
-  // The persistent trail. The fade uses destination-out, which ERASES alpha,
-  // rather than a black fillRect, which PAINTS black — that one difference is
-  // why the Step 3 attempt at this turned the screen near-black and this does
-  // not. Faded regions lose alpha, so compositing over the gradient backdrop
-  // cannot darken it.
-  //
-  // BUT a proportional fade can never actually reach zero on an 8-bit canvas.
-  // Alpha rounds a*(1-fade) back up to a once a*fade < 0.5, so it stalls at
-  // roughly 0.5/fade. Measured in-browser: fade 0.05 stalls at 9/255, 0.02 at
-  // 25/255, 0.005 at 127/255 — half opacity, permanently. Only a 0.5 fade
-  // reaches 0, which is far too fast to be a trail.
-  //
-  // Consequence: the trail always leaves a faint ghost of its own paths.
-  // That is fine while the show is running, but it must not be left sitting
-  // over the revealed card — so once there is nothing left to trail, the
-  // buffer gets one hard clearRect, which does reach zero. CFG.trail.fade is
-  // floored in the panel for the same reason.
-  var trailCleared = false;
-
-  function updateTrail() {
-    var T = CFG.trail;
-    var g = trailBuf.ctx;
-    var W = trailBuf.canvas.width, H = trailBuf.canvas.height;
-
-    if (!T.enabled) { g.clearRect(0, 0, W, H); return; }
-
-    // Nothing left to trail means the buffer holds only residue — wipe it.
-    // Deliberately not gated on the card reveal: that is time-based, and the
-    // buffer should be cleaned up whenever the show has actually finished.
-    if (!trailCleared && showStartTime !== null &&
-        particles.length === 0 && rockets.length === 0) {
-      g.clearRect(0, 0, W, H);
-      trailCleared = true;
-      return;
-    }
-
-    g.globalCompositeOperation = 'destination-out';
-    g.globalAlpha = 1;
-    g.fillStyle = 'rgba(0,0,0,' + T.fade + ')';
-    g.fillRect(0, 0, W, H);
-
-    g.globalCompositeOperation = 'lighter';
-    g.globalAlpha = T.alpha;
-    g.drawImage(particleBuf.canvas, 0, 0);
-
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'source-over';
-  }
-
-  // The sparkle layer: downscale the particle buffer with smoothing OFF, so
-  // most pixels are simply dropped. Scaled back up at composite time, the
-  // survivors read as twinkle. Cost is two blits regardless of particle count.
-  function updateGlowBuf() {
-    // Re-size if the downscale factor was changed from the dev panel.
-    var d = Math.max(1, CFG.sparkleGlow.downscale);
-    var wantW = Math.max(1, Math.round(canvas.width / d));
-    var wantH = Math.max(1, Math.round(canvas.height / d));
-    if (glowBuf.canvas.width !== wantW || glowBuf.canvas.height !== wantH) {
-      glowBuf.canvas.width = wantW;
-      glowBuf.canvas.height = wantH;
-    }
-
-    var g = glowBuf.ctx;
-    g.clearRect(0, 0, wantW, wantH);
-    g.imageSmoothingEnabled = false;
-    g.drawImage(particleBuf.canvas, 0, 0, wantW, wantH);
-  }
-
-  function compositeLayers() {
-    var mode = CFG.layers.mode;
-    var all = mode === 'composite';
-    var W = canvas.width, H = canvas.height;
-
-    ctx.clearRect(0, 0, W, H);
-    ctx.globalAlpha = 1;
-
-    if ((all || mode === 'smoke') && CFG.smoke.enabled) {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(smokeBuf.canvas, 0, 0, W, H);
-    }
-
-    if ((all || mode === 'trail') && CFG.trail.enabled) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.drawImage(trailBuf.canvas, 0, 0, W, H);
-    }
-
-    // In composite mode the sparkle layer is only added when that glow mode
-    // is selected; in glow-isolation mode it is always shown, so the toggle
-    // does something visible whichever glow mode is active.
-    if ((all && CFG.sparkleGlow.mode === 'sparkle') || mode === 'glow') {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(glowBuf.canvas, 0, 0, W, H);
-      ctx.imageSmoothingEnabled = true;
-    }
-
-    if (all || mode === 'particles') {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.drawImage(particleBuf.canvas, 0, 0, W, H);
-    }
-
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-  }
-
-  var rafId = requestAnimationFrame(tick);
-
-  function tick() {
-    frame();
-    rafId = requestAnimationFrame(tick);
-  }
-
-  // One frame of work, split out from the rAF scheduling so the dev hook can
-  // step it manually — the only way to exercise the render pipeline in an
-  // environment where requestAnimationFrame never fires.
-  function frame() {
-    // Everything that belongs to the particle layer — fuse, rocket heads,
-    // sparkles — is drawn into particleBuf, which then feeds the trail and
-    // glow layers. Flashes and the card glow are composite-level only: they
-    // would smear badly through the trail.
-    var pg = particleBuf.ctx;
-    pg.clearRect(0, 0, particleBuf.canvas.width, particleBuf.canvas.height);
-
-    checkFuseIgnition();
-    drawFuse(pg);
-    updateFuseBurn(pg);
-    updateShow();
-    updateRockets(pg);
-
-    frameCount++;
-    if (cursorX !== null && CFG.cursorSpark.enabled &&
-        frameCount % CFG.cursorSpark.interval === 0) {
-      spawnSparkBurst();
-    }
-
-    updateParticles();
-    drawParticles(pg);
-
-    updateSmoke();
-    drawSmoke();
-
-    updateTrail();
-    updateGlowBuf();
-    compositeLayers();
-
-    updateCentreGlow(); // additive over the composite
-    updateFlashes();
-  }
+  var goBtn = document.createElement('button');
+  goBtn.className = 'lsa-go';
+  goBtn.type = 'button';
+  goBtn.textContent = 'GO';
+  goBtn.addEventListener('click', onGo);
+  root.appendChild(goBtn);
 
   var closeBtn = document.createElement('button');
   closeBtn.className = 'lsa-close';
@@ -1243,52 +70,867 @@
 
   document.body.appendChild(root);
 
-  // ---- LOCAL DEV HOOK — inert in production -----------------------------
-  // The one place this file touches `window`, and only when the page opts in
-  // by putting data-lsa-dev on <html>. lsa-demo.html sets it; lsa-mount.html
-  // (the Liferay markup) does not, so on the intranet this branch never runs
-  // and no global is ever created — the no-globals rule in the safety
-  // contract above still holds there.
-  //
-  // Delete these lines if you want zero dev code in the deployed file; the
-  // only thing lost is the local tuning panel.
-  if (document.documentElement.hasAttribute('data-lsa-dev')) {
-    window.__lsaDev = {
-      cfg: CFG,
-      restart: restartShow,
-      rebuildPalettes: rebuildPalettes,
-      stats: function () {
-        return {
-          particles: particles.length,
-          rockets: rockets.length,
-          smoke: smokeParticles.length
-        };
-      },
-      // Runs frames synchronously. Only used to exercise the pipeline where
-      // requestAnimationFrame does not fire; the real show never calls it.
-      step: function (n) {
-        for (var i = 0; i < (n || 1); i++) frame();
-      },
-      buffers: function () {
-        return {
-          trail: trailBuf.canvas,
-          particle: particleBuf.canvas,
-          glow: glowBuf.canvas,
-          smoke: smokeBuf.canvas
-        };
+  /* ---- Config -----------------------------------------------------------
+     The lab's settings, at the values it was left tuned to. Read live (per
+     frame / per spawn) rather than cached into locals, so changing a value at
+     runtime changes the show while it is running. */
+
+  var cfg = {
+    // Overall scale · multiplies burst spread and shard size together.
+    scale: 1,
+
+    hanabi: {
+      layer: 'composite',   // composite | particles | trail | glow | smoke
+      palette: 'fire',      // fire | blue | purple | random
+
+      // Burst
+      count: 200,           // particles per burst
+      explosionSize: 10,
+      poolMax: 2000,
+
+      // Physics — per-frame values, reference runs at 30fps
+      gravity: 0.2,
+      drag: 0.9,
+      lifeDecay: 0.01,
+
+      // Trail & glow
+      trailFade: 0.05,
+      trailAlpha: 0.6,
+      glowDownscale: 4,
+
+      // Colour jitter
+      jitterHue: 5,
+      jitterSat: 10,
+      jitterLight: 10,
+
+      smoke: {
+        enabled: true,
+        countMin: 12,
+        countMax: 20,
+        sizeMin: 3,
+        sizeMax: 8,
+        rise: 0.015,
+        dragX: 0.95,
+        dragY: 0.92,
+        growth: 0.08,
+        lifeDecay: 0.012,
+        maxAlpha: 0.25
       }
-    };
-    document.dispatchEvent(new CustomEvent('lsa-dev-ready'));
+    },
+
+    // Per-second values · what Hanabi has no equivalent for
+    confetti: {
+      size: 1,              // shard size
+      spin: 250,            // ±°/s
+
+      massSpread: 0.33,
+      flutter: 350,
+      deltaCap: 0.064,
+
+      // Lifetime spread
+      fadeMin: 0.5,
+      fadeMax: 2.5
+    },
+
+    // The shell detonating · neither library has this
+    blast: {
+      enabled: true,
+      lead: 60,             // ms
+      radius: 140,
+      peak: 0.55,
+      rise: 0.06,           // s
+      hold: 0.15,
+      decay: 1.8
+    },
+
+    /* ---- The rocket -------------------------------------------------------
+       The shell on its way up: exactly one node, drawn the same way a sparkle
+       is — a stroked segment from last frame's position to this one, into the
+       same particle buffer — so it picks up the trail and the glow for free.
+       Just bigger, and it does not wink: the cos(rot) flicker reads as a
+       glint on a shard, but on a single climbing ember it reads as a fault.
+
+       No drag, unlike the sparkles. Their heavy 0.9/frame damping is what
+       makes a burst snap out and hang, but on the ascent it would eat the
+       launch velocity and make the apex height unpredictable. Gravity alone
+       means the launch speed can be solved exactly from the height wanted. */
+    rocket: {
+      size: 5,              // px — a sparkle is 1-3
+      launchY: 1.0,         // launches from this fraction of canvas height
+      light: 88             // hotter than a sparkle's BASE_LIGHT
+    },
+
+    /* ---- The GO sequence ------------------------------------------------
+       Colour sets as hue lists, in the same form as PALETTES. `white` is the
+       fraction of a burst's sparkles drawn desaturated instead of taking a
+       hue — hue alone cannot express white, since every sparkle otherwise
+       gets BASE_SAT. */
+    goColors: {
+      red:  { hues: [357, 352, 2], white: 0 },
+      gold: { hues: [46, 51, 58], white: 0 },
+      mix:  { hues: [357, 352, 46, 58], white: 0.33 }
+    },
+
+    // Running order. `x` is a fraction of canvas width, `at` is ms from the
+    // button press, `scale` multiplies burst spread and shard size together
+    // (the lab's own `scale`, applied per burst instead of globally).
+    goHeight: 0.38,         // burst height, fraction of canvas height
+    goSequence: [
+      { x: 0.10, at: 0,    color: 'red',  scale: 1 },    // 1 extreme left
+      { x: 0.90, at: 0,    color: 'red',  scale: 1 },    // 5 extreme right
+      { x: 0.30, at: 500,  color: 'gold', scale: 1.5 },  // 2 left
+      { x: 0.70, at: 500,  color: 'gold', scale: 1.5 },  // 4 right
+      { x: 0.50, at: 1000, color: 'mix',  scale: 2 }     // 3 centre
+    ]
+  };
+
+  /* ---- Buffers ----------------------------------------------------------
+     Size the backing store to device pixels, not CSS pixels. Fireworks are
+     judged on sharp single-pixel particles, so a half-resolution buffer being
+     upscaled by the browser would soften everything.
+
+       particleBuf  full res, cleared each frame. Feeds BOTH the trail and the
+                    glow, so sparkles only have to be drawn once.
+       trailBuf     full res, PERSISTENT — never cleared per frame, only faded.
+       glowBuf      1/downscale res, smoothing OFF. The sparkle comes from
+                    pixels being LOST in the downscale: which ones survive
+                    changes frame to frame, so it twinkles without anything
+                    being animated to twinkle.
+       smokeBuf     half res — smoke is soft, so half res is invisible in the
+                    result and saves a lot of fill on large displays. */
+
+  var particleBuf = document.createElement('canvas');
+  var particleCtx = particleBuf.getContext('2d');
+  var trailBuf = document.createElement('canvas');
+  var trailCtx = trailBuf.getContext('2d');
+  var glowBuf = document.createElement('canvas');
+  var glowCtx = glowBuf.getContext('2d');
+  var smokeBuf = document.createElement('canvas');
+  var smokeCtx = smokeBuf.getContext('2d');
+
+  // One baked soft puff, blitted scaled. The reference builds a radial
+  // gradient per particle per frame — 500 gradient objects a frame at its cap.
+  // Same result, a fraction of the cost.
+  var smokeSprite = document.createElement('canvas');
+  (function () {
+    var R = 32;
+    smokeSprite.width = smokeSprite.height = R * 2;
+    var g = smokeSprite.getContext('2d');
+    var grad = g.createRadialGradient(R, R, 0, R, R, R);
+    grad.addColorStop(0, 'rgba(180,180,180,1)');
+    grad.addColorStop(1, 'rgba(180,180,180,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, R * 2, R * 2);
+  })();
+
+  function resize() {
+    var dpr = window.devicePixelRatio || 1;
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+
+    // Resizing clears a buffer, so trail history is lost on resize.
+    // Acceptable, and far simpler than preserving and rescaling it.
+    particleBuf.width = canvas.width;
+    particleBuf.height = canvas.height;
+    particleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    trailBuf.width = canvas.width;
+    trailBuf.height = canvas.height;
+    trailCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    smokeBuf.width = Math.max(1, Math.round(canvas.width / 2));
+    smokeBuf.height = Math.max(1, Math.round(canvas.height / 2));
+    smokeCtx.setTransform(dpr / 2, 0, 0, dpr / 2, 0, 0); // still addressed in CSS px
+
+    sizeGlow();
+  }
+
+  // Kept in its own function because the downscale can change at runtime, so
+  // the glow buffer can need resizing between frames, not just on resize.
+  function sizeGlow() {
+    var d = Math.max(1, Math.round(cfg.hanabi.glowDownscale));
+    var gw = Math.max(1, Math.round(canvas.width / d));
+    var gh = Math.max(1, Math.round(canvas.height / d));
+    if (glowBuf.width !== gw || glowBuf.height !== gh) {
+      glowBuf.width = gw;
+      glowBuf.height = gh;
+      // Setting width/height resets context state, so this must come after.
+      glowCtx.imageSmoothingEnabled = false;
+    }
+  }
+
+  var resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(canvas);
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ---- Engine ----------------------------------------------------------
+     Hanabi's look, confetti.js's engine.
+
+     THE CONVERSION: Hanabi's constants are PER FRAME at 30fps. This loop is
+     delta-time integrated in seconds. So every Hanabi value is converted at
+     read time against FPS_REF rather than being used raw — using them raw in
+     a 60fps loop is exactly why the previous overlay fell twice too fast and
+     its sparkles died three times too early.
+
+         gravity   0.2  /frame^2  ->  x FPS_REF^2  ->  180 px/s^2
+         drag      0.9  /frame    ->  pow(drag, dt * FPS_REF)
+         life      0.01 /frame    ->  1/(0.01 * FPS_REF) = 3.33 s
+         speed     10   /frame    ->  x FPS_REF        ->  300 px/s
+
+     Confetti contributes what Hanabi has no equivalent for: mass variance,
+     flutter, the delta cap, and a wide per-particle lifetime spread.
+
+     Sanity check: terminal fall must land at ~55 px/s and must NOT change
+     with framerate. */
+
+  var FPS_REF = 30; // the framerate Hanabi's per-frame constants are authored at
+
+  // Hanabi's palettes, as hue lists. Base saturation/lightness are NOT from the
+  // reference — only its jitter ranges were recoverable — so these two are a
+  // judgement call, picked to read as hot sparks rather than pastel.
+  var PALETTES = {
+    fire:   [357, 58, 46, 9, 352],
+    blue:   [220, 200, 240, 180, 210],
+    purple: [280, 300, 260, 320, 270]
+  };
+  var BASE_SAT = 90;
+  var BASE_LIGHT = 62;
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  // `spec` is a burst's own colour set (see cfg.goColors). Without one this
+  // falls back to cfg.hanabi.palette, which is what a plain click-to-burst
+  // uses — the lab's behaviour, unchanged.
+  function pickHue(spec) {
+    var list;
+    if (spec && spec.hues) {
+      list = spec.hues;
+    } else {
+      var name = cfg.hanabi.palette;
+      if (name === 'random') return Math.random() * 360;
+      list = PALETTES[name] || PALETTES.fire;
+    }
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  var particles = [];
+  var pool = [];
+
+  function spawn(x, y, vx, vy, life, spec) {
+    if (particles.length >= cfg.hanabi.poolMax) return;
+    var p = pool.pop() || {};
+    p.x = x; p.y = y;
+    p.px = x; p.py = y; // previous-frame position, for gap-free trail segments
+    p.vx = vx; p.vy = vy;
+    p.life = life; p.maxLife = life;
+
+    // Confetti's mass trick: pieces fall at different rates, so the burst
+    // stretches vertically instead of descending as one sheet. Centred on 1x
+    // and deliberately decoupled from the size slider, so changing shard size
+    // does not secretly change how fast everything falls. 0.33 reproduces
+    // confetti's own 2-4 height range; 0 makes every particle fall alike.
+    p.mass = 1 + (Math.random() - 0.5) * 2 * cfg.confetti.massSpread;
+
+    // Colour: a palette hue with Hanabi's per-particle jitter, so a burst is
+    // not a flat block of one colour. Stored as numbers, not a string —
+    // alpha changes every frame, so the string has to be built at draw time.
+    var j = cfg.hanabi;
+    if (spec && spec.white && Math.random() < spec.white) {
+      // White cannot be expressed as a hue — every other sparkle takes
+      // BASE_SAT — so these are desaturated and lifted instead.
+      p.h = 45;
+      p.s = clamp(8 + (Math.random() - 0.5) * 2 * j.jitterSat, 0, 20);
+      p.l = clamp(95 + (Math.random() - 0.5) * j.jitterLight, 80, 100);
+    } else {
+      p.h = pickHue(spec) + (Math.random() - 0.5) * 2 * j.jitterHue;
+      p.s = clamp(BASE_SAT + (Math.random() - 0.5) * 2 * j.jitterSat, 30, 100);
+      p.l = clamp(BASE_LIGHT + (Math.random() - 0.5) * 2 * j.jitterLight, 30, 100);
+    }
+
+    // Shard geometry. A 1x1 pixel cannot show rotation, so sparkles get a
+    // small extent and a spin rate; draw() modulates the width by cos(rot) so
+    // the shard turns edge-on and winks out. That flicker is the point of
+    // keeping confetti's spin — it is a glint, not a visible tumbling shape.
+    p.size = (1 + Math.random() * 2) * cfg.confetti.size *
+             ((spec && spec.scale) || cfg.scale);
+    p.rot = Math.random() * Math.PI * 2;
+    p.spin = (Math.random() - 0.5) * 2 * cfg.confetti.spin * Math.PI / 180;
+
+    particles.push(p);
+  }
+
+  /* ---- Blast glow -------------------------------------------------------
+     The shell detonating: a bright bloom at the burst point that leads the
+     sparkles by a few dozen milliseconds, so the light arrives fractionally
+     before its debris. Drawn at COMPOSITE level only, never into particleBuf
+     — a soft gradient that large stamped into the trail would smear into
+     exactly the lingering blob we spent three rounds removing. */
+
+  var blasts = [];
+  var pendingBursts = [];
+
+  function spawnBlast(x, y, spec) {
+    // Bloom takes a hue from the same set as its sparkles, so a red firework
+    // does not detonate gold.
+    blasts.push({ x: x, y: y, age: 0, hue: pickHue(spec) });
+  }
+
+  function updateBlasts(dt) {
+    var B = cfg.blast;
+    var span = B.rise + B.hold + B.decay;
+    for (var i = blasts.length - 1; i >= 0; i--) {
+      blasts[i].age += dt;
+      if (blasts[i].age >= span) {
+        blasts[i] = blasts[blasts.length - 1];
+        blasts.pop();
+      }
+    }
+  }
+
+  function drawBlasts() {
+    var B = cfg.blast;
+    for (var i = 0; i < blasts.length; i++) {
+      var b = blasts[i];
+      var alpha, grow;
+
+      if (b.age < B.rise) {
+        var up = b.age / B.rise;
+        alpha = B.peak * up;
+        grow = 0.55 + 0.45 * up;   // expands as it ignites
+      } else if (b.age < B.rise + B.hold) {
+        alpha = B.peak;            // sits at full brightness before fading
+        grow = 1;
+      } else {
+        var down = (b.age - B.rise - B.hold) / B.decay;
+        if (down >= 1) continue;
+        // Squared falloff: bright for a moment, then a long soft tail rather
+        // than a linear ramp, which reads as a light source dying out.
+        alpha = B.peak * (1 - down) * (1 - down);
+        grow = 1;
+      }
+
+      var r = B.radius * grow;
+      var g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+      g.addColorStop(0, 'hsla(' + b.hue.toFixed(0) + ',100%,95%,' + alpha.toFixed(3) + ')');
+      g.addColorStop(0.35, 'hsla(' + b.hue.toFixed(0) + ',100%,72%,' + (alpha * 0.45).toFixed(3) + ')');
+      g.addColorStop(1, 'hsla(' + b.hue.toFixed(0) + ',100%,60%,0)');
+
+      ctx.fillStyle = g;
+      ctx.fillRect(b.x - r, b.y - r, r * 2, r * 2);
+    }
+  }
+
+  /* ---- The rocket -------------------------------------------------------
+     Rises to a target height and bursts at apex. Launch speed is solved from
+     the height rather than picked and hoped for: under gravity alone, a body
+     thrown at v rises v^2/2g, so v = sqrt(2 * g * rise) puts the apex exactly
+     on target on every screen. Bursting at apex — the moment vy turns from
+     negative to positive — also means it never stalls short or sails past. */
+
+  var rockets = [];
+
+  function launch(x, targetY, spec) {
+    var g = cfg.hanabi.gravity * FPS_REF * FPS_REF;
+    var y0 = canvas.clientHeight * cfg.rocket.launchY;
+    var rise = Math.max(1, y0 - targetY);
+    var j = cfg.hanabi;
+
+    rockets.push({
+      x: x, y: y0,
+      px: x, py: y0,          // previous-frame position, same as a sparkle
+      vy: -Math.sqrt(2 * g * rise),
+      // Carries the colour of the firework it is about to become.
+      h: pickHue(spec) + (Math.random() - 0.5) * 2 * j.jitterHue,
+      s: clamp(BASE_SAT + (Math.random() - 0.5) * 2 * j.jitterSat, 30, 100),
+      l: clamp(cfg.rocket.light + (Math.random() - 0.5) * 2 * j.jitterLight, 60, 100),
+      size: cfg.rocket.size * ((spec && spec.scale) || cfg.scale),
+      spec: spec
+    });
+  }
+
+  function updateRockets(dt) {
+    var g = cfg.hanabi.gravity * FPS_REF * FPS_REF;
+
+    for (var i = rockets.length - 1; i >= 0; i--) {
+      var r = rockets[i];
+      r.px = r.x;
+      r.py = r.y;
+      r.vy += g * dt;
+      r.y += r.vy * dt;
+
+      if (r.vy >= 0) { // apex
+        rockets[i] = rockets[rockets.length - 1];
+        rockets.pop();
+        burst(r.x, r.y, r.spec);
+      }
+    }
+  }
+
+  // A burst fires the blast now and queues the sparkles for `lead` ms later.
+  // Kept on the rAF clock rather than setTimeout so it stays in step with the
+  // rest of the sim — and so stepping frames by hand still reproduces it.
+  function burst(x, y, spec) {
+    var B = cfg.blast;
+    if (!B.enabled) { spawnSparkles(x, y, spec); return; }
+    spawnBlast(x, y, spec);
+    if (B.lead > 0) pendingBursts.push({ x: x, y: y, t: B.lead / 1000, spec: spec });
+    else spawnSparkles(x, y, spec);
+  }
+
+  function updatePending(dt) {
+    for (var i = pendingBursts.length - 1; i >= 0; i--) {
+      var q = pendingBursts[i];
+      q.t -= dt;
+      if (q.t <= 0) {
+        pendingBursts[i] = pendingBursts[pendingBursts.length - 1];
+        pendingBursts.pop();
+        spawnSparkles(q.x, q.y, q.spec);
+      }
+    }
+  }
+
+  function spawnSparkles(x, y, spec) {
+    var n = cfg.hanabi.count;
+    var speedMax = cfg.hanabi.explosionSize * FPS_REF *
+                   ((spec && spec.scale) || cfg.scale);
+    var baseLife = 1 / (cfg.hanabi.lifeDecay * FPS_REF);
+    var lifeMin = cfg.confetti.fadeMin;
+    var lifeSpan = cfg.confetti.fadeMax - cfg.confetti.fadeMin;
+
+    for (var i = 0; i < n; i++) {
+      var angle = Math.random() * Math.PI * 2;
+      // sqrt gives uniform density per unit AREA. A plain uniform radius piles
+      // particles toward the centre and reads as a hollow-cored blob; this
+      // fills the disc evenly.
+      var speed = Math.sqrt(Math.random()) * speedMax;
+      // Wide per-particle lifetime spread, so the burst dissolves instead of
+      // all dying on the same frame.
+      var life = baseLife * (lifeMin + Math.random() * lifeSpan);
+      spawn(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed, life, spec);
+    }
+
+    spawnSmoke(x, y);
+  }
+
+  /* ---- Smoke ------------------------------------------------------------
+     Same conversion discipline as everything else: the reference's per-frame
+     values are scaled by FPS_REF (or its square, for accelerations). Smoke is
+     what gives a burst body rather than just light. */
+
+  var SMOKE_MAX = 500;      // reference cap
+  var SMOKE_SPREAD_X = 20;  // spawn scatter around the burst centre
+  var SMOKE_SPREAD_Y = 12.5;
+  var SMOKE_DRIFT_X = 0.02 * FPS_REF * FPS_REF; // per-frame^2 -> px/s^2
+  var SMOKE_DRIFT_Y = 0.01 * FPS_REF * FPS_REF;
+
+  var smoke = [];
+  var smokePool = [];
+
+  function spawnSmoke(x, y) {
+    var S = cfg.hanabi.smoke;
+    if (!S.enabled) return;
+    var n = S.countMin + Math.floor(Math.random() * (S.countMax - S.countMin + 1));
+
+    for (var i = 0; i < n; i++) {
+      if (smoke.length >= SMOKE_MAX) return;
+      var s = smokePool.pop() || {};
+      s.x = x + (Math.random() - 0.5) * 2 * SMOKE_SPREAD_X;
+      s.y = y + (Math.random() - 0.5) * 2 * SMOKE_SPREAD_Y;
+      s.vx = (Math.random() - 0.5) * 4 * FPS_REF;
+      s.vy = -Math.random() * 0.2 * FPS_REF;
+      s.size = S.sizeMin + Math.random() * (S.sizeMax - S.sizeMin);
+      s.life = 1;
+      smoke.push(s);
+    }
+  }
+
+  function updateSmoke(dt) {
+    var S = cfg.hanabi.smoke;
+    var dragX = Math.pow(S.dragX, dt * FPS_REF);
+    var dragY = Math.pow(S.dragY, dt * FPS_REF);
+    var rise = S.rise * FPS_REF * FPS_REF;
+
+    for (var i = smoke.length - 1; i >= 0; i--) {
+      var s = smoke[i];
+      s.vx += (Math.random() - 0.5) * 2 * SMOKE_DRIFT_X * dt;
+      s.vy += (Math.random() - 0.5) * 2 * SMOKE_DRIFT_Y * dt;
+      s.vy -= rise * dt;
+      s.vx *= dragX;
+      s.vy *= dragY;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.size += S.growth * FPS_REF * dt;
+      s.life -= S.lifeDecay * FPS_REF * dt;
+
+      if (s.life <= 0) {
+        smoke[i] = smoke[smoke.length - 1];
+        smoke.pop();
+        smokePool.push(s);
+      }
+    }
+  }
+
+  function drawSmoke(w, h) {
+    smokeCtx.clearRect(0, 0, w, h);
+    if (!smoke.length) return;
+
+    var max = cfg.hanabi.smoke.maxAlpha;
+    var i, s, lf;
+
+    // Base clouds.
+    for (i = 0; i < smoke.length; i++) {
+      s = smoke[i];
+      lf = s.life;
+      smokeCtx.globalAlpha = Math.min(max, lf * max * Math.sqrt(lf));
+      smokeCtx.drawImage(smokeSprite, s.x - s.size, s.y - s.size, s.size * 2, s.size * 2);
+    }
+
+    // Darker wisps over the top, for depth.
+    smokeCtx.globalCompositeOperation = 'multiply';
+    for (i = 0; i < smoke.length; i++) {
+      s = smoke[i];
+      lf = s.life;
+      smokeCtx.globalAlpha = Math.min(max, lf * max * Math.sqrt(lf)) * 0.5;
+      smokeCtx.drawImage(smokeSprite, s.x - s.size * 0.6, s.y - s.size * 0.6,
+                         s.size * 1.2, s.size * 1.2);
+    }
+
+    smokeCtx.globalCompositeOperation = 'source-over';
+    smokeCtx.globalAlpha = 1;
+  }
+
+  function update(dt) {
+    var gravity = cfg.hanabi.gravity * FPS_REF * FPS_REF;
+    var damp = Math.pow(cfg.hanabi.drag, dt * FPS_REF);
+    var flutter = cfg.confetti.flutter;
+
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+
+      p.vy += gravity * p.mass * dt;
+      // Random walk on horizontal velocity — confetti's swish. Bounded by the
+      // damping below, so it meanders rather than running away.
+      p.vx += (Math.random() - 0.5) * 2 * flutter * dt;
+
+      p.vx *= damp;
+      p.vy *= damp;
+
+      p.px = p.x;
+      p.py = p.y;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.spin * dt;
+      p.life -= dt;
+
+      if (p.life <= 0) {
+        // Swap-and-pop: O(1) removal, and draw order is irrelevant here.
+        particles[i] = particles[particles.length - 1];
+        particles.pop();
+        pool.push(p);
+      }
+    }
+
+    updateRockets(dt);
+    updateSmoke(dt);
+    updateBlasts(dt);
+    updateSequence(dt);
+
+    // The run is over once nothing is queued and the last rocket has burst.
+    // Deliberately not waiting on the sparkles: they hang for several seconds
+    // after, and a replay overlapping those looks fine.
+    if (goBtn.disabled && !scheduled.length && !rockets.length) goBtn.disabled = false;
+    updatePending(dt); // last, so sparkles released this frame are drawn at full life
+  }
+
+  /* ---- The GO sequence --------------------------------------------------
+     Five fireworks in three waves. Runs on the rAF clock like everything
+     else, not setTimeout, so it stays in step with the sim and pauses with a
+     backgrounded tab instead of playing out unseen. */
+
+  var scheduled = [];
+
+  function runSequence() {
+    var w = canvas.clientWidth;
+    var y = canvas.clientHeight * cfg.goHeight;
+
+    scheduled.length = 0;
+    cfg.goSequence.forEach(function (row) {
+      var c = cfg.goColors[row.color];
+      scheduled.push({
+        t: row.at / 1000,
+        x: row.x * w,
+        y: y,
+        // One spec per burst, carrying both its colour set and its size.
+        spec: { hues: c.hues, white: c.white, scale: row.scale }
+      });
+    });
+  }
+
+  function updateSequence(dt) {
+    for (var i = scheduled.length - 1; i >= 0; i--) {
+      var q = scheduled[i];
+      q.t -= dt;
+      if (q.t <= 0) {
+        scheduled[i] = scheduled[scheduled.length - 1];
+        scheduled.pop();
+        // Each row launches a rocket; it bursts into that row's firework when
+        // it reaches apex. `at` is therefore the launch time — every rocket
+        // rises the same height, so it spaces the bursts identically.
+        launch(q.x, q.y, q.spec);
+      }
+    }
+  }
+
+  // Seconds since the last particle died, and how long the trail takes to
+  // finish emptying itself once that happens. See the fade-out note in draw().
+  var idleTime = 0;
+  var TRAIL_FADEOUT = 0.6;
+
+  // Dithered trail erase. See the note in draw(): a proportional 8-bit erase
+  // cannot reach zero, so a weak per-frame fade strands every touched pixel at
+  // ~0.5/fade and leaves a ghost of the burst. Erasing in strong batches does
+  // reach zero but steps the whole canvas at once, which reads as flicker.
+  //
+  // So the strong erase is scattered SPATIALLY instead: each frame a small
+  // random subset of pixels is erased hard enough to round to zero, and the
+  // rest are left alone. Averaged over frames every pixel decays at the same
+  // rate as before, but no frame changes the whole image, so there is nothing
+  // to flicker.
+  // The masks PARTITION the pixels rather than sampling them randomly: each
+  // pixel belongs to exactly one of DITHER_PHASES masks, so cycling through
+  // them erases every pixel exactly once per cycle. Random selection — whether
+  // by a random mask or a random offset — leaves some pixels untouched for
+  // long stretches, and those linger bright as speckle.
+  var DITHER_PHASES = 12;
+  var ditherMasks = (function () {
+    var size = 128, masks = [], imgs = [], k;
+    for (k = 0; k < DITHER_PHASES; k++) {
+      var c = document.createElement('canvas');
+      c.width = c.height = size;
+      masks.push(c);
+      imgs.push(c.getContext('2d').createImageData(size, size));
+    }
+    for (var i = 0; i < size * size; i++) {
+      // Only alpha matters — destination-out reads nothing else.
+      imgs[Math.floor(Math.random() * DITHER_PHASES)].data[i * 4 + 3] = 255;
+    }
+    for (k = 0; k < DITHER_PHASES; k++) masks[k].getContext('2d').putImageData(imgs[k], 0, 0);
+    return masks;
+  })();
+  var ditherPatterns = new Array(DITHER_PHASES); // built lazily, need the context
+  var ditherPhase = 0;
+
+  function draw(dt) {
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.width / dpr;
+    var h = canvas.height / dpr;
+    var mode = cfg.hanabi.layer;
+
+    // A collapsed or hidden stage gives a zero-size canvas, and drawImage
+    // throws on a zero-dimension source — which would kill the rAF loop for
+    // good rather than skipping a frame.
+    if (!w || !h) return;
+
+    // ---- Particle layer ----
+    // Drawn once, then reused as the source for both the trail and the glow.
+    particleCtx.clearRect(0, 0, w, h);
+    particleCtx.lineCap = 'round';
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var alpha = p.life / p.maxLife;
+      // Width collapses to zero as the shard turns edge-on, then opens back
+      // up — the wink.
+      var sw = p.size * Math.abs(Math.cos(p.rot));
+      if (sw <= 0) continue;
+      // Stroked from last frame's position to this one, rather than a dot at
+      // just the current position — a fast-moving particle can travel several
+      // px between frames, and a single point leaves a gap the trail buffer
+      // never fills in. The segment always meets the previous frame's segment
+      // exactly, so the trail stays unbroken at any speed.
+      particleCtx.strokeStyle = 'hsla(' + p.h.toFixed(0) + ',' + p.s.toFixed(0) + '%,' +
+                              p.l.toFixed(0) + '%,' + alpha.toFixed(3) + ')';
+      particleCtx.lineWidth = sw;
+      particleCtx.beginPath();
+      particleCtx.moveTo(p.px, p.py);
+      particleCtx.lineTo(p.x, p.y);
+      particleCtx.stroke();
+    }
+
+    // Rockets, drawn the same way into the same buffer — one bigger node, at
+    // full alpha, with no wink.
+    for (var k = 0; k < rockets.length; k++) {
+      var r = rockets[k];
+      particleCtx.strokeStyle = 'hsl(' + r.h.toFixed(0) + ',' + r.s.toFixed(0) + '%,' +
+                                r.l.toFixed(0) + '%)';
+      particleCtx.lineWidth = r.size;
+      particleCtx.beginPath();
+      particleCtx.moveTo(r.px, r.py);
+      particleCtx.lineTo(r.x, r.y);
+      particleCtx.stroke();
+    }
+
+    // ---- Trail ----
+    // destination-out ERASES alpha rather than painting black, so faded
+    // regions go transparent and what is underneath is never darkened. The
+    // per-frame rate is converted to this frame's dt, same as the physics.
+    // ...but a per-frame proportional erase can never reach zero on an 8-bit
+    // canvas: once alpha*fade < 0.5 it rounds straight back, so every pixel the
+    // trail has touched sticks at about 0.5/fade — 10/255 at fade 0.05. That
+    // residue is a faint white ghost of the whole burst hanging in the air.
+    //
+    // So the fade is BATCHED: accumulated across frames and applied as one
+    // stronger erase. Same average decay rate, but each erase is large enough
+    // to round the low alphas down instead of leaving them stranded, which
+    // drops the floor from ~10/255 to ~1/255.
+    // Erase strength is raised by 1/coverage so that, averaged over the pixels
+    // actually hit, the decay rate is unchanged — but each hit is now strong
+    // enough to round a stranded residue down to zero instead of leaving it.
+    var fadeStep = 1 - Math.pow(1 - cfg.hanabi.trailFade, dt * FPS_REF);
+    ditherPhase = (ditherPhase + 1) % DITHER_PHASES;
+    if (!ditherPatterns[ditherPhase]) {
+      ditherPatterns[ditherPhase] = trailCtx.createPattern(ditherMasks[ditherPhase], 'repeat');
+    }
+
+    // Once the last particle dies nothing is refreshing the trail any more,
+    // and the erase is ramped from its normal strength up to full across
+    // TRAIL_FADEOUT: the streaks keep decaying at their usual rate at first,
+    // then get erased hard enough to round to zero. A clearRect here would
+    // also reach zero, but it does it between two frames, so whatever streak
+    // was still lit at that moment snaps out of existence instead of
+    // dissolving.
+    // Rockets count as alive here too: during an ascent there are no
+    // particles yet, and without this the fade-out would ramp to full and
+    // erase the rocket's own trail out from under it as it climbs.
+    if (particles.length || rockets.length) idleTime = 0;
+    else idleTime += dt;
+
+    var erase = Math.min(1, fadeStep * DITHER_PHASES);
+    if (idleTime > 0) erase += (1 - erase) * Math.min(1, idleTime / TRAIL_FADEOUT);
+
+    trailCtx.save();
+    trailCtx.globalCompositeOperation = 'destination-out';
+    trailCtx.globalAlpha = erase;
+    trailCtx.fillStyle = ditherPatterns[ditherPhase];
+    trailCtx.fillRect(0, 0, w, h);
+    trailCtx.restore();
+
+    trailCtx.globalAlpha = cfg.hanabi.trailAlpha;
+    trailCtx.drawImage(particleBuf, 0, 0, w, h);
+    trailCtx.globalAlpha = 1;
+
+    // ---- Smoke ----
+    drawSmoke(w, h);
+
+    // ---- Glow ----
+    sizeGlow();
+    glowCtx.clearRect(0, 0, glowBuf.width, glowBuf.height);
+    glowCtx.drawImage(particleBuf, 0, 0, glowBuf.width, glowBuf.height);
+
+    // ---- Composite ----
+    // The lab fills an opaque navy here, because additive blending needs real
+    // pixels underneath to add to. As an overlay that fill would hide the page
+    // and the backdrop, so this clears to transparent and lets the browser
+    // composite the result over the backdrop instead.
+    ctx.clearRect(0, 0, w, h);
+
+    var all = mode === 'composite';
+
+    // Smoke sits underneath everything and is NOT additive — it is haze that
+    // occludes, not light that adds.
+    if (all || mode === 'smoke') {
+      ctx.drawImage(smokeBuf, 0, 0, w, h);
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+
+    if (all || mode === 'trail') {
+      ctx.drawImage(trailBuf, 0, 0, w, h);
+    }
+
+    if (all || mode === 'glow') {
+      // Smoothing off on the way back up too: the surviving pixels stay hard
+      // blocks rather than being blurred back into a smear.
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(glowBuf, 0, 0, w, h);
+      ctx.imageSmoothingEnabled = true;
+    }
+
+    if (all || mode === 'particles') {
+      ctx.drawImage(particleBuf, 0, 0, w, h);
+    }
+
+    // Still additive, and above the layers: the blast is a light source, so it
+    // should wash over the sparkles rather than sit behind them.
+    if (all) drawBlasts();
+
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Click launches a rocket that bursts where you clicked, rather than
+  // bursting there outright — the lab had no ascent to exercise.
+  function onCanvasClick(e) {
+    var r = canvas.getBoundingClientRect();
+    launch(e.clientX - r.left, e.clientY - r.top);
+  }
+  canvas.addEventListener('click', onCanvasClick);
+
+  // Disabled while the sequence is still playing, so a second press cannot
+  // interleave a fresh run with the waves already in flight.
+  function onGo() {
+    if (scheduled.length) return;
+    runSequence();
+    goBtn.disabled = true;
+  }
+
+  // ---- Loop ----
+  var last = performance.now();
+  var rafId = requestAnimationFrame(tick);
+
+  function tick(now) {
+    // Capped so a stalled tab resumes instead of teleporting every particle.
+    var dt = Math.min((now - last) / 1000, cfg.confetti.deltaCap);
+    last = now;
+
+    update(dt);
+    draw(dt);
+
+    rafId = requestAnimationFrame(tick);
   }
 
   function teardown() {
     closeBtn.removeEventListener('click', teardown);
-    window.removeEventListener('resize', resizeCanvas);
-    window.removeEventListener('mousemove', onMouseMove);
-    // The whole show is rAF-driven — no timers to sweep. Cancelling the loop
-    // stops every launch, burst, bloom and the card reveal outright.
+    goBtn.removeEventListener('click', onGo);
+    canvas.removeEventListener('click', onCanvasClick);
+    window.removeEventListener('resize', resize);
+    resizeObserver.disconnect();
     cancelAnimationFrame(rafId);
     root.remove();
     document.body.style.overflow = previousOverflow;
+  }
+
+  // ---- LOCAL DEV HOOK — inert in production -----------------------------
+  // The one place this file touches `window`, and only when the page opts in
+  // by putting data-lsa-dev on <html>. The Liferay markup does not, so on the
+  // intranet this branch never runs and no global is ever created.
+  if (document.documentElement.hasAttribute('data-lsa-dev')) {
+    window.__lsaDev = {
+      cfg: cfg,
+      burst: burst,
+      launch: launch,
+      stats: function () {
+        return {
+          rockets: rockets.length, particles: particles.length,
+          smoke: smoke.length, blasts: blasts.length
+        };
+      },
+      // Runs frames synchronously. Only used to exercise the pipeline where
+      // requestAnimationFrame does not fire; the real show never calls it.
+      step: function (n, dt) {
+        for (var i = 0; i < (n || 1); i++) { update(dt || 1 / 60); draw(dt || 1 / 60); }
+      }
+    };
   }
 })();

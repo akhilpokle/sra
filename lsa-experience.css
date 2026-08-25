@@ -21,11 +21,8 @@
   z-index: 999999;
 }
 
-/* Stacking order inside .lsa-root. These z-indexes are load-bearing, not
-   cosmetic: the card MUST paint beneath the canvas so the fireworks can
-   cover it and then clear away to reveal it. Without this the card paints
-   above the fireworks (DOM order) and can only ever animate in on top.
-     0 backdrop  <  1 card  <  2 canvas  <  3 prompt  <  4 close button      */
+/* Stacking order inside .lsa-root:
+     0 backdrop  <  2 canvas  <  4 close button                              */
 
 .lsa-backdrop {
   position: absolute;
@@ -37,97 +34,36 @@
   pointer-events: auto;
 }
 
-.lsa-prompt {
+/* Starts the sequence. Sits bottom-centre, clear of the fireworks above. */
+.lsa-go {
   position: absolute;
-  top: 64px;
+  bottom: 64px;
   left: 50%;
-  z-index: 3;
+  z-index: 4;
   transform: translateX(-50%);
-  margin: 0;
-  padding: 10px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #FFFFFF;
-  text-shadow: 0 0 12px rgba(212, 175, 55, 0.6);
-  text-align: center;
-  pointer-events: none;
-  transition: opacity 0.4s ease;
-}
-
-.lsa-prompt--hidden {
-  opacity: 0;
-}
-
-/* PLACEHOLDER DIMENSIONS — 800x460 is a stand-in; the real card size is not
-   designed yet. If these change, update CARD_W / CARD_H in lsa-experience.js
-   too — they size the finale's glow.
-
-   Sits at z-index 1, beneath the canvas. No scale/zoom: the card must never
-   appear to animate in. It fades up SLOWLY (1.2s) while the finale's
-   sparkles are still dense and already fading, so the two overlap and there
-   is no discrete moment where the card "appears". */
-.lsa-card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 1;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 800px;
-  height: 460px;
-  background: #FFFFFF;
-  border-radius: 16px;
-  opacity: 0;
-  text-align: center;
-  pointer-events: none;
-  transition: opacity 1.2s ease-in;
-}
-
-.lsa-card--visible {
-  opacity: 1;
-}
-
-/* STOPGAP, not a design decision: the card surface became white this round,
-   and the contents below were all white-on-transparent — which would render
-   the card blank. These colours exist only so the placeholder stays legible.
-   Medallion, copy and card styling are a separate, still-deferred pass. */
-
-.lsa-card__medallion {
-  width: 160px;
-  height: 160px;
-  margin: 0 auto 24px;
-  background: #E8EAED;
-  border-radius: 12px;
-}
-
-.lsa-card__line1 {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 40px;
-  font-weight: 700;
+  padding: 16px 56px;
+  border: none;
+  border-radius: 999px;
+  background: #D4AF37;
   color: #172733;
-}
-
-.lsa-card__accent {
-  width: 60px;
-  height: 3px;
-  background: #E11931;
-  margin: 12px auto;
-  border-radius: 2px;
-}
-
-.lsa-card__line2 {
-  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 22px;
-  font-weight: 500;
-  color: #B8952E;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 0 24px rgba(212, 175, 55, 0.55);
+  transition: opacity 0.3s ease;
 }
 
+.lsa-go:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The fireworks stage. Takes pointer events so a click can set off a burst,
+   as it does in the lab. */
 .lsa-canvas {
   position: absolute;
   inset: 0;
@@ -135,7 +71,8 @@
   display: block;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  cursor: crosshair;
+  pointer-events: auto;
 }
 
 .lsa-close {
