@@ -33,7 +33,7 @@ no congratulation card in the overlay at present** — see "What was removed".
 | `lsa-demo.html` | Local/hosted harness. 27 lines: loads the **real** CSS+JS over `bg.png`, sets `data-lsa-dev` on `<html>`. Zero inline scripts, so it cannot drift from the shipped code. Never deploy. |
 | `index.html` | GitHub Pages entry point. A redirect to `lsa-demo.html`, deliberately **not** a second copy of the harness. |
 | `bg.png` | **Placeholder** screenshot of the intranet homepage, standing in for the live page. |
-| `lab/fireworks-lab.html` | The fireworks lab. **Frozen reference — do not edit.** See "The lab" below. |
+| `lab/fireworks-lab.html` | The fireworks lab — the tuning harness the shipped engine was developed in. See "The lab" below. |
 
 > **`bg.png` will be replaced by the actual intranet.** In production there is no
 > background image: the real Liferay page is the backdrop, live in the DOM behind
@@ -218,12 +218,57 @@ generations and the cascade (`GENERATIONS`, `breakGen`) · flashes ·
 
 ## The lab — `lab/fireworks-lab.html`
 
-**Frozen reference. Do not edit.** Standalone harness with a 400 px control
-panel and click-to-burst, used to develop the engine that now ships.
+Standalone harness with a 400 px control panel and click-to-burst, used to
+develop the engine that now ships in `lsa-experience.js`.
 
-It exists in **two places**: the canonical copy is the `fireworks-lab` branch
-(local only, never pushed), and a byte-identical copy sits on `master` so GitHub
-Pages can serve it — Pages reads one branch, and that branch is `master`.
+> It was treated as frozen for a while ("DO NOT TOUCH THE FIREWORKS LABS, ITS
+> WORKING PERFECTLY"). **That freeze has been lifted** — burst shapes and
+> sub-blasts were added on request. The engine underneath is unchanged, so it
+> is still a faithful reference for what production runs.
+
+### Burst shapes and sub-blasts (lab only, not in production)
+
+The panel has a **Shape** section — `normal` / `star burst` / `concentric` /
+`squiggle` / `dbs sparks` — and a **Sub-blasts** section for secondary breaks.
+
+Every shape answers one question, in `shapePoint()`: for particle *i*, at what
+**angle** and what **fraction of maximum speed** does it leave the burst? That
+is all a shape controls. Physics, colour, life and rendering are identical
+afterwards, so shapes cost nothing beyond that function and stay independent of
+everything already tuned. **With shape on `normal` and sub-blasts off, the lab
+is visually identical to before.**
+
+| Shape | Controls | Notes |
+|---|---|---|
+| normal | — | The original area-uniform disc |
+| star burst | Points (3–12), Valley radius | Valley radius dials from spiky spokes to a fat star |
+| concentric | Rings (2–6), Ring width | **Turn `flutter` and `massSpread` down** or the rings smear together within about a second |
+| squiggle | Weave speed, Zig-zags/s | Half-swing width is exactly `waveAmp / (2 × waveFreq)` px |
+| dbs sparks | Corner rays, Edge jitter | Hexagon body with rays off the six corners; Corner rays biases between the two |
+
+**Sub-blasts** work by marking some of a burst's particles as shells whose
+*life is the fuse* — they break when they die, so the countdown needs no extra
+field and the shard visibly dims on its way to the second break. Children
+inherit the parent's hue and cannot cascade to a third generation. Shell fuses
+carry ±15% jitter; without it every shell breaks on the same frame and reads as
+one mechanical pop rather than a scatter.
+
+The squiggle applies its weave as a **sideways velocity at integration time**,
+not as an acceleration. Accelerating was measured at only ±9 px of ripple —
+drag eats it, and the width collapses as 1/freq². As a velocity the swing width
+is exact and drag-independent, and the square wave draws straight diagonal runs
+with hard corners instead of sine ripples.
+
+> **`dbs sparks` is an assumption.** It was built as the brand hex (this project
+> already carries a POSB blue hex placeholder) with rays off the corners, not
+> matched against a supplied reference. If there is a real mark, `dbsPoint()` is
+> the only thing that needs redoing.
+
+### Two copies, kept in sync by hand
+
+The canonical copy is the `fireworks-lab` branch (local only, never pushed), and
+a byte-identical copy sits on `master` so GitHub Pages can serve it — Pages
+reads one branch, and that branch is `master`.
 
 **If the lab is ever edited, edit it on the branch and re-copy, or the hosted
 version silently falls behind.** Verify by comparing git blob hashes, not by

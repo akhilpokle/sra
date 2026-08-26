@@ -73,7 +73,7 @@ rocket to that point, for judging one firework in isolation.
 | `lsa-demo.html` | **Not for Liferay.** 27-line harness loading the real CSS/JS over `bg.png`, with `data-lsa-dev` set. Zero inline scripts, so it cannot drift from the shipped code |
 | `index.html` | GitHub Pages entry point — a redirect to `lsa-demo.html`, deliberately not a second copy |
 | `bg.png` | **Placeholder only** — a screenshot of the intranet homepage. Not referenced by the overlay code itself |
-| `lab/fireworks-lab.html` | The fireworks lab. **Frozen reference — do not edit** (see handoff.md) |
+| `lab/fireworks-lab.html` | The fireworks lab — the tuning harness the shipped engine came from. Also carries burst shapes and sub-blasts, which production does not (see handoff.md) |
 
 ## How it's being verified
 
@@ -384,8 +384,32 @@ per-step change log entries.
     `fireworks-lab` branch is **not** pushed — only the lab file was copied onto
     `master` so Pages could serve it, which means the two copies must be kept in
     sync by hand.
-31. **The lab is frozen.** Client's words: *"DO NOT TOUCH THE FIREWORKS LABS,
-    ITS WORKING PERFECTLY."* Treat `lab/fireworks-lab.html` as reference only.
+31. **The lab was frozen.** Client's words: *"DO NOT TOUCH THE FIREWORKS LABS,
+    ITS WORKING PERFECTLY."* Superseded by #32 — the freeze was lifted on
+    request.
+32. **Burst shapes and sub-blasts added to the lab** (lab only; production
+    still fires the plain radial burst). Five shapes — `normal`, `star burst`,
+    `concentric`, `squiggle`, `dbs sparks` — plus a sub-blast section for
+    secondary breaks. Built so that a shape decides **only** the launch angle
+    and speed fraction of each particle, in one function; physics, colour, life
+    and rendering are untouched, so the shapes cannot disturb anything already
+    tuned and `normal` is byte-for-byte the old behaviour.
+    Two implementation calls worth recording. **Sub-blast shells use their own
+    life as the fuse**, so they break when they die — no extra countdown field,
+    and the shard visibly dims on the way to the second break; fuses carry ±15%
+    jitter, without which every shell breaks on the same frame and reads as one
+    mechanical pop. **The squiggle weaves via sideways velocity, not
+    acceleration**: accelerating measured only ±9px of ripple because drag eats
+    it and the width collapses as 1/freq², whereas as a velocity the swing width
+    is exactly `waveAmp/(2·waveFreq)` px and drag-independent — measured 83px
+    and 167px against predictions of 83 and 167.
+    `dbs sparks` is **an assumption** — the brand hex with rays off the six
+    corners, not matched against a supplied reference. Flagged, not confirmed.
+    Verified headlessly against the real engine: star burst shows exact 5-fold
+    symmetry, dbs sparks exact 6-fold with peaks on the hex corners, concentric
+    produces separated launch-speed bands, and 10 shells × 5 children spawns
+    exactly 50 particles with no shell breaking twice. **Not verified visually**,
+    like everything else in this project.
 
 ---
 
