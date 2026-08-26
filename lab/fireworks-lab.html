@@ -5,9 +5,1045 @@
 <meta charset="utf-8">
 <title>Fireworks Lab</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #0b0f14; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #fff;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #1a1a1a;
+  }
+
+  .lab {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    height: 100%;
+  }
+
+  .lab-stage {
+    position: relative;
+    min-width: 0; /* let the canvas shrink instead of forcing the grid wider */
+  }
+
+  .lab-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #0b1a30; /* night sky — also painted per frame, see draw() */
+    cursor: crosshair;
+  }
+
+  .lab-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lab-actions button {
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 12px;
+    border: 1px solid #d5d5d5;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .lab-actions button:hover { border-color: #999; }
+
+  .lab-actions button.primary {
+    background: #1a1a1a;
+    border-color: #1a1a1a;
+    color: #fff;
+  }
+
+  .lab-actions label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #666;
+  }
+
+  .lab-stats {
+    font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #666;
+    background: #fafafa;
+  }
+
+  .lab-stats b {
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+
+  .lab-panel {
+    border-left: 1px solid #e2e2e2;
+    overflow-y: auto;
+    padding: 0 0 32px;
+  }
+
+  /* ---- Panel ------------------------------------------------------------ */
+
+  .lab-section {
+    border-bottom: 1px solid #ededed;
+    padding: 14px 16px 16px;
+  }
+
+  .lab-section > h2 {
+    margin: 0 0 2px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+  }
+
+  .lab-section > p {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: #8a8a8a;
+  }
+
+  .lab-sub {
+    margin: 14px 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8a8a8a;
+  }
+
+  .lab-field {
+    display: grid;
+    grid-template-columns: 1fr 92px 44px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+
+  .lab-field > label {
+    font-size: 12px;
+    color: #444;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .lab-field > .lab-val {
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #666;
+    text-align: right;
+  }
+
+  .lab-field input[type="range"] {
+    width: 100%;
+    margin: 0;
+  }
+
+  .lab-field select {
+    grid-column: 2 / span 2;
+    width: 100%;
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid #d5d5d5;
+    border-radius: 3px;
+    background: #fff;
+  }
+
+  .lab-field input[type="checkbox"] {
+    grid-column: 2;
+    justify-self: start;
+    margin: 0;
+  }
 </style>
 </head>
 <body>
+
+<div class="lab">
+  <div class="lab-stage">
+    <canvas class="lab-canvas" id="stage"></canvas>
+  </div>
+  <div class="lab-panel" id="panel">
+    <div class="lab-section lab-actions">
+      <button class="primary" id="act-burst">Burst</button>
+      <button id="act-clear">Clear</button>
+      <button id="act-reset">Reset</button>
+      <label><input type="checkbox" id="act-auto"> auto</label>
+    </div>
+    <div class="lab-section lab-stats" id="stats"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ======================================================================
+     Control schema.
+
+     Two independent parameter sets, kept separate on purpose: Hanabi's are
+     PER-FRAME values tuned for a 30fps throttle, confetti.js's are PER-SECOND
+     values integrated against delta time. Mixing them silently is what makes
+     borrowed constants behave unexpectedly, so the panel keeps the two models
+     visibly apart and labels the units.
+
+     Defaults are the real defaults from each library.
+     ====================================================================== */
+
+  var SCHEMA = [
+    {
+      title: 'Size',
+      note: 'overall scale · multiplies burst spread and shard size together',
+      fields: [
+        { path: 'scale', label: 'Firework size', min: 0.3, max: 3, step: 0.05, value: 1 }
+      ]
+    },
+    {
+      title: 'Hanabi',
+      note: 'per-frame values · reference runs at 30fps',
+      fields: [
+        { path: 'hanabi.layer', label: 'View layer', type: 'select', value: 'composite',
+          options: ['composite', 'particles', 'trail', 'glow', 'smoke'] },
+        { path: 'hanabi.palette', label: 'Palette', type: 'select', value: 'fire',
+          options: ['fire', 'blue', 'purple', 'random'] },
+        { path: 'hanabi.fps', label: 'Target fps', min: 1, max: 60, step: 1, value: 30 },
+
+        { sub: 'Burst' },
+        { path: 'hanabi.count', label: 'Particles / burst', min: 10, max: 500, step: 10, value: 200 },
+        { path: 'hanabi.explosionSize', label: 'Explosion size', min: 1, max: 40, step: 0.5, value: 10 },
+        { path: 'hanabi.poolMax', label: 'Pool max', min: 200, max: 4000, step: 100, value: 2000 },
+
+        { sub: 'Physics' },
+        { path: 'hanabi.gravity', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.2 },
+        { path: 'hanabi.drag', label: 'Drag', min: 0.8, max: 1, step: 0.005, value: 0.9 },
+        { path: 'hanabi.lifeDecay', label: 'Life decay', min: 0.002, max: 0.05, step: 0.001, value: 0.01 },
+
+        { sub: 'Trail & glow' },
+        { path: 'hanabi.trailFade', label: 'Trail fade', min: 0.01, max: 0.3, step: 0.005, value: 0.05 },
+        { path: 'hanabi.trailAlpha', label: 'Trail alpha', min: 0, max: 1, step: 0.05, value: 0.6 },
+        { path: 'hanabi.glowDownscale', label: 'Glow downscale', min: 1, max: 8, step: 1, value: 4 },
+
+        { sub: 'Colour jitter' },
+        { path: 'hanabi.jitterHue', label: 'Hue ±°', min: 0, max: 30, step: 1, value: 5 },
+        { path: 'hanabi.jitterSat', label: 'Saturation ±', min: 0, max: 30, step: 1, value: 10 },
+        { path: 'hanabi.jitterLight', label: 'Lightness ±', min: 0, max: 30, step: 1, value: 10 },
+
+        { sub: 'Smoke' },
+        { path: 'hanabi.smoke.enabled', label: 'Enabled', type: 'check', value: true },
+        { path: 'hanabi.smoke.countMin', label: 'Count min', min: 0, max: 40, step: 1, value: 12 },
+        { path: 'hanabi.smoke.countMax', label: 'Count max', min: 0, max: 40, step: 1, value: 20 },
+        { path: 'hanabi.smoke.sizeMin', label: 'Size min', min: 1, max: 20, step: 0.5, value: 3 },
+        { path: 'hanabi.smoke.sizeMax', label: 'Size max', min: 1, max: 20, step: 0.5, value: 8 },
+        { path: 'hanabi.smoke.rise', label: 'Rise', min: 0, max: 0.05, step: 0.001, value: 0.015 },
+        { path: 'hanabi.smoke.dragX', label: 'Drag X', min: 0.8, max: 1, step: 0.005, value: 0.95 },
+        { path: 'hanabi.smoke.dragY', label: 'Drag Y', min: 0.8, max: 1, step: 0.005, value: 0.92 },
+        { path: 'hanabi.smoke.growth', label: 'Growth', min: 0, max: 0.3, step: 0.01, value: 0.08 },
+        { path: 'hanabi.smoke.lifeDecay', label: 'Life decay', min: 0.002, max: 0.05, step: 0.001, value: 0.012 },
+        { path: 'hanabi.smoke.maxAlpha', label: 'Max alpha', min: 0, max: 1, step: 0.05, value: 0.25 }
+      ]
+    },
+    {
+      title: 'confetti.js',
+      note: 'per-second values · what Hanabi has no equivalent for',
+      fields: [
+        // Only what confetti actually contributes to the mix. Its count,
+        // velocity, drag and gravity all duplicated a Hanabi control that
+        // already drives the engine, so they were removed rather than left
+        // sitting in the panel doing nothing.
+        { path: 'confetti.size', label: 'Shard size', min: 0.2, max: 5, step: 0.1, value: 1 },
+        { path: 'confetti.spin', label: 'Spin ±°/s', min: 0, max: 720, step: 10, value: 250 },
+
+        { sub: 'Physics' },
+        { path: 'confetti.massSpread', label: 'Mass spread', min: 0, max: 1, step: 0.01, value: 0.33 },
+        { path: 'confetti.flutter', label: 'Flutter ±', min: 0, max: 1000, step: 10, value: 350 },
+        { path: 'confetti.deltaCap', label: 'Delta cap (s)', min: 0.016, max: 0.2, step: 0.004, value: 0.064 },
+
+        { sub: 'Lifetime spread' },
+        { path: 'confetti.fadeMin', label: 'Life ×min', min: 0.1, max: 5, step: 0.1, value: 0.5 },
+        { path: 'confetti.fadeMax', label: 'Life ×max', min: 0.1, max: 5, step: 0.1, value: 2.5 }
+      ]
+    },
+    {
+      title: 'Blast glow',
+      note: 'the shell detonating · neither library has this',
+      fields: [
+        { path: 'blast.enabled', label: 'Enabled', type: 'check', value: true },
+        { path: 'blast.lead', label: 'Lead (ms)', min: 0, max: 300, step: 10, value: 60 },
+        { path: 'blast.radius', label: 'Radius', min: 20, max: 400, step: 10, value: 140 },
+        { path: 'blast.peak', label: 'Peak alpha', min: 0, max: 1, step: 0.05, value: 0.55 },
+        { path: 'blast.rise', label: 'Rise (s)', min: 0.01, max: 0.5, step: 0.01, value: 0.06 },
+        { path: 'blast.hold', label: 'Hold (s)', min: 0, max: 2, step: 0.05, value: 0.15 },
+        { path: 'blast.decay', label: 'Decay (s)', min: 0.05, max: 6, step: 0.05, value: 1.8 }
+      ]
+    }
+  ];
+
+  /* ---- Config -----------------------------------------------------------
+     Built from the schema so the two cannot drift apart. Read this live
+     (per frame / per spawn) rather than caching values into locals — that is
+     what lets a slider change the show while it is running. */
+
+  var cfg = {};
+
+  function setPath(obj, path, val) {
+    var keys = path.split('.');
+    var last = keys.pop();
+    var node = keys.reduce(function (acc, k) {
+      acc[k] = acc[k] || {};
+      return acc[k];
+    }, obj);
+    node[last] = val;
+  }
+
+  /* ---- Render ----------------------------------------------------------- */
+
+  var panel = document.getElementById('panel');
+  var controls = []; // every rendered control, so Reset can restore all of them
+
+  function field(f) {
+    setPath(cfg, f.path, f.value);
+
+    var row = document.createElement('div');
+    row.className = 'lab-field';
+
+    var label = document.createElement('label');
+    label.textContent = f.label;
+    row.appendChild(label);
+
+    var input, readout;
+
+    if (f.type === 'select') {
+      input = document.createElement('select');
+      f.options.forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o;
+        opt.textContent = o;
+        input.appendChild(opt);
+      });
+      input.value = f.value;
+      input.addEventListener('change', function () { setPath(cfg, f.path, input.value); });
+
+    } else if (f.type === 'check') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = f.value;
+      input.addEventListener('change', function () { setPath(cfg, f.path, input.checked); });
+
+    } else {
+      input = document.createElement('input');
+      input.type = 'range';
+      input.min = f.min;
+      input.max = f.max;
+      input.step = f.step;
+      input.value = f.value;
+
+      readout = document.createElement('span');
+      readout.className = 'lab-val';
+      readout.textContent = f.value;
+
+      input.addEventListener('input', function () {
+        var v = parseFloat(input.value);
+        setPath(cfg, f.path, v);
+        readout.textContent = v;
+      });
+    }
+
+    label.htmlFor = input.id = 'f-' + f.path.replace(/\./g, '-');
+    row.appendChild(input);
+    if (readout) row.appendChild(readout);
+    controls.push({ f: f, input: input, readout: readout });
+    return row;
+  }
+
+  // f.value is never mutated — cfg is — so the schema stays the defaults.
+  function resetAll() {
+    controls.forEach(function (c) {
+      setPath(cfg, c.f.path, c.f.value);
+      if (c.f.type === 'check') c.input.checked = c.f.value;
+      else c.input.value = c.f.value;
+      if (c.readout) c.readout.textContent = c.f.value;
+    });
+  }
+
+  SCHEMA.forEach(function (section) {
+    var el = document.createElement('div');
+    el.className = 'lab-section';
+
+    var h = document.createElement('h2');
+    h.textContent = section.title;
+    el.appendChild(h);
+
+    var note = document.createElement('p');
+    note.textContent = section.note;
+    el.appendChild(note);
+
+    section.fields.forEach(function (f) {
+      if (f.sub) {
+        var sub = document.createElement('div');
+        sub.className = 'lab-sub';
+        sub.textContent = f.sub;
+        el.appendChild(sub);
+      } else {
+        el.appendChild(field(f));
+      }
+    });
+
+    panel.appendChild(el);
+  });
+
+  /* ---- Canvas ----------------------------------------------------------- */
+
+  var canvas = document.getElementById('stage');
+  var ctx = canvas.getContext('2d');
+
+  // Size the backing store to device pixels, not CSS pixels. Fireworks are
+  // judged on sharp single-pixel particles, so a half-resolution buffer being
+  // upscaled by the browser would soften everything before any tuning starts.
+  // Offscreen buffers.
+  //   particleBuf  full res, cleared each frame. Feeds BOTH the trail and the
+  //                glow, so sparkles only have to be drawn once.
+  //   trailBuf     full res, PERSISTENT — never cleared per frame, only faded.
+  //   glowBuf      1/downscale res, smoothing OFF. The sparkle comes from
+  //                pixels being LOST in the downscale: which ones survive
+  //                changes frame to frame, so it twinkles without anything
+  //                being animated to twinkle.
+  var particleBuf = document.createElement('canvas');
+  var particleCtx = particleBuf.getContext('2d');
+  var trailBuf = document.createElement('canvas');
+  var trailCtx = trailBuf.getContext('2d');
+  var glowBuf = document.createElement('canvas');
+  var glowCtx = glowBuf.getContext('2d');
+
+  //   smokeBuf     half res — smoke is soft, so half res is invisible in the
+  //                result and saves a lot of fill on large displays.
+  var smokeBuf = document.createElement('canvas');
+  var smokeCtx = smokeBuf.getContext('2d');
+
+  // One baked soft puff, blitted scaled. The reference builds a radial
+  // gradient per particle per frame — 500 gradient objects a frame at its cap.
+  // Same result, a fraction of the cost.
+  var smokeSprite = document.createElement('canvas');
+  (function () {
+    var R = 32;
+    smokeSprite.width = smokeSprite.height = R * 2;
+    var g = smokeSprite.getContext('2d');
+    var grad = g.createRadialGradient(R, R, 0, R, R, R);
+    grad.addColorStop(0, 'rgba(180,180,180,1)');
+    grad.addColorStop(1, 'rgba(180,180,180,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, R * 2, R * 2);
+  })();
+
+  function resize() {
+    var dpr = window.devicePixelRatio || 1;
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+
+    // Resizing clears a buffer, so trail history is lost on resize.
+    // Acceptable, and far simpler than preserving and rescaling it.
+    particleBuf.width = canvas.width;
+    particleBuf.height = canvas.height;
+    particleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    trailBuf.width = canvas.width;
+    trailBuf.height = canvas.height;
+    trailCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    smokeBuf.width = Math.max(1, Math.round(canvas.width / 2));
+    smokeBuf.height = Math.max(1, Math.round(canvas.height / 2));
+    smokeCtx.setTransform(dpr / 2, 0, 0, dpr / 2, 0, 0); // still addressed in CSS px
+
+    sizeGlow();
+  }
+
+  // Kept in its own function because the downscale is a live slider, so the
+  // glow buffer can need resizing between frames, not just on window resize.
+  function sizeGlow() {
+    var d = Math.max(1, Math.round(cfg.hanabi.glowDownscale));
+    var gw = Math.max(1, Math.round(canvas.width / d));
+    var gh = Math.max(1, Math.round(canvas.height / d));
+    if (glowBuf.width !== gw || glowBuf.height !== gh) {
+      glowBuf.width = gw;
+      glowBuf.height = gh;
+      // Setting width/height resets context state, so this must come after.
+      glowCtx.imageSmoothingEnabled = false;
+    }
+  }
+
+  new ResizeObserver(resize).observe(canvas);
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ---- Engine ----------------------------------------------------------
+     Hanabi's look, confetti.js's engine.
+
+     THE CONVERSION, which is the whole point of this file: Hanabi's constants
+     are PER FRAME at 30fps. This loop is delta-time integrated in seconds. So
+     every Hanabi value is converted at read time against FPS_REF rather than
+     being used raw — using them raw in a 60fps loop is exactly why the current
+     overlay falls twice too fast and its sparkles die three times too early.
+
+         gravity   0.2  /frame^2  ->  x FPS_REF^2  ->  180 px/s^2
+         drag      0.9  /frame    ->  pow(drag, dt * FPS_REF)
+         life      0.01 /frame    ->  1/(0.01 * FPS_REF) = 3.33 s
+         speed     10   /frame    ->  x FPS_REF        ->  300 px/s
+
+     Confetti contributes what Hanabi has no equivalent for: mass variance,
+     flutter, the delta cap, and a wide per-particle lifetime spread.
+
+     Sanity check: terminal fall must land at ~55 px/s and must NOT change
+     with framerate. */
+
+  var BG = '#0b1a30';
+  var FPS_REF = 30; // the framerate Hanabi's per-frame constants are authored at
+
+  // Hanabi's palettes, as hue lists. Base saturation/lightness are NOT from the
+  // reference — only its jitter ranges were recoverable — so these two are a
+  // judgement call, picked to read as hot sparks rather than pastel.
+  var PALETTES = {
+    fire:   [357, 58, 46, 9, 352],
+    blue:   [220, 200, 240, 180, 210],
+    purple: [280, 300, 260, 320, 270]
+  };
+  var BASE_SAT = 90;
+  var BASE_LIGHT = 62;
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  function pickHue() {
+    var name = cfg.hanabi.palette;
+    if (name === 'random') return Math.random() * 360;
+    var list = PALETTES[name] || PALETTES.fire;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  var particles = [];
+  var pool = [];
+
+  function spawn(x, y, vx, vy, life) {
+    if (particles.length >= cfg.hanabi.poolMax) return;
+    var p = pool.pop() || {};
+    p.x = x; p.y = y;
+    p.px = x; p.py = y; // previous-frame position, for gap-free trail segments
+    p.vx = vx; p.vy = vy;
+    p.life = life; p.maxLife = life;
+
+    // Confetti's mass trick: pieces fall at different rates, so the burst
+    // stretches vertically instead of descending as one sheet. Centred on 1x
+    // and deliberately decoupled from the size slider, so changing shard size
+    // does not secretly change how fast everything falls. 0.33 reproduces
+    // confetti's own 2-4 height range; 0 makes every particle fall alike.
+    p.mass = 1 + (Math.random() - 0.5) * 2 * cfg.confetti.massSpread;
+
+    // Colour: a palette hue with Hanabi's per-particle jitter, so a burst is
+    // not a flat block of one colour. Stored as numbers, not a string —
+    // alpha changes every frame, so the string has to be built at draw time.
+    var j = cfg.hanabi;
+    p.h = pickHue() + (Math.random() - 0.5) * 2 * j.jitterHue;
+    p.s = clamp(BASE_SAT + (Math.random() - 0.5) * 2 * j.jitterSat, 30, 100);
+    p.l = clamp(BASE_LIGHT + (Math.random() - 0.5) * 2 * j.jitterLight, 30, 100);
+
+    // Shard geometry. A 1x1 pixel cannot show rotation, so sparkles get a
+    // small extent and a spin rate; draw() modulates the width by cos(rot) so
+    // the shard turns edge-on and winks out. That flicker is the point of
+    // keeping confetti's spin — it is a glint, not a visible tumbling shape.
+    p.size = (1 + Math.random() * 2) * cfg.confetti.size * cfg.scale;
+    p.rot = Math.random() * Math.PI * 2;
+    p.spin = (Math.random() - 0.5) * 2 * cfg.confetti.spin * Math.PI / 180;
+
+    particles.push(p);
+  }
+
+  /* ---- Blast glow -------------------------------------------------------
+     The shell detonating: a bright bloom at the burst point that leads the
+     sparkles by a few dozen milliseconds, so the light arrives fractionally
+     before its debris. Drawn at COMPOSITE level only, never into particleBuf
+     — a soft gradient that large stamped into the trail would smear into
+     exactly the lingering blob we just spent three rounds removing. */
+
+  var blasts = [];
+  var pendingBursts = [];
+
+  function spawnBlast(x, y) {
+    blasts.push({ x: x, y: y, age: 0, hue: pickHue() });
+  }
+
+  function updateBlasts(dt) {
+    var B = cfg.blast;
+    var span = B.rise + B.hold + B.decay;
+    for (var i = blasts.length - 1; i >= 0; i--) {
+      blasts[i].age += dt;
+      if (blasts[i].age >= span) {
+        blasts[i] = blasts[blasts.length - 1];
+        blasts.pop();
+      }
+    }
+  }
+
+  function drawBlasts() {
+    var B = cfg.blast;
+    for (var i = 0; i < blasts.length; i++) {
+      var b = blasts[i];
+      var alpha, grow;
+
+      if (b.age < B.rise) {
+        var up = b.age / B.rise;
+        alpha = B.peak * up;
+        grow = 0.55 + 0.45 * up;   // expands as it ignites
+      } else if (b.age < B.rise + B.hold) {
+        alpha = B.peak;            // sits at full brightness before fading
+        grow = 1;
+      } else {
+        var down = (b.age - B.rise - B.hold) / B.decay;
+        if (down >= 1) continue;
+        // Squared falloff: bright for a moment, then a long soft tail rather
+        // than a linear ramp, which reads as a light source dying out.
+        alpha = B.peak * (1 - down) * (1 - down);
+        grow = 1;
+      }
+
+      var r = B.radius * grow;
+      var g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+      g.addColorStop(0, 'hsla(' + b.hue.toFixed(0) + ',100%,95%,' + alpha.toFixed(3) + ')');
+      g.addColorStop(0.35, 'hsla(' + b.hue.toFixed(0) + ',100%,72%,' + (alpha * 0.45).toFixed(3) + ')');
+      g.addColorStop(1, 'hsla(' + b.hue.toFixed(0) + ',100%,60%,0)');
+
+      ctx.fillStyle = g;
+      ctx.fillRect(b.x - r, b.y - r, r * 2, r * 2);
+    }
+  }
+
+  // A click fires the blast now and queues the sparkles for `lead` ms later.
+  // Kept on the rAF clock rather than setTimeout so it stays in step with the
+  // rest of the sim — and so stepping frames by hand still reproduces it.
+  function burst(x, y) {
+    var B = cfg.blast;
+    if (!B.enabled) { spawnSparkles(x, y); return; }
+    spawnBlast(x, y);
+    if (B.lead > 0) pendingBursts.push({ x: x, y: y, t: B.lead / 1000 });
+    else spawnSparkles(x, y);
+  }
+
+  function updatePending(dt) {
+    for (var i = pendingBursts.length - 1; i >= 0; i--) {
+      var q = pendingBursts[i];
+      q.t -= dt;
+      if (q.t <= 0) {
+        pendingBursts[i] = pendingBursts[pendingBursts.length - 1];
+        pendingBursts.pop();
+        spawnSparkles(q.x, q.y);
+      }
+    }
+  }
+
+  function spawnSparkles(x, y) {
+    var n = cfg.hanabi.count;
+    var speedMax = cfg.hanabi.explosionSize * FPS_REF * cfg.scale;
+    var baseLife = 1 / (cfg.hanabi.lifeDecay * FPS_REF);
+    var lifeMin = cfg.confetti.fadeMin;
+    var lifeSpan = cfg.confetti.fadeMax - cfg.confetti.fadeMin;
+
+    for (var i = 0; i < n; i++) {
+      var angle = Math.random() * Math.PI * 2;
+      // sqrt gives uniform density per unit AREA. A plain uniform radius piles
+      // particles toward the centre and reads as a hollow-cored blob; this
+      // fills the disc evenly.
+      var speed = Math.sqrt(Math.random()) * speedMax;
+      // Wide per-particle lifetime spread, so the burst dissolves instead of
+      // all dying on the same frame.
+      var life = baseLife * (lifeMin + Math.random() * lifeSpan);
+      spawn(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed, life);
+    }
+
+    spawnSmoke(x, y);
+  }
+
+  /* ---- Smoke ------------------------------------------------------------
+     Same conversion discipline as everything else: the reference's per-frame
+     values are scaled by FPS_REF (or its square, for accelerations). Smoke is
+     what gives a burst body rather than just light. */
+
+  var SMOKE_MAX = 500;      // reference cap
+  var SMOKE_SPREAD_X = 20;  // spawn scatter around the burst centre
+  var SMOKE_SPREAD_Y = 12.5;
+  var SMOKE_DRIFT_X = 0.02 * FPS_REF * FPS_REF; // per-frame^2 -> px/s^2
+  var SMOKE_DRIFT_Y = 0.01 * FPS_REF * FPS_REF;
+
+  var smoke = [];
+  var smokePool = [];
+
+  function spawnSmoke(x, y) {
+    var S = cfg.hanabi.smoke;
+    if (!S.enabled) return;
+    var n = S.countMin + Math.floor(Math.random() * (S.countMax - S.countMin + 1));
+
+    for (var i = 0; i < n; i++) {
+      if (smoke.length >= SMOKE_MAX) return;
+      var s = smokePool.pop() || {};
+      s.x = x + (Math.random() - 0.5) * 2 * SMOKE_SPREAD_X;
+      s.y = y + (Math.random() - 0.5) * 2 * SMOKE_SPREAD_Y;
+      s.vx = (Math.random() - 0.5) * 4 * FPS_REF;
+      s.vy = -Math.random() * 0.2 * FPS_REF;
+      s.size = S.sizeMin + Math.random() * (S.sizeMax - S.sizeMin);
+      s.life = 1;
+      smoke.push(s);
+    }
+  }
+
+  function updateSmoke(dt) {
+    var S = cfg.hanabi.smoke;
+    var dragX = Math.pow(S.dragX, dt * FPS_REF);
+    var dragY = Math.pow(S.dragY, dt * FPS_REF);
+    var rise = S.rise * FPS_REF * FPS_REF;
+
+    for (var i = smoke.length - 1; i >= 0; i--) {
+      var s = smoke[i];
+      s.vx += (Math.random() - 0.5) * 2 * SMOKE_DRIFT_X * dt;
+      s.vy += (Math.random() - 0.5) * 2 * SMOKE_DRIFT_Y * dt;
+      s.vy -= rise * dt;
+      s.vx *= dragX;
+      s.vy *= dragY;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.size += S.growth * FPS_REF * dt;
+      s.life -= S.lifeDecay * FPS_REF * dt;
+
+      if (s.life <= 0) {
+        smoke[i] = smoke[smoke.length - 1];
+        smoke.pop();
+        smokePool.push(s);
+      }
+    }
+  }
+
+  function drawSmoke(w, h) {
+    smokeCtx.clearRect(0, 0, w, h);
+    if (!smoke.length) return;
+
+    var max = cfg.hanabi.smoke.maxAlpha;
+    var i, s, lf;
+
+    // Base clouds.
+    for (i = 0; i < smoke.length; i++) {
+      s = smoke[i];
+      lf = s.life;
+      smokeCtx.globalAlpha = Math.min(max, lf * max * Math.sqrt(lf));
+      smokeCtx.drawImage(smokeSprite, s.x - s.size, s.y - s.size, s.size * 2, s.size * 2);
+    }
+
+    // Darker wisps over the top, for depth.
+    smokeCtx.globalCompositeOperation = 'multiply';
+    for (i = 0; i < smoke.length; i++) {
+      s = smoke[i];
+      lf = s.life;
+      smokeCtx.globalAlpha = Math.min(max, lf * max * Math.sqrt(lf)) * 0.5;
+      smokeCtx.drawImage(smokeSprite, s.x - s.size * 0.6, s.y - s.size * 0.6,
+                         s.size * 1.2, s.size * 1.2);
+    }
+
+    smokeCtx.globalCompositeOperation = 'source-over';
+    smokeCtx.globalAlpha = 1;
+  }
+
+  function update(dt) {
+    var gravity = cfg.hanabi.gravity * FPS_REF * FPS_REF;
+    var damp = Math.pow(cfg.hanabi.drag, dt * FPS_REF);
+    var flutter = cfg.confetti.flutter;
+
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+
+      p.vy += gravity * p.mass * dt;
+      // Random walk on horizontal velocity — confetti's swish. Bounded by the
+      // damping below, so it meanders rather than running away.
+      p.vx += (Math.random() - 0.5) * 2 * flutter * dt;
+
+      p.vx *= damp;
+      p.vy *= damp;
+
+      p.px = p.x;
+      p.py = p.y;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.spin * dt;
+      p.life -= dt;
+
+      if (p.life <= 0) {
+        // Swap-and-pop: O(1) removal, and draw order is irrelevant here.
+        particles[i] = particles[particles.length - 1];
+        particles.pop();
+        pool.push(p);
+      }
+    }
+
+    updateSmoke(dt);
+    updateBlasts(dt);
+    updatePending(dt); // last, so sparkles released this frame are drawn at full life
+  }
+
+  // Seconds since the last particle died, and how long the trail takes to
+  // finish emptying itself once that happens. See the fade-out note in draw().
+  var idleTime = 0;
+  var TRAIL_FADEOUT = 0.6;
+
+  // Dithered trail erase. See the note in draw(): a proportional 8-bit erase
+  // cannot reach zero, so a weak per-frame fade strands every touched pixel at
+  // ~0.5/fade and leaves a ghost of the burst. Erasing in strong batches does
+  // reach zero but steps the whole canvas at once, which reads as flicker.
+  //
+  // So the strong erase is scattered SPATIALLY instead: each frame a small
+  // random subset of pixels is erased hard enough to round to zero, and the
+  // rest are left alone. Averaged over frames every pixel decays at the same
+  // rate as before, but no frame changes the whole image, so there is nothing
+  // to flicker.
+  // The masks PARTITION the pixels rather than sampling them randomly: each
+  // pixel belongs to exactly one of DITHER_PHASES masks, so cycling through
+  // them erases every pixel exactly once per cycle. Random selection — whether
+  // by a random mask or a random offset — leaves some pixels untouched for
+  // long stretches, and those linger bright as speckle.
+  var DITHER_PHASES = 12;
+  var ditherMasks = (function () {
+    var size = 128, masks = [], imgs = [], k;
+    for (k = 0; k < DITHER_PHASES; k++) {
+      var c = document.createElement('canvas');
+      c.width = c.height = size;
+      masks.push(c);
+      imgs.push(c.getContext('2d').createImageData(size, size));
+    }
+    for (var i = 0; i < size * size; i++) {
+      // Only alpha matters — destination-out reads nothing else.
+      imgs[Math.floor(Math.random() * DITHER_PHASES)].data[i * 4 + 3] = 255;
+    }
+    for (k = 0; k < DITHER_PHASES; k++) masks[k].getContext('2d').putImageData(imgs[k], 0, 0);
+    return masks;
+  })();
+  var ditherPatterns = new Array(DITHER_PHASES); // built lazily, need the context
+  var ditherPhase = 0;
+
+  function draw(dt) {
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.width / dpr;
+    var h = canvas.height / dpr;
+    var mode = cfg.hanabi.layer;
+
+    // A collapsed or hidden stage gives a zero-size canvas, and drawImage
+    // throws on a zero-dimension source — which would kill the rAF loop for
+    // good rather than skipping a frame.
+    if (!w || !h) return;
+
+    // ---- Particle layer ----
+    // Drawn once, then reused as the source for both the trail and the glow.
+    particleCtx.clearRect(0, 0, w, h);
+    particleCtx.lineCap = 'round';
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var alpha = p.life / p.maxLife;
+      // Width collapses to zero as the shard turns edge-on, then opens back
+      // up — the wink.
+      var sw = p.size * Math.abs(Math.cos(p.rot));
+      if (sw <= 0) continue;
+      // Stroked from last frame's position to this one, rather than a dot at
+      // just the current position — a fast-moving particle can travel several
+      // px between frames, and a single point leaves a gap the trail buffer
+      // never fills in. The segment always meets the previous frame's segment
+      // exactly, so the trail stays unbroken at any speed.
+      particleCtx.strokeStyle = 'hsla(' + p.h.toFixed(0) + ',' + p.s.toFixed(0) + '%,' +
+                              p.l.toFixed(0) + '%,' + alpha.toFixed(3) + ')';
+      particleCtx.lineWidth = sw;
+      particleCtx.beginPath();
+      particleCtx.moveTo(p.px, p.py);
+      particleCtx.lineTo(p.x, p.y);
+      particleCtx.stroke();
+    }
+
+    // ---- Trail ----
+    // destination-out ERASES alpha rather than painting black, so faded
+    // regions go transparent and the navy underneath is never darkened. The
+    // per-frame rate is converted to this frame's dt, same as the physics.
+    // ...but a per-frame proportional erase can never reach zero on an 8-bit
+    // canvas: once alpha*fade < 0.5 it rounds straight back, so every pixel the
+    // trail has touched sticks at about 0.5/fade — 10/255 at fade 0.05. That
+    // residue is a faint white ghost of the whole burst hanging in the air.
+    //
+    // So the fade is BATCHED: accumulated across frames and applied as one
+    // stronger erase. Same average decay rate, but each erase is large enough
+    // to round the low alphas down instead of leaving them stranded, which
+    // drops the floor from ~10/255 to ~1/255.
+    // Erase strength is raised by 1/coverage so that, averaged over the pixels
+    // actually hit, the decay rate is unchanged — but each hit is now strong
+    // enough to round a stranded residue down to zero instead of leaving it.
+    var fadeStep = 1 - Math.pow(1 - cfg.hanabi.trailFade, dt * FPS_REF);
+    ditherPhase = (ditherPhase + 1) % DITHER_PHASES;
+    if (!ditherPatterns[ditherPhase]) {
+      ditherPatterns[ditherPhase] = trailCtx.createPattern(ditherMasks[ditherPhase], 'repeat');
+    }
+
+    // A proportional 8-bit fade can never reach zero — once alpha*fade drops
+    // below 0.5/255 it rounds straight back and the residue sticks forever, so
+    // the trail needs something that actually finishes it off. Once the last
+    // particle dies nothing is refreshing the trail any more, and the erase is
+    // ramped from its normal strength up to full across TRAIL_FADEOUT: the
+    // streaks keep decaying at their usual rate at first, then get erased hard
+    // enough to round to zero. A clearRect here would also reach zero, but it
+    // does it between two frames, so whatever streak was still lit at that
+    // moment snaps out of existence instead of dissolving.
+    if (particles.length) idleTime = 0;
+    else idleTime += dt;
+
+    var erase = Math.min(1, fadeStep * DITHER_PHASES);
+    if (idleTime > 0) erase += (1 - erase) * Math.min(1, idleTime / TRAIL_FADEOUT);
+
+    trailCtx.save();
+    trailCtx.globalCompositeOperation = 'destination-out';
+    trailCtx.globalAlpha = erase;
+    trailCtx.fillStyle = ditherPatterns[ditherPhase];
+    trailCtx.fillRect(0, 0, w, h);
+    trailCtx.restore();
+
+    trailCtx.globalAlpha = cfg.hanabi.trailAlpha;
+    trailCtx.drawImage(particleBuf, 0, 0, w, h);
+    trailCtx.globalAlpha = 1;
+
+    // ---- Smoke ----
+    drawSmoke(w, h);
+
+    // ---- Glow ----
+    sizeGlow();
+    glowCtx.clearRect(0, 0, glowBuf.width, glowBuf.height);
+    glowCtx.drawImage(particleBuf, 0, 0, glowBuf.width, glowBuf.height);
+
+    // ---- Composite ----
+    // Painted rather than cleared: additive blending needs real pixels
+    // underneath to add to, not transparency.
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, w, h);
+
+    var all = mode === 'composite';
+
+    // Smoke sits underneath everything and is NOT additive — it is haze that
+    // occludes, not light that adds. Additive grey would just wash the navy.
+    if (all || mode === 'smoke') {
+      ctx.drawImage(smokeBuf, 0, 0, w, h);
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+
+    if (all || mode === 'trail') {
+      ctx.drawImage(trailBuf, 0, 0, w, h);
+    }
+
+    if (all || mode === 'glow') {
+      // Smoothing off on the way back up too: the surviving pixels stay hard
+      // blocks rather than being blurred back into a smear.
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(glowBuf, 0, 0, w, h);
+      ctx.imageSmoothingEnabled = true;
+    }
+
+    if (all || mode === 'particles') {
+      ctx.drawImage(particleBuf, 0, 0, w, h);
+    }
+
+    // Still additive, and above the layers: the blast is a light source, so it
+    // should wash over the sparkles rather than sit behind them.
+    if (all) drawBlasts();
+
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  canvas.addEventListener('click', function (e) {
+    var r = canvas.getBoundingClientRect();
+    burst(e.clientX - r.left, e.clientY - r.top);
+  });
+
+  // ---- Panel actions ----
+
+  function clearStage() {
+    for (var i = 0; i < particles.length; i++) pool.push(particles[i]);
+    particles.length = 0;
+    for (var j = 0; j < smoke.length; j++) smokePool.push(smoke[j]);
+    smoke.length = 0;
+    blasts.length = 0;
+    pendingBursts.length = 0; // or a queued burst fires into the cleared stage
+    // The trail is persistent, so it has to be wiped explicitly or the last
+    // burst bleeds into the next one.
+    trailCtx.clearRect(0, 0, trailBuf.width, trailBuf.height);
+  }
+
+  function stageSize() {
+    var dpr = window.devicePixelRatio || 1;
+    return { w: canvas.width / dpr, h: canvas.height / dpr };
+  }
+
+  document.getElementById('act-burst').addEventListener('click', function () {
+    var s = stageSize();
+    burst(s.w / 2, s.h / 2);
+  });
+
+  document.getElementById('act-clear').addEventListener('click', clearStage);
+
+  document.getElementById('act-reset').addEventListener('click', function () {
+    resetAll();
+    clearStage();
+  });
+
+  // Auto-fire, matching the reference demo: every 500ms, anywhere across the
+  // width, in the middle 60% vertically. Useful for judging density and
+  // overlap without having to keep clicking.
+  var autoTimer = null;
+  document.getElementById('act-auto').addEventListener('change', function () {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    if (this.checked) {
+      autoTimer = setInterval(function () {
+        var s = stageSize();
+        burst(Math.random() * s.w, s.h * 0.2 + Math.random() * s.h * 0.6);
+      }, 500);
+    }
+  });
+
+  // ---- Loop ----
+  var statsEl = document.getElementById('stats');
+  var last = performance.now();
+  var frames = 0;
+  var fps = 0;
+  var sampled = last;
+
+  function tick(now) {
+    // Capped so a stalled tab resumes instead of teleporting every particle.
+    var dt = Math.min((now - last) / 1000, cfg.confetti.deltaCap);
+    last = now;
+
+    update(dt);
+    draw(dt);
+
+    frames++;
+    if (now - sampled >= 500) {
+      fps = Math.round(frames * 1000 / (now - sampled));
+      frames = 0;
+      sampled = now;
+      statsEl.innerHTML = '<b>' + fps + '</b> fps · <b>' + particles.length +
+                          '</b> live · <b>' + pool.length + '</b> pooled';
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  window.lab = {
+    canvas: canvas, ctx: ctx, cfg: cfg, burst: burst, particles: particles,
+    trail: trailBuf, particleBuf: particleBuf, glow: glowBuf, smokeBuf: smokeBuf,
+    smoke: smoke,
+    // Runs the sim synchronously. Needed because requestAnimationFrame does
+    // not fire in a non-compositing tab, which is the only way to verify the
+    // engine in this environment.
+    step: function (dt, n) {
+      for (var i = 0; i < (n || 1); i++) { update(dt); draw(dt); }
+    },
+    stats: function () { return { fps: fps, live: particles.length, pooled: pool.length }; }
+  };
+})();
+</script>
+
 </body>
 </html>
