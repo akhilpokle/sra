@@ -199,6 +199,43 @@
       ]
     },
     {
+      title: 'Shape',
+      note: 'what the sparkles are arranged into at the moment of the break',
+      fields: [
+        { path: 'shape.type', label: 'Shape', type: 'select', value: 'normal',
+          options: ['normal', 'star burst', 'concentric', 'squiggle', 'dbs sparks'] },
+
+        { sub: 'Star burst' },
+        { path: 'shape.starPoints', label: 'Points', min: 3, max: 12, step: 1, value: 5 },
+        { path: 'shape.starInner', label: 'Valley radius', min: 0.05, max: 0.9, step: 0.05, value: 0.3 },
+
+        { sub: 'Concentric' },
+        { path: 'shape.rings', label: 'Rings', min: 2, max: 6, step: 1, value: 3 },
+        { path: 'shape.ringWidth', label: 'Ring width', min: 0, max: 0.3, step: 0.01, value: 0.04 },
+
+        { sub: 'Squiggle' },
+        // Half-swing width in px is waveAmp / (2 * waveFreq) — 500 / 6 = ~83px.
+        { path: 'shape.waveAmp', label: 'Weave speed px/s', min: 0, max: 1500, step: 25, value: 500 },
+        { path: 'shape.waveFreq', label: 'Zig-zags / s', min: 0.5, max: 12, step: 0.5, value: 3 },
+
+        { sub: 'DBS sparks' },
+        { path: 'shape.hexRays', label: 'Corner rays', min: 0, max: 1, step: 0.05, value: 0.55 },
+        { path: 'shape.hexJitter', label: 'Edge jitter', min: 0, max: 0.3, step: 0.01, value: 0.06 }
+      ]
+    },
+    {
+      title: 'Sub-blasts',
+      note: 'shells carried out by the burst that break again a moment later',
+      fields: [
+        { path: 'sub.enabled', label: 'Enabled', type: 'check', value: false },
+        { path: 'sub.count', label: 'Shells / burst', min: 1, max: 24, step: 1, value: 6 },
+        { path: 'sub.delay', label: 'Delay (s)', min: 0.1, max: 2.5, step: 0.05, value: 0.7 },
+        { path: 'sub.particles', label: 'Particles / shell', min: 5, max: 120, step: 5, value: 30 },
+        { path: 'sub.scale', label: 'Size x', min: 0.05, max: 1, step: 0.05, value: 0.3 },
+        { path: 'sub.glow', label: 'Flash', type: 'check', value: true }
+      ]
+    },
+    {
       title: 'Hanabi',
       note: 'per-frame values · reference runs at 30fps',
       fields: [
@@ -522,13 +559,20 @@
   var particles = [];
   var pool = [];
 
-  function spawn(x, y, vx, vy, life) {
-    if (particles.length >= cfg.hanabi.poolMax) return;
+  // `hue` is optional: a sub-blast passes its parent shell's hue so the second
+  // break reads as the same firework breaking again, not a new one.
+  function spawn(x, y, vx, vy, life, hue) {
+    if (particles.length >= cfg.hanabi.poolMax) return null;
     var p = pool.pop() || {};
     p.x = x; p.y = y;
     p.px = x; p.py = y; // previous-frame position, for gap-free trail segments
     p.vx = vx; p.vy = vy;
     p.life = life; p.maxLife = life;
+
+    // Cleared explicitly: pooled particles are reused, so a shell or a squiggle
+    // would otherwise leak its behaviour into whatever object comes next.
+    p.shell = false;
+    p.waveAmp = 0;
 
     // Confetti's mass trick: pieces fall at different rates, so the burst
     // stretches vertically instead of descending as one sheet. Centred on 1x
@@ -541,7 +585,7 @@
     // not a flat block of one colour. Stored as numbers, not a string —
     // alpha changes every frame, so the string has to be built at draw time.
     var j = cfg.hanabi;
-    p.h = pickHue() + (Math.random() - 0.5) * 2 * j.jitterHue;
+    p.h = (hue == null ? pickHue() : hue) + (Math.random() - 0.5) * 2 * j.jitterHue;
     p.s = clamp(BASE_SAT + (Math.random() - 0.5) * 2 * j.jitterSat, 30, 100);
     p.l = clamp(BASE_LIGHT + (Math.random() - 0.5) * 2 * j.jitterLight, 30, 100);
 
@@ -554,6 +598,7 @@
     p.spin = (Math.random() - 0.5) * 2 * cfg.confetti.spin * Math.PI / 180;
 
     particles.push(p);
+    return p;
   }
 
   /* ---- Blast glow -------------------------------------------------------
@@ -566,8 +611,12 @@
   var blasts = [];
   var pendingBursts = [];
 
-  function spawnBlast(x, y) {
-    blasts.push({ x: x, y: y, age: 0, hue: pickHue() });
+  function spawnBlast(x, y, hue, scale) {
+    blasts.push({
+      x: x, y: y, age: 0,
+      hue: hue == null ? pickHue() : hue,
+      scale: scale || 1
+    });
   }
 
   function updateBlasts(dt) {
@@ -604,7 +653,7 @@
         grow = 1;
       }
 
-      var r = B.radius * grow;
+      var r = B.radius * grow * b.scale;
       var g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
       g.addColorStop(0, 'hsla(' + b.hue.toFixed(0) + ',100%,95%,' + alpha.toFixed(3) + ')');
       g.addColorStop(0.35, 'hsla(' + b.hue.toFixed(0) + ',100%,72%,' + (alpha * 0.45).toFixed(3) + ')');
@@ -638,26 +687,143 @@
     }
   }
 
+  /* ---- Burst geometry ---------------------------------------------------
+     Every shape answers the same question — for particle i of n, at what ANGLE
+     and what FRACTION of the maximum speed does it leave the burst point? That
+     is the only thing a shape controls. Physics, colour, life and rendering are
+     identical afterwards, so shapes cost nothing beyond this function and stay
+     independent of everything already tuned.
+
+     Note the shapes are launch-time only: drag and gravity start blurring them
+     immediately, exactly as a real shell's pattern does. Anything that reads as
+     mush is usually flutter and mass spread rather than the shape itself —
+     concentric especially wants both turned down to stay crisp. */
+
+  var TAU = Math.PI * 2;
+
+  // Radius of an N-pointed star at `angle`, as a fraction of the outer radius:
+  // 1 at each tip, `inner` in each valley, straight edges between.
+  function starRadius(angle, points, inner) {
+    var seg = TAU / points;
+    var t = (angle % seg) / seg;    // position within one point, 0..1
+    var d = Math.abs(t - 0.5) * 2;  // 0 at the tip, 1 at the valley
+    return 1 - d * (1 - inner);
+  }
+
+  // The DBS/POSB brand hex, thrown outward: a hexagon body with bright rays
+  // shooting from the six corners. `hexRays` splits the particles between the
+  // two — 0 is a plain hex outline, 1 is six bare spokes.
+  function dbsPoint(S) {
+    var seg = TAU / 6;
+
+    if (Math.random() < S.hexRays) {
+      var corner = Math.floor(Math.random() * 6) * seg;
+      return [corner + (Math.random() - 0.5) * seg * 0.18, 0.55 + Math.random() * 0.45];
+    }
+
+    // Regular-polygon edge in polar form: the flat runs closer to the centre
+    // than the corners do, which is what makes the six points read as points.
+    var a = Math.random() * TAU;
+    var t = (a % seg) / seg;
+    var r = Math.cos(seg / 2) / Math.cos((t - 0.5) * seg);
+    // 0.72 keeps the body inside the corner rays so the rays visibly overshoot.
+    return [a, r * 0.72 * (1 + (Math.random() - 0.5) * 2 * S.hexJitter)];
+  }
+
+  function shapePoint(i, S) {
+    switch (S.type) {
+      case 'star burst': {
+        var sa = Math.random() * TAU;
+        return [sa, Math.sqrt(Math.random()) * starRadius(sa, Math.round(S.starPoints), S.starInner)];
+      }
+
+      case 'concentric': {
+        // i % rings rather than a random ring: interleaving fills every ring
+        // evenly instead of leaving the count to chance.
+        var rings = Math.round(S.rings);
+        var band = ((i % rings) + 1) / rings;
+        return [Math.random() * TAU, band + (Math.random() - 0.5) * 2 * S.ringWidth];
+      }
+
+      // Squiggles need real outward speed to travel while they weave, so they
+      // start in a shell rather than filling the disc.
+      case 'squiggle':
+        return [Math.random() * TAU, 0.55 + Math.random() * 0.45];
+
+      case 'dbs sparks':
+        return dbsPoint(S);
+
+      // sqrt gives uniform density per unit AREA. A plain uniform radius piles
+      // particles toward the centre and reads as a hollow-cored blob; this
+      // fills the disc evenly.
+      default:
+        return [Math.random() * TAU, Math.sqrt(Math.random())];
+    }
+  }
+
   function spawnSparkles(x, y) {
     var n = cfg.hanabi.count;
     var speedMax = cfg.hanabi.explosionSize * FPS_REF * cfg.scale;
     var baseLife = 1 / (cfg.hanabi.lifeDecay * FPS_REF);
     var lifeMin = cfg.confetti.fadeMin;
     var lifeSpan = cfg.confetti.fadeMax - cfg.confetti.fadeMin;
+    var S = cfg.shape;
+    var squiggle = S.type === 'squiggle';
+
+    // Shells are ordinary particles whose life IS the fuse: they burst when
+    // they die, so the countdown costs no extra field and the shard visibly
+    // dims on its way to the second break.
+    var shells = cfg.sub.enabled ? Math.min(Math.round(cfg.sub.count), n) : 0;
 
     for (var i = 0; i < n; i++) {
-      var angle = Math.random() * Math.PI * 2;
-      // sqrt gives uniform density per unit AREA. A plain uniform radius piles
-      // particles toward the centre and reads as a hollow-cored blob; this
-      // fills the disc evenly.
-      var speed = Math.sqrt(Math.random()) * speedMax;
+      var g = shapePoint(i, S);
+      var angle = g[0];
+      var speed = g[1] * speedMax;
       // Wide per-particle lifetime spread, so the burst dissolves instead of
       // all dying on the same frame.
       var life = baseLife * (lifeMin + Math.random() * lifeSpan);
-      spawn(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed, life);
+
+      // Shells get +/-15% on the fuse. With an exact delay every shell breaks
+      // on the same frame, which reads as one mechanical pop instead of a
+      // scatter of secondary breaks.
+      var p = spawn(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+                    i < shells ? cfg.sub.delay * (0.85 + Math.random() * 0.3) : life);
+      if (!p) break; // pool is full — the rest of this burst would be dropped anyway
+
+      if (i < shells) p.shell = true;
+
+      if (squiggle) {
+        // Weave across the direction of travel, not along it, so the particle
+        // still gets where it is going — it just snakes on the way.
+        p.nx = -Math.sin(angle);
+        p.ny = Math.cos(angle);
+        p.waveAmp = S.waveAmp;
+        p.waveFreq = S.waveFreq;
+        p.wavePhase = Math.random() * TAU;
+      }
     }
 
     spawnSmoke(x, y);
+  }
+
+  // The second break. Always a plain radial puff regardless of the parent's
+  // shape — a shell is small and short-lived, and a shape inside a shape reads
+  // as noise rather than as two patterns.
+  function spawnSub(x, y, hue) {
+    var S = cfg.sub;
+    var speedMax = cfg.hanabi.explosionSize * FPS_REF * cfg.scale * S.scale;
+    var baseLife = 1 / (cfg.hanabi.lifeDecay * FPS_REF);
+    var lifeMin = cfg.confetti.fadeMin;
+    var lifeSpan = cfg.confetti.fadeMax - cfg.confetti.fadeMin;
+
+    if (S.glow && cfg.blast.enabled) spawnBlast(x, y, hue, S.scale);
+
+    for (var i = 0; i < Math.round(S.particles); i++) {
+      var angle = Math.random() * TAU;
+      var speed = Math.sqrt(Math.random()) * speedMax;
+      spawn(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
+            baseLife * (lifeMin + Math.random() * lifeSpan), hue);
+    }
   }
 
   /* ---- Smoke ------------------------------------------------------------
@@ -751,6 +917,7 @@
     var gravity = cfg.hanabi.gravity * FPS_REF * FPS_REF;
     var damp = Math.pow(cfg.hanabi.drag, dt * FPS_REF);
     var flutter = cfg.confetti.flutter;
+    var subQueue = null; // shells that broke this frame, spawned after the loop
 
     for (var i = particles.length - 1; i >= 0; i--) {
       var p = particles[i];
@@ -765,16 +932,43 @@
 
       p.px = p.x;
       p.py = p.y;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
+
+      if (p.waveAmp) {
+        // The weave is added as a sideways VELOCITY at integration time rather
+        // than accelerated into vx/vy. Two reasons: drag never gets to eat it,
+        // so the zig-zag is the same width whatever the physics is tuned to;
+        // and a square wave then means a CONSTANT sideways speed that flips
+        // sign, which draws straight diagonal runs with hard corners — an
+        // actual zig-zag. Accelerating instead gives soft sine ripples whose
+        // width collapses as 1/freq^2.
+        // Half-swing width is therefore just waveAmp / (2 * waveFreq) px.
+        var age = p.maxLife - p.life;
+        var push = Math.sin(age * p.waveFreq * TAU + p.wavePhase) >= 0 ? p.waveAmp : -p.waveAmp;
+        p.x += (p.vx + p.nx * push) * dt;
+        p.y += (p.vy + p.ny * push) * dt;
+      } else {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      }
       p.rot += p.spin * dt;
       p.life -= dt;
 
       if (p.life <= 0) {
+        // Queued rather than spawned here: spawning would push onto the very
+        // array this loop is walking with swap-and-pop.
+        if (p.shell) (subQueue || (subQueue = [])).push(p.x, p.y, p.h);
         // Swap-and-pop: O(1) removal, and draw order is irrelevant here.
         particles[i] = particles[particles.length - 1];
         particles.pop();
         pool.push(p);
+      }
+    }
+
+    // Children are never shells themselves — spawn() clears the flag — so a
+    // sub-blast cannot cascade into a third generation.
+    if (subQueue) {
+      for (var q = 0; q < subQueue.length; q += 3) {
+        spawnSub(subQueue[q], subQueue[q + 1], subQueue[q + 2]);
       }
     }
 
