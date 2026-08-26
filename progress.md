@@ -9,14 +9,22 @@ build stands.
 
 ## What this is
 
-A celebratory modal overlay that plays on top of the live Liferay intranet,
-celebrating a 5-year service milestone for **Timothy Tan**. Flow: a small
-prompt appears → the cursor emits a gold/white spark trail → the user lights
-a curved fuse by hovering near its tip (no click) → the fuse burns down over
-~1.5s → a timed fireworks sequence fires (small LEFT, then small RIGHT, then
-an oversized CENTER burst with a flash/shockwave) → as the center burst
-clears, a congratulation card fades and scales in with a medallion and two
-lines of copy.
+A modal overlay that plays on top of the live Liferay intranet, celebrating a
+service milestone.
+
+**Current flow:** the overlay mounts over a blurred gradient veil of the page →
+a gold **GO** button sits bottom-centre → pressing it launches five rockets in
+three waves (outside-in, growing: red 1× at the edges, gold 1.5× inboard, a
+red/gold/white 2× burst at centre) → each rocket rises and bursts at apex →
+the close button tears everything down. Clicking the canvas launches a single
+rocket to that point, for judging one firework in isolation.
+
+> **This is not the flow described in the decision log below.** The overlay was
+> rebuilt from scratch on the fireworks lab's engine (decision #24). The fuse,
+> cursor sparks, generation cascade and congratulation card are all gone.
+> **Nothing currently displays the employee's name or the milestone** — the card
+> that carried them no longer exists. Decisions #1–#23 are the historical record
+> of how the design got here, not a description of what runs today.
 
 ## Skills in effect
 
@@ -57,49 +65,78 @@ lines of copy.
 
 | File | Role |
 | --- | --- |
+| `lsa-experience.js` | All overlay behaviour, IIFE-wrapped (~936 lines) |
 | `lsa-experience.css` | All overlay styles, prefixed, scoped under `.lsa-root` |
-| `lsa-experience.js` | All overlay behaviour, IIFE-wrapped |
 | `lsa-mount.html` | Mount markup + `<link>`/`<script>` tags for the Liferay Web Content fragment (placeholder asset paths — see handoff.md) |
-| `handoff.md` | Developer-facing integration reference, updated every step |
+| `handoff.md` | Developer-facing integration reference |
 | `progress.md` | This file |
-| `lsa-demo.html` | **Local-only**, not for Liferay. Test harness loading the real CSS/JS against a stand-in backdrop |
-| `bg.png` | **Placeholder only** — a screenshot of the intranet homepage, stands in for the live page in the local demo. Will be replaced by the real intranet; not referenced by the overlay code itself |
+| `lsa-demo.html` | **Not for Liferay.** 27-line harness loading the real CSS/JS over `bg.png`, with `data-lsa-dev` set. Zero inline scripts, so it cannot drift from the shipped code |
+| `index.html` | GitHub Pages entry point — a redirect to `lsa-demo.html`, deliberately not a second copy |
+| `bg.png` | **Placeholder only** — a screenshot of the intranet homepage. Not referenced by the overlay code itself |
+| `lab/fireworks-lab.html` | The fireworks lab. **Frozen reference — do not edit** (see handoff.md) |
 
 ## How it's being verified
 
-The agent's own browser preview pane rewrites local files to a `data:` URL
-and can't resolve relative asset paths, so a small Node-based static file
-server (built-ins only, no packages) was started to serve the project folder
-at **`http://localhost:8080/`**. The client verifies each step visually
-there, in a real browser, rather than through the agent's preview tool — set
-up this way at the client's explicit request.
+A small Node-based static file server (built-ins only, no packages) serves the
+project folder over HTTP; the client then opens `lsa-demo.html` in a real
+browser. `file://` does not work — it renders as a static snapshot with no JS
+and reports `innerWidth === 0`, which trips the `MIN_WIDTH = 1024` guard so the
+overlay never mounts.
+
+Since the GitHub push, the hosted demo at **https://akhilpokle.github.io/sra/**
+is the easier route and needs no local server at all.
+
+**Nothing in this project has ever been confirmed visually.** Every check to
+date has been numeric, driven through `window.__lsaDev` — the agent's browser
+pane cannot composite frames in this environment. This remains the single
+largest open risk and is called out again under Open items.
 
 ---
 
-## Build status (13-step plan + one inserted stage-setup step)
+## Build status
 
-| Step | What | Status |
-| --- | --- | --- |
-| 1 | Scaffold (4 files) + handoff.md skeleton | ✅ Done |
-| 1b | Stage setup — `bg.png` + `lsa-demo.html` local harness | ✅ Done |
-| 2 | Gate (`>=1024px`), mount, backdrop, close button, teardown | ✅ Done |
-| 3 | Canvas, rAF loop, resize handling | ✅ Done (fade-trail fill built, then reverted — see Decision Log) |
-| 4 | Particle system core (pool, gravity, friction, life/alpha) | ✅ Done |
-| 5 | Cursor spark trail | ✅ Done (continuous emission, not move-triggered — see Decision Log) |
-| 6 | Prompt message + procedural fuse + proximity ignition | ✅ Done |
-| 7 | Fuse burn (~1.5s travelling spark) | ✅ Done |
-| 8 | Rockets + bursts + show sequencing | ✅ Done — simultaneous launch, generation-driven cascade (Decision Log #20); needs a real visual check, see below |
-| 9 | Congratulation card reveal (placeholder medallion + copy) | ✅ Done — reveal mechanism rebuilt at #15 (no zoom; revealed by fireworks fading off it). Card *design* still to come, see working list |
-| 10 | Real medallion integration | ⛔ **Blocked** — client will supply assets later |
-| 11 | Performance pass | ⏳ Not started — **next step** |
-| 12 | Integration safety audit | ⏳ Not started |
-| 13 | Finalize handoff.md | ⏳ Ongoing (updated every step so far), final pass pending |
+**The original 13-step plan no longer applies.** It was written for the
+fuse → cascade → card design, and the clean-slate rebuild (#24) removed most of
+what it tracked. Steps 6, 7 and 9 described features that have since been
+deleted; step 11's performance work was superseded by adopting the lab engine
+wholesale. Kept below as the historical plan, not as a live tracker.
 
-### Flagged for later
+### Where things actually stand
 
-- [ ] **Enhance fireworks visual quality** — functionally complete (correct
-  sequence, colours, flash/shockwave) but flagged by the client as a first
-  pass to revisit later (density, trail quality, burst shape).
+| Area | Status |
+| --- | --- |
+| Viewport gate, mount, backdrop, scroll lock, close, teardown | ✅ Working |
+| Canvas, four-buffer render pipeline, rAF loop, resize | ✅ Working |
+| Fireworks engine (Hanabi look + confetti physics, FPS_REF converted) | ✅ Working — ported verbatim from the lab |
+| Rocket ascent + burst at apex | ✅ Working |
+| GO button + five-firework sequence | ✅ Working |
+| Click-to-launch (single rocket) | ✅ Working |
+| Repo pushed, GitHub Pages serving demo + lab | ✅ Live |
+| **Real visual confirmation** | ❌ **Never done.** All verification has been numeric |
+| Congratulation card | ⛔ **Removed.** Nothing shows the name or the milestone |
+| Medallion | ⛔ Blocked — needs client assets *and* a card to live in |
+| Milestone scaling (10/15/20/25 years) | ⛔ Reopened — show is hard-wired to five fireworks |
+| Liferay asset paths | ⏳ Placeholders in `lsa-mount.html` |
+| Integration safety audit | ⏳ Not started |
+
+### The original 13-step plan (historical)
+
+| Step | What | Then | Now |
+| --- | --- | --- | --- |
+| 1 | Scaffold + handoff skeleton | ✅ | still valid |
+| 1b | `bg.png` + `lsa-demo.html` harness | ✅ | harness rewritten, 493 → 27 lines |
+| 2 | Gate, mount, backdrop, close, teardown | ✅ | still valid |
+| 3 | Canvas, rAF loop, resize | ✅ | rebuilt as the four-buffer pipeline |
+| 4 | Particle system core | ✅ | replaced by the lab engine |
+| 5 | Cursor spark trail | ✅ | **deleted** |
+| 6 | Prompt + fuse + proximity ignition | ✅ | **deleted** |
+| 7 | Fuse burn | ✅ | **deleted** |
+| 8 | Rockets + bursts + sequencing | ✅ | rebuilt as the GO sequence |
+| 9 | Congratulation card reveal | ✅ | **deleted** |
+| 10 | Real medallion integration | ⛔ | still blocked, now doubly |
+| 11 | Performance pass | ⏳ | superseded — the lab engine is the performance answer |
+| 12 | Integration safety audit | ⏳ | still outstanding |
+| 13 | Finalize handoff | ⏳ | rewritten against the current code |
 
 ---
 
@@ -286,70 +323,125 @@ per-step change log entries.
     choosing "unmodified" does not arise. Lower `smoke.lifeDecay` if smoke
     over the card is genuinely wanted.
 
+> **Decisions #1–#23 above describe a design that no longer exists.** They are
+> kept as the record of what was tried and why. Everything from #24 down
+> describes the code that actually runs.
+
+24. **Clean slate, then rebuild on the lab engine.** Three attempts to bring
+    fireworks into production failed and were thrown away. The client's verdict:
+    *"i am not sure which part are you confused about, and why are you
+    hallucinating. I had asked you to remove all the code, yet you kept the
+    previous wrong fireworks. i asked you to bring in the settings for fireworks
+    which you failed to... I want a clean slate start."*
+    `lsa-experience.js` was emptied to 57 lines — safety-contract header,
+    `MIN_WIDTH` guard, `.lsa-root`, `.lsa-backdrop`, close button, `teardown` —
+    and `lsa-experience.css` trimmed to match. The **fireworks lab's engine was
+    then brought over verbatim, settings and all**, rather than re-derived.
+    Three process lessons came out of this and are recorded outside the repo:
+    a menu is not obedience when an instruction is already total; "bring over X"
+    means port X including its tuned values; don't remove what wasn't mentioned
+    and don't re-add it to compensate.
+25. **The fuse is gone; a GO button replaces it.** The client's call. With it
+    went `computeFusePoints` / `drawFuse` / `checkFuseIgnition` /
+    `pointOnFuseCurve` / `updateFuseBurn`, `CFG.fuse`, the `.lsa-prompt`
+    element and its CSS. The show is now five fireworks in three waves
+    (outside-in, growing), driven by a `goSequence` table read on the rAF clock
+    — not `setTimeout`, so it stays in step with the sim and pauses with a
+    backgrounded tab.
+26. **The rocket is a real ascent, solved rather than tuned.** One node drawn
+    the same way a sparkle is, into the same buffer, so it gets the trail and
+    glow for free. No wink (the flicker reads as a fault on a single ember) and
+    no drag (it would eat the launch velocity), so launch speed solves exactly
+    from the target height: `v = sqrt(2·g·rise)`. It bursts at apex — the frame
+    `vy` turns positive — so it can never stall short or sail past. Measured
+    apex error ~9px on a 500px rise; ascent ~2.25s.
+27. **Per-burst colour and size, threaded as an optional `spec`.** Each
+    sequence row carries its own hue set and scale through
+    `burst → spawnSparkles → spawn` and `burst → spawnBlast`. Optional
+    throughout, so a plain canvas click still falls back to
+    `cfg.hanabi.palette` — the lab's behaviour, unchanged. **White cannot be a
+    hue** (every sparkle otherwise takes `BASE_SAT`), so it is a *fraction* of
+    the burst drawn desaturated instead; only the centre burst uses it, which
+    keeps white exclusive to the finale.
+28. **One deliberate deviation from the lab, and only one.** The lab composites
+    onto an opaque navy fill because additive blending needs real pixels to add
+    to. As an overlay that would hide the page, so the composite clears to
+    transparent and the browser layers it over the backdrop. Commented in place
+    and in the file header, so it cannot be mistaken for drift.
+29. **The card was removed and has not come back.** Nothing currently displays
+    the employee's name or the milestone; `EMPLOYEE_NAME`, `YEARS` and
+    `MAX_SUPPORTED_YEARS` are all gone. This also reopens milestone scaling —
+    the show is hard-wired to five fireworks, so the one-rocket-per-year model
+    from #17 no longer applies. Flagged rather than silently accepted.
+30. **Pushed to GitHub and served from Pages.** `master` →
+    `github.com/akhilpokle/sra`; there is no `main` branch. The repo is
+    **public**, so `handoff.md`, `progress.md` and the brand hexes are publicly
+    readable — raised with the client, who proceeded anyway. `lsa-demo.html`
+    was a stale 493-line private copy of the lab engine that never loaded
+    `lsa-experience.js`; it is now a 27-line harness loading the real CSS+JS,
+    with zero inline scripts so it cannot drift again. `index.html` is a
+    redirect, deliberately not a second copy of the harness. The
+    `fireworks-lab` branch is **not** pushed — only the lab file was copied onto
+    `master` so Pages could serve it, which means the two copies must be kept in
+    sync by hand.
+31. **The lab is frozen.** Client's words: *"DO NOT TOUCH THE FIREWORKS LABS,
+    ITS WORKING PERFECTLY."* Treat `lab/fireworks-lab.html` as reference only.
+
 ---
 
 ## Next up — things we need to work on
 
 Logged as a working list, not yet scoped into build steps.
 
-- [x] **Fireworks — scale for 5/10/15/20/25 years.** Done: `YEARS` is now a
-  parameter beside `EMPLOYEE_NAME` and is the single source of truth —
-  it drives **one rocket per year** and the card copy, so the two can't
-  disagree. Show length stays ~8s at every milestone; more years means
-  denser and more overlapping, not longer.
-- [ ] **Milestones beyond 25 years need a different way to show rockets.**
-  One-rocket-per-year stops working past 25 — 30+ rockets is neither
-  readable as a count nor comfortably affordable to render, and the launch
-  window would have to get so tight the rockets stop being distinguishable.
-  `MAX_SUPPORTED_YEARS` (25) currently clamps the rocket count so nothing
-  breaks, but a 30-year award would then show 25 rockets, which is wrong.
-  Needs a genuinely different visual idea (grouped shells? a different
-  counting metaphor? tiers?) — parked at the client's request until the
-  core fireworks are settled.
-- [x] **Fireworks — further work on the sequence itself.** Rebuilt twice:
-  first into a single-wave colour cascade (#14a), then into the client's
-  6-scene escalating show with a bloom-masked card reveal (#15). Timing and
-  density verified by frame-accurate simulation against the real code's
-  constants at four viewport sizes; **still needs a real visual check** in
-  an actual browser — the agent's preview pane can't render it in this
-  environment (`requestAnimationFrame` never fires on the non-composited
-  tab). See handoff.md's "Step 8 (revised 2)".
-- [ ] **Work on the card.** Design/polish pass on the congratulation card —
-  medallion, copy, layout, real dimensions. Deferred at the client's
-  explicit request until the fireworks are settled. Current state: white
-  800×460 placeholder box; text colours darkened only as a legibility
-  stopgap so the white card isn't blank.
-- [ ] **Add the medallion.** The real component + image assets — still
-  blocked on the client (Q-A). Placeholder box is in place until then.
-- [x] **Mechanism to retrigger fireworks.** Done for local testing: the
-  tuning panel in `lsa-demo.html` has a **Replay** button driving
-  `restartShow()`, which replays from the first rocket with no page reload.
-  Note this is a *dev* control — if a replay control is ever wanted on the
-  live intranet, that is a separate piece of work with its own UI decision.
+- [ ] **Look at it.** The single most overdue item. Open
+  https://akhilpokle.github.io/sra/ and confirm by eye: do 1× / 1.5× / 2× read
+  as three distinct sizes; does the ~2.25 s ascent feel right; does the trail
+  dissolve rather than snap; does the centre burst read as the finale. None of
+  this can be settled numerically, and none of it has ever been seen.
+- [ ] **Decide whether the card comes back.** It was removed in the clean-slate
+  rebuild (#29). Nothing currently shows the employee's name or the milestone,
+  so as it stands the overlay celebrates nothing in particular. If it returns,
+  its reveal has to be designed against the GO sequence rather than the old
+  generation cascade.
+- [ ] **Milestone scaling, reopened.** The show is hard-wired to five fireworks.
+  The old one-rocket-per-year model (#17) is gone along with `YEARS`. How
+  10/15/20/25 should differ from 5 is an open design question again — and the
+  ">25 years needs a different metaphor" problem from the previous round was
+  never solved either.
+- [ ] **Add the medallion.** Still blocked on client assets (Q-A), and now
+  doubly: there is no card for it to live in.
+- [ ] **Final Liferay asset paths** for `lsa-mount.html`'s two
+  `REPLACE_WITH_ASSET_PATH` placeholders.
+- [ ] **Integration safety audit** — never started. Confirm no globals leak
+  (beyond the opt-in `__lsaDev`), every listener is torn down, no selector can
+  reach Liferay markup.
+- [ ] **Rocket ascent speed** is coupled to `cfg.hanabi.gravity`, shared with
+  the sparkles. Speeding up the climb without changing how sparkles fall needs
+  the rocket to carry its own gravity value. Flagged, not added.
+- [ ] **Decide on `index.html`** — currently a bare redirect to the demo. A
+  landing page linking both the demo and the lab was offered and not answered.
 
 ---
 
 ## Open items
 
-- **Q-A (hard blocker for Step 10):** real medallion component (HTML/CSS/JS)
-  + image assets, and how those images will be served in Liferay (Documents
-  & Media URL, theme path, or base64). Placeholder is in place so this
-  doesn't block anything else.
+- **Never confirmed visually.** Every check in this project's history —
+  physics, timing, colour, density, coverage — has been numeric, run through
+  `window.__lsaDev` because the agent's browser pane cannot composite frames in
+  this environment. The hosted Pages site finally makes a real look possible.
+  **This is the largest open risk and has been carried, unresolved, through
+  every round.**
+- **Q-A:** real medallion component + image assets, and how those images will
+  be served in Liferay (Documents & Media URL, theme path, or base64).
 - **Backend work required, outside this deliverable:** a per-user,
-  server-persisted "has seen this experience" flag, gating whether
-  `lsa-experience.js` runs at all. Integration point documented in
-  `handoff.md`.
-- **Final Liferay asset paths** for `lsa-mount.html`'s `<link>`/`<script>`
-  tags — currently placeholders, to be filled in once hosting is decided.
-- **POSB brand blue hex** — placeholder `#1C6FD1` in use for the fireworks'
-  blue cohort until the client supplies the real brand colour. See
-  handoff.md Open questions, row K.
-- **The show needs a real visual check.** Verified by frame-accurate
-  simulation (physics, timing, sparkle density, card coverage, break-chain
-  termination) across 4 viewport sizes × 5 milestones — all 20 pass — but
-  not yet watched rendering in an actual browser, because the agent's
-  preview pane cannot composite in this environment. Open `lsa-demo.html`
-  via `http://localhost:8080/` and confirm by eye: the card is never seen
-  *appearing*, the four burst shapes and the colour shifts are
-  distinguishable, the 5-rocket show feels full rather than sparse, and
-  framerate holds at `YEARS = 25`.
+  server-persisted "has seen this experience" flag gating whether
+  `lsa-experience.js` runs at all. Integration point documented in `handoff.md`.
+- **Final Liferay asset paths** for `lsa-mount.html` — placeholders until
+  hosting is decided.
+- **POSB brand blue hex** — still unsupplied. The current `goColors` are
+  red/gold only, so nothing shipped depends on it right now; it becomes live
+  again the moment a blue firework or the POSB hex placeholder is wanted.
+- **The lab exists in two places and must be kept in sync by hand** — canonical
+  on the unpushed `fireworks-lab` branch, byte-identical copy on `master` for
+  Pages. Compare blob hashes, not appearances.
+- **The repo is public.** These docs and the brand hexes are readable by anyone.

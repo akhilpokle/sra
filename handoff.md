@@ -1,12 +1,18 @@
 # Long Service Award — 5 Year Milestone Overlay · Handoff
 
-A celebratory modal overlay that plays once on top of the live Liferay
-intranet: cursor sparks, a proximity-lit fuse, a building fireworks sequence,
-and an oversized centre burst that clears to reveal a congratulation card.
+A modal overlay that plays on top of the live Liferay intranet. A **GO** button
+sets off a five-firework sequence over a blurred veil of the page underneath.
 
-**Current status: Step 1 of 13 complete — scaffold only. The overlay does not
-run yet.** The files exist and declare their safety contracts, but contain no
-behaviour and no styles.
+**Current status: the overlay runs.** `lsa-experience.js` was emptied and
+rebuilt on the fireworks lab's engine; the fireworks work end to end. **There is
+no congratulation card in the overlay at present** — see "What was removed".
+
+> **Read this before trusting anything below the archive line.** Everything from
+> "## Change log — ARCHIVE" onward describes a *previous* design (a proximity-lit
+> fuse, cursor sparks, a three-generation cascade, a card reveal, a 58-control
+> tuning panel). **None of that code exists any more.** It is kept as the
+> decision record, not as documentation. This section, above the archive, is the
+> only part that describes the current code.
 
 ---
 
@@ -14,35 +20,358 @@ behaviour and no styles.
 
 | File | Purpose | State |
 | --- | --- | --- |
-| `lsa-experience.css` | All overlay styles. Every selector prefixed `lsa-` and scoped under the root container. | Scaffold — contract comment only, no rules |
-| `lsa-experience.js` | All overlay behaviour, wrapped in an IIFE. Viewport gate, mount, canvas, particles, teardown. | Scaffold — empty IIFE only |
-| `lsa-mount.html` | The markup to paste into a Liferay Web Content fragment. | Working — includes `<link>`/`<script>` tags with placeholder asset paths |
-| `handoff.md` | This document. Change log, integration steps, tweak points. | Live |
-| `progress.md` | Narrative project status: idea, skills, constraints, decision log, build status. | Live |
+| `lsa-experience.js` | All overlay behaviour in one IIFE — viewport gate, mount, fireworks engine, GO sequence, teardown. | Working, ~936 lines |
+| `lsa-experience.css` | All overlay styles. Every selector prefixed `lsa-`, scoped under `.lsa-root`. | Working, 4 rules |
+| `lsa-mount.html` | Markup to paste into a Liferay Web Content fragment. | Working — `<link>`/`<script>` tags carry `REPLACE_WITH_ASSET_PATH` placeholders |
+| `handoff.md` | This document. | Live |
+| `progress.md` | Narrative status: what this is, constraints, decision log. | Live |
 
-### Local demo files — NOT part of the Liferay deliverable
+### Not part of the Liferay deliverable
 
-| File | Purpose | State |
-| --- | --- | --- |
-| `lsa-demo.html` | Local test harness. Renders `bg.png` as a stand-in intranet, loads the real CSS/JS in production load order, and hosts the **fireworks tuning panel** (~58 live controls, replay button, settings export). Never deploy this. | Working |
-| `bg.png` | **Placeholder.** A static screenshot of the intranet homepage, used as the demo backdrop for communication and stakeholder review. | Placeholder |
+| File | Purpose |
+| --- | --- |
+| `lsa-demo.html` | Local/hosted harness. 27 lines: loads the **real** CSS+JS over `bg.png`, sets `data-lsa-dev` on `<html>`. Zero inline scripts, so it cannot drift from the shipped code. Never deploy. |
+| `index.html` | GitHub Pages entry point. A redirect to `lsa-demo.html`, deliberately **not** a second copy of the harness. |
+| `bg.png` | **Placeholder** screenshot of the intranet homepage, standing in for the live page. |
+| `lab/fireworks-lab.html` | The fireworks lab. **Frozen reference — do not edit.** See "The lab" below. |
 
-> **`bg.png` will be replaced by the actual intranet.** It is a flat screenshot
-> standing in for the live page purely so the overlay can be demonstrated and
-> verified locally. In production there is no background image at all: the real
-> Liferay page is the backdrop, live in the DOM behind the overlay. When the
-> overlay is deployed for real, `bg.png` and `lsa-demo.html` are both dropped
-> and nothing about `lsa-experience.css` / `lsa-experience.js` changes.
-
-Not yet created, because it depends on an answer still outstanding:
-
-- The medallion component and its image assets — **you are supplying these** (see Open questions, Q-A).
+> **`bg.png` will be replaced by the actual intranet.** In production there is no
+> background image: the real Liferay page is the backdrop, live in the DOM behind
+> the overlay. On deployment `bg.png`, `index.html` and `lsa-demo.html` are all
+> dropped and nothing about the CSS/JS changes.
 
 ---
 
-## Change log
+## What the overlay does now
 
-Updated at the end of every build step.
+1. Script returns immediately unless viewport width is `>= 1024px`.
+2. Builds `.lsa-root` and appends it to `document.body`; locks page scroll.
+3. Shows a blurred gradient backdrop, a gold **GO** button (bottom-centre) and a
+   circular close button (top-right).
+4. **GO** runs a five-firework sequence. Each row launches a rocket that rises
+   and bursts at apex.
+5. **Clicking the canvas** launches a single rocket that bursts where you
+   clicked — useful for judging one firework in isolation.
+6. Close tears everything down: every listener removed, rAF cancelled, root
+   removed, `body.style.overflow` restored to its exact prior value.
+
+The GO button disables during a run and re-enables once the schedule is empty
+**and** the last rocket has burst — not when the last one launches.
+
+### The sequence
+
+`cfg.goSequence`, one row per firework — `x` as a fraction of canvas width, `at`
+in ms from the button press, a colour set, and a scale:
+
+| # | x | at | colour | scale |
+|---|---|---|---|---|
+| 1 | 0.10 | 0 ms | red | 1× |
+| 2 | 0.90 | 0 ms | red | 1× |
+| 3 | 0.30 | 500 ms | gold | 1.5× |
+| 4 | 0.70 | 500 ms | gold | 1.5× |
+| 5 | 0.50 | 1000 ms | mix | 2× |
+
+Three waves, outside-in, growing. `at` is the **launch** time; every rocket
+rises the same height (`cfg.goHeight`, 0.38 of canvas height), so burst spacing
+matches launch spacing. Ascent is ~2.25 s.
+
+---
+
+## Architecture
+
+The engine is the fireworks lab brought over as-is — **Hanabi**'s rendering
+model over **confetti.js**'s physics.
+
+**Four offscreen buffers**, composited each frame onto the one visible canvas:
+
+| Buffer | Resolution | Notes |
+|---|---|---|
+| `particleBuf` | full | Cleared each frame. Feeds *both* the trail and the glow, so sparkles are drawn once. |
+| `trailBuf` | full | **Persistent** — never cleared per frame, only faded. |
+| `glowBuf` | 1/`glowDownscale` | Smoothing **off**. The twinkle comes from pixels being *lost* in the downscale — nothing is animated to twinkle. |
+| `smokeBuf` | half | Smoke is soft; half res is invisible in the result and saves a lot of fill. |
+
+**The FPS_REF conversion is the load-bearing idea.** Hanabi's constants are
+per-frame at 30 fps; this loop is delta-time integrated in seconds. Every Hanabi
+value is converted *at read time* against `FPS_REF = 30`:
+
+```
+gravity  0.2  /frame²  →  × FPS_REF²  →  180 px/s²
+drag     0.9  /frame   →  pow(drag, dt * FPS_REF)
+life     0.01 /frame   →  1/(0.01 * FPS_REF) = 3.33 s
+speed    10   /frame   →  × FPS_REF   →  300 px/s
+```
+
+Using them raw in a 60 fps loop is exactly why the previous overlay fell twice
+too fast and its sparkles died three times too early. Sanity check: terminal
+fall lands at ~55 px/s and must not change with framerate.
+
+**The one deliberate difference from the lab.** The lab composites onto an
+opaque navy fill, because additive blending needs real pixels underneath to add
+to. As an overlay that fill would hide the page, so the composite `clearRect`s
+to transparent and the browser layers the result over the backdrop. Commented in
+place and in the file header.
+
+### The rocket
+
+One node, drawn the *same* way a sparkle is — a stroked segment from last
+frame's position to this one, into the same `particleBuf` — so it picks up the
+trail and glow for free. Two deliberate differences:
+
+- **No wink.** The `cos(rot)` flicker reads as a glint on a shard but as a fault
+  on a single climbing ember.
+- **No drag.** The sparkles' 0.9/frame damping is what makes a burst snap and
+  hang, but on the ascent it would eat the launch velocity. Gravity alone means
+  launch speed solves exactly: `v = sqrt(2·g·rise)`. It bursts at apex — the
+  frame `vy` turns positive — so it can never stall short or sail past.
+
+### Colour
+
+`cfg.goColors` are hue lists in the same form as `PALETTES`. **White cannot be a
+hue** — every sparkle otherwise takes `BASE_SAT` (90) — so `white` is the
+*fraction* of a burst drawn desaturated and lifted instead. Only the centre
+`mix` burst uses it (0.33), which is what keeps white exclusive to the finale.
+
+A `spec` object (`{hues, white, scale}`) is threaded
+`burst → spawnSparkles → spawn` and `burst → spawnBlast`. It is **optional**
+throughout, so a plain canvas click still falls back to `cfg.hanabi.palette` —
+the lab's behaviour, unchanged.
+
+### Three fixes carried over from the lab
+
+1. **Dithered trail erase.** A proportional erase can never reach zero on an
+   8-bit canvas — once `alpha*fade < 0.5` it rounds back, stranding every touched
+   pixel at ~`0.5/fade` and leaving a ghost of the burst. Fixed by partitioning
+   pixels into `DITHER_PHASES` (12) masks cycled one per frame, each pixel erased
+   fully once per cycle. Same average decay, no flicker, floor down to ~1/255.
+2. **Gap-free trail segments.** Each particle tracks `px`/`py` and is *stroked*
+   from last frame's position rather than stamped as a dot — a fast particle
+   travels several px between frames and a dot leaves a gap.
+3. **Gradual trail fade-out.** `idleTime` ramps the erase to full over
+   `TRAIL_FADEOUT` (0.6 s) once nothing is alive, instead of a one-frame
+   `clearRect` that made the trace vanish abruptly. **Rockets count as alive**
+   here — during an ascent there are no particles yet, and without that the
+   fade-out would erase the rocket's own trail out from under it.
+
+---
+
+## Tweak points — the `cfg` object
+
+Everything tunable is in one object at the top of `lsa-experience.js`, read
+**live** (per frame / per spawn), so changing a value at runtime changes the
+show while it is running.
+
+| Path | Default | What it does |
+|---|---|---|
+| `scale` | 1 | Global size — multiplies burst spread and shard size together |
+| `hanabi.layer` | `composite` | Isolate a layer: `particles` / `trail` / `glow` / `smoke` |
+| `hanabi.palette` | `fire` | Fallback palette for click-bursts: `fire` / `blue` / `purple` / `random` |
+| `hanabi.count` | 200 | Sparkles per burst |
+| `hanabi.explosionSize` | 10 | Burst spread |
+| `hanabi.poolMax` | 2000 | Hard particle cap |
+| `hanabi.gravity` | 0.2 | Per-frame² — also drives rocket ascent |
+| `hanabi.drag` | 0.9 | Per-frame; sparkles only, not the rocket |
+| `hanabi.lifeDecay` | 0.01 | Per-frame → 3.33 s base life |
+| `hanabi.trailFade` | 0.05 | Erase rate |
+| `hanabi.trailAlpha` | 0.6 | How strongly particles stamp into the trail |
+| `hanabi.glowDownscale` | 4 | Bigger = coarser, brighter twinkle |
+| `hanabi.jitterHue/Sat/Light` | 5 / 10 / 10 | Per-sparkle colour spread |
+| `hanabi.smoke.*` | — | 11 values; `enabled: true` |
+| `confetti.size` | 1 | Shard size |
+| `confetti.spin` | 250 | ±°/s — drives the wink |
+| `confetti.massSpread` | 0.33 | Varies fall rate so a burst stretches vertically |
+| `confetti.flutter` | 350 | Random walk on horizontal velocity |
+| `confetti.deltaCap` | 0.064 | rAF delta clamp, so a stalled tab resumes rather than teleports |
+| `confetti.fadeMin/Max` | 0.5 / 2.5 | Per-sparkle lifetime spread |
+| `blast.*` | — | Detonation bloom: `lead` 60 ms, `radius` 140, `peak` 0.55, rise/hold/decay 0.06/0.15/1.8 s |
+| `rocket.size` | 5 | px — a sparkle is 1–3 |
+| `rocket.launchY` | 1.0 | Launch height as a fraction of canvas height |
+| `rocket.light` | 88 | Hotter than a sparkle's `BASE_LIGHT` (62) |
+| `goHeight` | 0.38 | Burst height as a fraction of canvas height |
+| `goColors` | red / gold / mix | Hue lists + white fraction |
+| `goSequence` | 5 rows | The running order |
+
+---
+
+## What was removed in the clean-slate rebuild
+
+Deleted deliberately, and **not coming back unless asked**. Listed because the
+archive below still describes all of it as built and working:
+
+the fuse (`computeFusePoints`, `drawFuse`, `checkFuseIgnition`,
+`pointOnFuseCurve`, `updateFuseBurn`) · the `.lsa-prompt` element · the
+congratulation **card** and its reveal/bloom/glow timing · cursor sparks ·
+the LUT colour system (`makeLut`, `hexToRgb`, `PALETTES.open|build|climax`) ·
+generations and the cascade (`GENERATIONS`, `breakGen`) · flashes ·
+`MAX_PARTICLES` · `restartShow` · `EMPLOYEE_NAME` · `YEARS` and
+`MAX_SUPPORTED_YEARS` · the 58-control tuning panel.
+
+**Consequences worth stating plainly:**
+
+- **There is no card**, so nothing displays the employee's name or the
+  milestone. The medallion has nowhere to go until a card exists again.
+- **The milestone no longer drives anything.** The show is hard-wired to five
+  fireworks. `YEARS` is gone; scaling the show to 5/10/15/20/25 years is an open
+  question again, not a solved one.
+
+---
+
+## The lab — `lab/fireworks-lab.html`
+
+**Frozen reference. Do not edit.** Standalone harness with a 400 px control
+panel and click-to-burst, used to develop the engine that now ships.
+
+It exists in **two places**: the canonical copy is the `fireworks-lab` branch
+(local only, never pushed), and a byte-identical copy sits on `master` so GitHub
+Pages can serve it — Pages reads one branch, and that branch is `master`.
+
+**If the lab is ever edited, edit it on the branch and re-copy, or the hosted
+version silently falls behind.** Verify by comparing git blob hashes, not by
+eye:
+
+```bash
+git rev-parse master:lab/fireworks-lab.html fireworks-lab:lab/fireworks-lab.html
+```
+
+To read the canonical copy while on `master`:
+`git show fireworks-lab:lab/fireworks-lab.html`.
+
+---
+
+## Hosting
+
+`master` → https://github.com/akhilpokle/sra. **Public**, so `handoff.md`,
+`progress.md` and the brand hexes are publicly readable. There is **no `main`
+branch** — it is `master`. The `fireworks-lab` branch is not pushed.
+
+| | |
+|---|---|
+| Overlay demo | https://akhilpokle.github.io/sra/ |
+| Fireworks lab | https://akhilpokle.github.io/sra/lab/fireworks-lab.html |
+
+Pushes work non-interactively via Git Credential Manager. No `gh` CLI, no SSH
+keys.
+
+---
+
+## Verifying locally
+
+Serve the project root over HTTP and open **`lsa-demo.html`**. Notes that cost
+time to rediscover:
+
+1. **`file://` will not work.** It renders as a static snapshot with no JS, and
+   reports `innerWidth === 0`, which trips the `MIN_WIDTH = 1024` guard so the
+   overlay never mounts. Must be HTTP.
+2. `data-lsa-dev` on `<html>` is what exposes `window.__lsaDev` —
+   `{cfg, burst, launch, stats, step}`. `lsa-demo.html` sets it; `lsa-mount.html`
+   does not.
+3. **`step(n, dt)` drives the whole show synchronously.** The GO sequence counts
+   down on `dt`, not `performance.now()`, so frames can be stepped by hand with
+   no real-time waiting. Note the argument order is `(n, dt)` here but `(dt, n)`
+   in the lab — easy to get backwards.
+4. **`getImageData` works in device pixels; `clientWidth/Height` in CSS pixels.**
+   At `devicePixelRatio: 2` this silently doubles every measured coordinate.
+   Check dpr first — it looked like a 160–400 px physics error before dividing.
+5. **Measuring colour:** averaging RGB reads gold for everything, because
+   additive blending and the glow halo wash it out. Convert to hue, bucket
+   saturation < 0.18 as "white" separately, take a **circular** mean, and sample
+   vertical bands around each burst's x fraction.
+
+---
+
+## Liferay integration
+
+Settled and unchanged by the rebuild:
+
+- Two files, one `.css` and one `.js`. No inline `<script>`, no inline `style`
+  carrying logic — the page enforces a CSP.
+- The CSS must load before the JS mounts, so the overlay never renders unstyled.
+- The mount markup goes in a Web Content fragment.
+
+`lsa-mount.html` carries both asset tags with `REPLACE_WITH_ASSET_PATH`
+placeholders, to be swapped for the real hosted URLs once hosting is decided.
+It correctly does **not** set `data-lsa-dev`.
+
+---
+
+## The once-only flag — BACKEND RESPONSIBILITY, NOT IMPLEMENTED HERE
+
+**Decision (explicit, from the client):** "show once" gating is deliberately
+**not** implemented in `lsa-experience.js`. There is no `localStorage` check. As
+shipped, the experience runs on **every page load** where the viewport is
+`>= 1024px`. This is intentional, not an oversight.
+
+**What the backend developer needs to build:** a per-user flag persisted
+server-side against the user's account — not a browser-local flag, which resets
+per device and does not survive a cleared cache. The mechanism is the
+developer's call (Liferay user attribute, database row, session service) and is
+entirely outside this front-end deliverable.
+
+**The integration point** is the top of the IIFE, immediately after the
+`MIN_WIDTH` check — an early `return` driven by whatever the backend exposes
+(e.g. a data attribute on `#lsa-mount` rendered server-side only for users who
+have not seen it). This front end reads no such flag today; it is a one-line
+addition once the backend contract exists.
+
+**For local testing: nothing to reset. It always shows.**
+
+---
+
+## Open questions
+
+| # | Question | State |
+|---|---|---|
+| A | Medallion component + image assets, and how images are served in Liferay. | **Open**, and now further blocked — the card that would hold the medallion no longer exists. Client deferred: "we will handle it later." |
+| K | POSB brand blue — exact hex? | **Open.** Placeholder `#1C6FD1` was used by the old palette; the current `goColors` are red/gold only, so nothing in the shipped code depends on it right now. |
+| L | Does the card come back, and what goes on it? | **Open.** Removed in the rebuild. Nothing currently shows the employee name or the milestone. |
+| M | How should the show scale to 10/15/20/25 years? | **Reopened.** The old one-rocket-per-year model is gone; the sequence is hard-wired to five fireworks. |
+| N | Should `index.html` be a landing page linking both demo and lab, instead of a redirect? | **Offered, unanswered.** |
+
+Resolved and kept for record: **B** one close control (confirmed sufficient) ·
+**C** once-only moved to the backend · **D** n/a, the fuse is gone · **E** true
+modal, backdrop blocks clicks and scroll is locked · **F** `prefers-reduced-motion`
+explicitly out of scope · **G** resize below 1024px → tear down (decided, still
+not implemented) · **H** prefix/location/demo page · **I** mount snippet carries
+the asset tags · **J** root mounts on `document.body`, avoiding the
+transform-ancestor clipping trap.
+
+---
+
+## Known issues, flagged not fixed
+
+- **Never confirmed visually.** Every check to date has been numeric via
+  `__lsaDev`; no one has reported back on how the show actually looks. Open
+  questions a numeric check cannot answer: whether 1×/1.5×/2× read as three
+  distinct sizes, whether the ~2.25 s ascent feels right, and whether the trail
+  dissolves rather than snaps.
+- **Ascent speed is coupled to sparkle gravity.** The rocket shares
+  `cfg.hanabi.gravity`, so speeding up the climb without changing how sparkles
+  fall needs a separate gravity value for the rocket.
+- **The CSS stacking comment is incomplete** — it reads
+  `0 backdrop < 2 canvas < 4 close button` but `.lsa-go` is also at `z-index: 4`.
+
+---
+
+## Change log — ARCHIVE
+
+> ⚠️ **EVERYTHING BELOW THIS LINE IS SUPERSEDED.**
+>
+> These entries describe the design as it was built between Step 1 and
+> "Step 8 (revised 6)". `lsa-experience.js` was then **emptied to 57 lines and
+> rebuilt from scratch** on the fireworks lab's engine, and almost none of the
+> code described below survived — no fuse, no cursor sparks, no card, no
+> generations, no LUT palettes, no tuning panel, no `YEARS`.
+>
+> It is kept because it is the decision record: it explains *why* choices were
+> made and which approaches were tried and rejected, which is genuinely useful
+> and would be lost otherwise. It is **not** documentation of the current code.
+>
+> **The current code is documented above this line, and only above it.**
+>
+> Sections such as "Liferay integration steps", "How to change the employee name
+> and the milestone", "Medallion assets", "Planned follow-ups", "Assumptions"
+> and the old "Open questions" table appear again further down in their
+> pre-rebuild form. Those are archived too. Their live replacements are above.
 
 ### Step 1 — Scaffold + handoff (complete)
 
