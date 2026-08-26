@@ -20,9 +20,14 @@ no congratulation card in the overlay at present** — see "What was removed".
 
 | File | Purpose | State |
 | --- | --- | --- |
-| `lsa-experience.js` | All overlay behaviour in one IIFE — viewport gate, mount, fireworks engine, GO sequence, teardown. | Working, ~936 lines |
+| `fireworks-engine.js` | The fireworks themselves — buffers, physics, rendering. Shared verbatim with the lab; there is no second copy. Exposes one global, `Fireworks`. | Working, ~1230 lines |
+| `lsa-experience.js` | Overlay behaviour in one IIFE — viewport gate, mount, tuned `cfg`, GO sequence, teardown. Drives the engine; contains none of it. | Working, ~430 lines |
 | `lsa-experience.css` | All overlay styles. Every selector prefixed `lsa-`, scoped under `.lsa-root`. | Working, 4 rules |
 | `lsa-mount.html` | Markup to paste into a Liferay Web Content fragment. | Working — `<link>`/`<script>` tags carry `REPLACE_WITH_ASSET_PATH` placeholders |
+
+> **Three assets ship, not two.** `fireworks-engine.js` has to be hosted
+> alongside `lsa-experience.js`, and has to load first — `lsa-mount.html`
+> already writes them in that order, with both `defer`red.
 | `handoff.md` | This document. | Live |
 | `progress.md` | Narrative status: what this is, constraints, decision log. | Live |
 
@@ -79,8 +84,20 @@ matches launch spacing. Ascent is ~2.25 s.
 
 ## Architecture
 
-The engine is the fireworks lab brought over as-is — **Hanabi**'s rendering
-model over **confetti.js**'s physics.
+The engine — **Hanabi**'s rendering model over **confetti.js**'s physics — lives
+in `fireworks-engine.js`, and the lab and the overlay both load that one file.
+It used to be copied into each, which is how the lab ended up with burst shapes
+and sub-blasts that production never got. There is now nothing to keep in step:
+a change to the engine reaches both the moment it is saved.
+
+What the overlay still owns is the *show* — the chrome, the tuned `cfg`, the GO
+sequence, teardown. What the lab still owns is its slider panel and its FPS
+readout. The seam between them is `cfg`, and moving a tuning session across it
+is a copy-paste of values, never of code — see "The lab" below.
+
+The engine does not start a `requestAnimationFrame` loop of its own. Each
+consumer drives `update(dt)` / `draw(dt)` from its own loop, which is what lets
+the overlay cancel cleanly on teardown.
 
 **Four offscreen buffers**, composited each frame onto the one visible canvas:
 
@@ -218,15 +235,52 @@ generations and the cascade (`GENERATIONS`, `breakGen`) · flashes ·
 
 ## The lab — `lab/fireworks-lab.html`
 
-Standalone harness with a 400 px control panel and click-to-burst, used to
-develop the engine that now ships in `lsa-experience.js`.
+Standalone harness with a 400 px control panel and click-to-burst. It loads
+`../fireworks-engine.js` — **the same file the overlay loads**, not a copy — and
+adds the slider panel, the FPS readout, auto-fire, and the config export.
 
 > It was treated as frozen for a while ("DO NOT TOUCH THE FIREWORKS LABS, ITS
 > WORKING PERFECTLY"). **That freeze has been lifted** — burst shapes and
-> sub-blasts were added on request. The engine underneath is unchanged, so it
-> is still a faithful reference for what production runs.
+> sub-blasts were added on request, and the engine has since been extracted out
+> of it into its own file.
 
-### Burst shapes and sub-blasts (lab only, not in production)
+### Moving a tuning session between the two — `Copy config`
+
+Slider state used to die with the tab, and the only route between the lab and
+the overlay was reading a number off a panel and retyping it. Both directions
+now go through the clipboard, and **both ends call the same serialiser in the
+engine** — `Fireworks.exportConfig` / `Fireworks.parseConfig` / `Fireworks.copyText`.
+
+| Direction | How |
+| --- | --- |
+| **lab → overlay** | `Copy config` in the lab panel, then paste over `cfg` in `lsa-experience.js` |
+| **overlay → lab** | `Copy config` in the overlay's dev panel, then paste into the lab's box and press **Apply pasted** |
+| **overlay → overlay** | Same button — paste back over `cfg` to keep what the dev panel just tuned, which otherwise dies on reload |
+
+**It moves values, not code.** The engine is one shared file that both already
+load, so values are the only thing a tuning session has to carry.
+
+Coming *into* the lab, only paths the panel has a control for are applied; the
+other 17 keys in an overlay config are dropped. That filter is deliberate — an
+overlay config carries `background: null` for its transparent composite, and
+applying that to the lab would leave the stage with no night sky to draw on.
+The show-only keys (`goColors`, `fireworkSize`, `goSequence`, `goHeight`) are
+dropped by the same rule, since the lab has nothing to do with them.
+
+The parser is tolerant of what people actually paste — comments, a leading
+`var cfg =`, a trailing semicolon — and it normalises to JSON rather than
+evaluating, so no pasted text is ever executed.
+
+`window.lab.exportConfig()` and `window.__lsaDev.cfg` reach the same data, if
+the clipboard is being awkward.
+
+### Burst shapes and sub-blasts
+
+These live in the engine, so production *can* run them — it just does not.
+`lsa-experience.js` sets neither `shape` nor `sub`, so both fall back to the
+engine's defaults (`normal`, sub-blasts off), which is exactly what the overlay
+rendered before the extraction. Turning either on in production is now a config
+change, not a port.
 
 The panel has a **Shape** section — `normal` / `star burst` / `concentric` /
 `squiggle` / `dbs sparks` — and a **Sub-blasts** section for secondary breaks.
@@ -328,12 +382,15 @@ time to rediscover:
 
 Settled and unchanged by the rebuild:
 
-- Two files, one `.css` and one `.js`. No inline `<script>`, no inline `style`
-  carrying logic — the page enforces a CSP.
+- One `.css` and (since the engine was extracted) **two** `.js`. No inline
+  `<script>`, no inline `style` carrying logic — the page enforces a CSP.
 - The CSS must load before the JS mounts, so the overlay never renders unstyled.
+- `fireworks-engine.js` must load before `lsa-experience.js`, which calls into
+  it. Both are `defer`red, and deferred scripts run in document order, so the
+  order they are written in the fragment is the order they execute.
 - The mount markup goes in a Web Content fragment.
 
-`lsa-mount.html` carries both asset tags with `REPLACE_WITH_ASSET_PATH`
+`lsa-mount.html` carries all three asset tags with `REPLACE_WITH_ASSET_PATH`
 placeholders, to be swapped for the real hosted URLs once hosting is decided.
 It correctly does **not** set `data-lsa-dev`.
 

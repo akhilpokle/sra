@@ -65,7 +65,8 @@ rocket to that point, for judging one firework in isolation.
 
 | File | Role |
 | --- | --- |
-| `lsa-experience.js` | All overlay behaviour, IIFE-wrapped (~936 lines) |
+| `fireworks-engine.js` | The fireworks engine — buffers, physics, rendering. Loaded by *both* the overlay and the lab; there is no second copy (~1230 lines) |
+| `lsa-experience.js` | Overlay behaviour, IIFE-wrapped — chrome, tuned `cfg`, GO sequence, teardown. Drives the engine, contains none of it (~430 lines) |
 | `lsa-experience.css` | All overlay styles, prefixed, scoped under `.lsa-root` |
 | `lsa-mount.html` | Mount markup + `<link>`/`<script>` tags for the Liferay Web Content fragment (placeholder asset paths — see handoff.md) |
 | `handoff.md` | Developer-facing integration reference |
@@ -73,7 +74,7 @@ rocket to that point, for judging one firework in isolation.
 | `lsa-demo.html` | **Not for Liferay.** 27-line harness loading the real CSS/JS over `bg.png`, with `data-lsa-dev` set. Zero inline scripts, so it cannot drift from the shipped code |
 | `index.html` | GitHub Pages entry point — a redirect to `lsa-demo.html`, deliberately not a second copy |
 | `bg.png` | **Placeholder only** — a screenshot of the intranet homepage. Not referenced by the overlay code itself |
-| `lab/fireworks-lab.html` | The fireworks lab — the tuning harness the shipped engine came from. Also carries burst shapes and sub-blasts, which production does not (see handoff.md) |
+| `lab/fireworks-lab.html` | The fireworks lab — slider panel, FPS readout, auto-fire, and a `Copy config` button. Loads the same `fireworks-engine.js` the overlay does (see handoff.md) |
 
 ## How it's being verified
 
@@ -107,7 +108,8 @@ wholesale. Kept below as the historical plan, not as a live tracker.
 | --- | --- |
 | Viewport gate, mount, backdrop, scroll lock, close, teardown | ✅ Working |
 | Canvas, four-buffer render pipeline, rAF loop, resize | ✅ Working |
-| Fireworks engine (Hanabi look + confetti physics, FPS_REF converted) | ✅ Working — ported verbatim from the lab |
+| Fireworks engine (Hanabi look + confetti physics, FPS_REF converted) | ✅ Working — now one shared `fireworks-engine.js`, no longer copied into the overlay |
+| Lab ↔ overlay config transport (`Copy config`) | ✅ Working both ways — values travel, the engine never does |
 | Rocket ascent + burst at apex | ✅ Working |
 | GO button + five-firework sequence | ✅ Working |
 | Click-to-launch (single rocket) | ✅ Working |
@@ -411,6 +413,63 @@ per-step change log entries.
     exactly 50 particles with no shell breaking twice. **Not verified visually**,
     like everything else in this project.
 
+25. **One engine file, two consumers.** The engine existed twice — inline in
+    `lab/fireworks-lab.html` and re-typed in `lsa-experience.js` — and the two
+    had already drifted: shapes and sub-blasts (decision #24) went into the lab
+    and never reached production, with nothing to flag it. Extracted verbatim
+    into `fireworks-engine.js`, which both now load. The lab keeps its slider
+    panel, FPS readout and auto-fire; the overlay keeps its chrome, GO sequence
+    and teardown. **A change to the engine now reaches both on save.**
+    The two copies had diverged in signature as well as in features, so the
+    extracted version takes the union: `spec` (hue set, white fraction,
+    per-firework scale) from the overlay, shapes and sub-blasts from the lab,
+    the rocket from the overlay. Where the lab passed a bare hue or scale, the
+    engine takes a `spec` — the lab passes none, so it falls back to
+    `cfg.hanabi.palette` and `cfg.scale` exactly as before. Two behavioural
+    seams that were hardcoded became config: the opaque navy composite is now
+    `cfg.background` (the overlay sets `null` for transparent, which was the one
+    thing it had had to change by hand), and the centre glow's hard edge is
+    `cfg.core.edge` (the overlay hardcoded 0.62, which is the lab's default).
+    **Deployment cost:** the Liferay fragment now hosts three assets, not two,
+    and the engine must load first. Alternative considered and deferred — a
+    concat step emitting one file — which buys a single asset at the price of a
+    build step this project otherwise does not have.
+
+26. **`Copy config` in the lab.** Slider state died with the tab, and the only
+    route into a project was reading a number off the panel and retyping it.
+    The button serialises the live `cfg` to a pasteable JS literal with a dated
+    header. **It exports values, not code** — the engine is already shared, so
+    values are the only thing a tuning session has to carry. The obvious larger
+    version (copy the engine *and* the config *and* integration instructions, so
+    fireworks can be pasted into any project) is deliberately deferred until
+    there is a second consumer: it is an addition on top of this extraction, not
+    an alternative to it, and it needs the engine separated from the lab chrome
+    before it can emit anything clean. Clipboard write falls back to
+    `execCommand` because the lab is routinely opened over `file://`.
+
+27. **Config transport runs both ways, and lives in the engine.** #26 only
+    carried values lab → project. The reverse was the gap that mattered day to
+    day: the overlay's dev panel writes into `cfg` in memory, so anything tuned
+    there died on reload with no way back to the lab or into the source file.
+    The overlay's panel now has the same `Copy config` button, and the lab has
+    a paste box with **Apply pasted**.
+    The serialiser, parser and clipboard helper sit in `fireworks-engine.js`
+    rather than in either consumer — putting a second copy of them in the
+    overlay would have been the same mistake as the engine itself, at smaller
+    scale. They are dev-only; nothing in a running show calls them.
+    **Coming into the lab, only paths the panel has a control for are applied**
+    — 46 of 63 from a config lifted out of the overlay's source, all 63 from a
+    running one, since the engine deep-fills the rest at construction. The
+    filter is what stops an overlay's `background: null` from stripping the
+    lab's night sky, and it drops the show-only keys (`goColors`,
+    `fireworkSize`, `goSequence`) for free.
+    The parser **normalises to JSON instead of evaluating** — `new Function`
+    would have been a third of the code, but this page is served on the public
+    web and "it is only a dev tool" is not a good enough reason to put an
+    arbitrary-code path in it. Verified by round-tripping the overlay's real
+    `cfg` — comments, numeric `fireworkSize` keys, the nested `goSequence`
+    array and `null` all survive intact.
+
 ---
 
 ## Next up — things we need to work on
@@ -434,8 +493,9 @@ Logged as a working list, not yet scoped into build steps.
   never solved either.
 - [ ] **Add the medallion.** Still blocked on client assets (Q-A), and now
   doubly: there is no card for it to live in.
-- [ ] **Final Liferay asset paths** for `lsa-mount.html`'s two
-  `REPLACE_WITH_ASSET_PATH` placeholders.
+- [ ] **Final Liferay asset paths** for `lsa-mount.html`'s three
+  `REPLACE_WITH_ASSET_PATH` placeholders — the CSS, `fireworks-engine.js`, and
+  `lsa-experience.js`, in that load order.
 - [ ] **Integration safety audit** — never started. Confirm no globals leak
   (beyond the opt-in `__lsaDev`), every listener is torn down, no selector can
   reach Liferay markup.
