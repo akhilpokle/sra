@@ -22,11 +22,19 @@
                         angle = random * 2pi  (sqrt = area-uniform disc)
      palettes           fire / blue / purple / random, jittered +-5 hue,
                         +-10 sat, +-10 light per sparkle
+     burst shapes       normal / ring / star burst / concentric, ported from
+                        engine 1 verbatim. A geometry answers exactly one
+                        question — for particle i, what angle and what fraction
+                        of maximum speed — so it costs one function and nothing
+                        else. `normal` is the original even disc unchanged.
 
    WHAT IS OUT, deliberately: smoke (a 4th buffer plus a radial gradient per
-   puff — by far the biggest per-frame cost), burst shapes, sub-blasts, the
-   detonation bloom, mass/flutter variance, layer isolation. If a show needs
-   any of those, it wants engine 1.
+   puff — by far the biggest per-frame cost), mass/flutter variance, layer
+   isolation. If a show needs any of those, it wants engine 1.
+
+   `squiggle`, engine 1's fifth shape, is out with them: it is not a launch
+   geometry at all — it carries a per-particle field and a term in the
+   integration loop, so it is a physics change rather than one more case.
 
    --------------------------------------------------------------------------
    THE ONE CONVERSION THAT MATTERS. Hanabi's constants are PER FRAME at 30fps.
@@ -83,6 +91,7 @@
 
   // Hanabi's constants are per-frame at this rate. See the header.
   var FPS_REF = 30;
+  var TAU = Math.PI * 2;
 
   // Hanabi's palettes as hue lists. Base saturation/lightness are a judgement
   // call — only the jitter ranges were recoverable from the reference — picked
@@ -127,6 +136,26 @@
     jitterHue: 5,
     jitterSat: 10,
     jitterLight: 10,
+
+    /* How the sparkles LEAVE the burst. Ported from engine 1, values included.
+       Only the launch geometry — physics, colour, life and rendering are
+       identical whichever is chosen, which is why a shape costs one function.
+
+       `normal` is the original even disc and is byte-for-byte what this engine
+       did before shapes existed, so nothing changes until something asks.
+
+       The two ring knobs are DIFFERENT things on different shapes, and the
+       names are engine 1's: `ringThickness` is how deep the single `ring`
+       shell is, `ringWidth` is the +/- spread around each of `concentric`'s
+       several bands. */
+    shape: {
+      type: 'normal',       // normal | ring | star burst | concentric
+      starPoints: 5,
+      starInner: 0.3,
+      rings: 3,
+      ringWidth: 0.04,
+      ringThickness: 0.08
+    },
 
     deltaCap: 0.064,        // clamp on dt, so a stalled tab resumes not teleports
 
@@ -193,6 +222,56 @@
   };
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  /* ---- Burst shapes -----------------------------------------------------
+     Ported from engine 1 unchanged, squiggle excepted — see the header.
+
+     A shape answers ONE question and nothing else: for particle `i`, at what
+     angle does it leave, and at what fraction of maximum speed. Everything
+     downstream — drag, gravity, life, hue, how it is drawn — is identical
+     whatever comes back. That is the whole reason a new geometry is cheap:
+     it is a case in a switch, not a feature.
+
+     Both functions are pure, so they sit at module level and are shared by
+     every instance rather than being rebuilt per canvas. */
+
+  function starRadius(angle, points, inner) {
+    var seg = TAU / points;
+    var t = (angle % seg) / seg;    // position within one point, 0..1
+    var d = Math.abs(t - 0.5) * 2;  // 0 at the tip, 1 at the valley
+    return 1 - d * (1 - inner);
+  }
+
+  function shapePoint(i, S, type) {
+    switch (type) {
+      // A hollow hoop: every spark starts at the outer edge, so the middle
+      // stays empty instead of filling in. `concentric` with one ring is a
+      // near neighbour, but this is the shape people actually reach for and
+      // it should not need discovering.
+      case 'ring':
+        return [Math.random() * TAU, 1 - Math.random() * S.ringThickness];
+
+      case 'star burst': {
+        var sa = Math.random() * TAU;
+        return [sa, Math.sqrt(Math.random()) * starRadius(sa, Math.round(S.starPoints), S.starInner)];
+      }
+
+      case 'concentric': {
+        // i % rings rather than a random ring: interleaving fills every ring
+        // evenly instead of leaving the count to chance.
+        var rings = Math.round(S.rings);
+        var band = ((i % rings) + 1) / rings;
+        return [Math.random() * TAU, band + (Math.random() - 0.5) * 2 * S.ringWidth];
+      }
+
+      // sqrt gives uniform density per unit AREA. A plain uniform radius piles
+      // particles toward the centre and reads as a hollow-cored blob; this
+      // fills the disc evenly. This is exactly what spawnSparkles() did before
+      // shapes existed, which is what makes `normal` a no-op.
+      default:
+        return [Math.random() * TAU, Math.sqrt(Math.random())];
+    }
+  }
 
   // Fill in every key the caller left out, one level into objects.
   function fill(dst, src) {
@@ -364,9 +443,17 @@
       // Never more shells than there are sparkles to make shells out of.
       var shells = cfg.sub.enabled ? Math.min(Math.round(cfg.sub.count), n) : 0;
 
+      // A shape belongs to the burst, not to the sparkle, so both are read
+      // once out here rather than per particle.
+      var S = cfg.shape;
+      var type = S.type;
+
       for (var i = 0; i < n; i++) {
-        var r = Math.sqrt(Math.random()) * speed;
-        var a = Math.random() * Math.PI * 2;
+        // Angle, and speed as a FRACTION of this burst's maximum. Everything
+        // below is identical whatever the shape returned.
+        var g = shapePoint(i, S, type);
+        var a = g[0];
+        var r = g[1] * speed;
         var p = spawn(x, y, Math.cos(a) * r, Math.sin(a) * r, spec);
         if (!p) break;   // pool is full; the rest of this burst would drop anyway
 

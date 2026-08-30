@@ -22,7 +22,37 @@
 }
 
 /* Stacking order inside .lsa-root, back to front:
-     0 backdrop (blue)  <  1 card  <  2 black  <  3 canvas  <  4 buttons     */
+     -1 ambient  <  0 backdrop (blue)  <  1 card  <  2 black  <  3 canvas
+     <  4 buttons                                                            */
+
+/* The background fireworks, BEHIND the blue veil.
+
+   Negative z-index, which keeps it inside .lsa-root's own stacking context —
+   the root's z-index creates one — rather than escaping behind the live page.
+   It paints under .lsa-backdrop, so everything drawn here is seen THROUGH that
+   veil: blurred by its backdrop-filter and muted by its 60% gradient. That is
+   the whole intent. These are distant fireworks, not a second show competing
+   with the one in front.
+
+   THE CONSEQUENCE TO KNOW ABOUT: they are heavily damped by the time they
+   reach the eye, so values that read fine on the main canvas can be close to
+   invisible here. Size and brightness are the two to reach for first.
+
+   To put them in FRONT of the blue veil instead — sharp, undimmed, still
+   behind the card — this z-index becomes 1 and the card, black and canvas
+   each go up by one. That is the only change it takes.
+
+   No pointer events. The main canvas takes clicks; this one is scenery and
+   must never intercept anything. */
+.lsa-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 
 .lsa-backdrop {
   position: absolute;

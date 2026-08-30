@@ -65,19 +65,27 @@
    transparent instead and the browser layers the result over what follows.
 
    --------------------------------------------------------------------------
-   THE FIVE LAYERS, front to back. Built here, ordered by z-index in the CSS:
+   THE LAYERS, front to back. Built here, ordered by z-index in the CSS:
 
-     1  fireworks   .lsa-canvas    z 3   transparent composite, always on top
-     2  black       .lsa-black     z 2   opaque; the show clears it in thirds
-     3  card        .lsa-card      z 1   medallion + message, never fades
-     4  blue        .lsa-backdrop  z 0   blurred veil, constant throughout
-     5  intranet    —                    the live page, behind .lsa-root
+     1  fireworks   .lsa-canvas    z  3   transparent composite, always on top
+     2  black       .lsa-black     z  2   opaque; the show clears it in thirds
+     3  card        .lsa-card      z  1   medallion + message, never fades
+     4  blue        .lsa-backdrop  z  0   blurred veil, constant throughout
+     5  ambient     .lsa-ambient   z -1   background fireworks, seen THROUGH
+                                          the blue veil; starts at the reveal
+     6  intranet    —                     the live page, behind .lsa-root
 
    The order is the design: the fireworks sit in FRONT of the black, so they
    burn at full brightness against it while the card behind it is hidden. Each
    burst clears a third of the black, and the card emerges from behind it. Move
    the black above the canvas and it dims the fireworks too, which is the exact
    opposite of the intent.
+
+   Layer 5 is the newest, and the only one BEHIND the blue veil — which is what
+   makes it read as distance, since it is blurred and muted by the same veil
+   that blurs the page. It runs on its own Fireworks2 instance with its own
+   config, so nothing about it can disturb the show in front. See "Background
+   fireworks" further down.
    ========================================================================== */
 
 (function () {
@@ -112,6 +120,14 @@
 
   var root = document.createElement('div');
   root.className = 'lsa-root';
+
+  /* The background fireworks, built FIRST because it sits furthest back — the
+     one element in the overlay that paints behind the blue veil rather than in
+     front of it. Nothing is drawn on it until the reveal finishes; see the
+     "Background fireworks" section below. */
+  var ambCanvas = document.createElement('canvas');
+  ambCanvas.className = 'lsa-ambient';
+  root.appendChild(ambCanvas);
 
   // The overlay itself: a blurred gradient veil over whatever the page is
   // showing underneath.
@@ -395,6 +411,22 @@
       glow: true
     },
 
+    /* ---- Burst shape ------------------------------------------------------
+       The whole show's default, which is the engine's own even disc. Stated
+       here rather than left to fall through for the same reason `sub` is: the
+       five per-firework rows below now carry `shape.*` keys, and a reader
+       comparing the two should be able to see both ends.
+
+       Only firework 3 overrides it. The other four run exactly this. */
+    shape: {
+      type: 'normal',       // normal | ring | star burst | concentric
+      starPoints: 5,
+      starInner: 0.3,
+      rings: 3,
+      ringWidth: 0.04,
+      ringThickness: 0.08
+    },
+
     /* ---- The GO sequence ------------------------------------------------
        Below here is this file's own, and the engine reads none of it. Colour
        sets are hue lists, in the same form as the engine's PALETTES. `white`
@@ -446,6 +478,12 @@
         'sizeSpread': 0.5,
         'lifeDecay': 0.024,
         'lifeSpread': 0.35,
+        'shape.type': 'normal',
+        'shape.ringThickness': 0.08,
+        'shape.starPoints': 5,
+        'shape.starInner': 0.3,
+        'shape.rings': 3,
+        'shape.ringWidth': 0.04,
         'jitterHue': 5,
         'jitterSat': 10,
         'jitterLight': 10,
@@ -462,6 +500,12 @@
         'sizeSpread': 0.5,
         'lifeDecay': 0.024,
         'lifeSpread': 0.35,
+        'shape.type': 'normal',
+        'shape.ringThickness': 0.08,
+        'shape.starPoints': 5,
+        'shape.starInner': 0.3,
+        'shape.rings': 3,
+        'shape.ringWidth': 0.04,
         'jitterHue': 5,
         'jitterSat': 10,
         'jitterLight': 10,
@@ -478,6 +522,12 @@
         'sizeSpread': 0.5,
         'lifeDecay': 0.024,
         'lifeSpread': 0.35,
+        'shape.type': 'normal',
+        'shape.ringThickness': 0.08,
+        'shape.starPoints': 5,
+        'shape.starInner': 0.3,
+        'shape.rings': 3,
+        'shape.ringWidth': 0.04,
         'jitterHue': 5,
         'jitterSat': 10,
         'jitterLight': 10,
@@ -494,6 +544,12 @@
         'sizeSpread': 0.5,
         'lifeDecay': 0.024,
         'lifeSpread': 0.35,
+        'shape.type': 'normal',
+        'shape.ringThickness': 0.08,
+        'shape.starPoints': 5,
+        'shape.starInner': 0.3,
+        'shape.rings': 3,
+        'shape.ringWidth': 0.04,
         'jitterHue': 5,
         'jitterSat': 10,
         'jitterLight': 10,
@@ -504,15 +560,32 @@
         'sub.delay': 0.7
       },
 
-      // The centre firework, tuned in its own session: the finer, tighter,
-      // faster-dying one of the five.
+      /* The centre firework, and now the only one that is not a plain sphere:
+         a six-point STAR BURST, thrown wider and heavier than it used to be.
+
+         It moved a long way in the session that set the shape. It was the
+         fine, tight, fast-dying one; it is now the big loose one — the spread
+         went 14.5 -> 18.5, the shards 0.2 -> 0.5, and it dies slower (0.035 ->
+         0.029) with more spread on that (0.15 -> 0.25). A star needs the extra
+         reach and the extra life or the points never get far enough out to
+         read as points.
+
+         Only `starPoints` and `starInner` do anything at this shape. The ring
+         and concentric values below them are carried by the dev panel's dump,
+         which writes every control it has rather than only the live ones. */
       3: {
         'count': 200,
-        'explosionSize': 14.5,
-        'size': 0.2,
-        'sizeSpread': 0.15,
-        'lifeDecay': 0.035,
-        'lifeSpread': 0.15,
+        'explosionSize': 18.5,
+        'size': 0.5,
+        'sizeSpread': 0.3,
+        'lifeDecay': 0.029,
+        'lifeSpread': 0.25,
+        'shape.type': 'star burst',
+        'shape.ringThickness': 0.42,
+        'shape.starPoints': 6,
+        'shape.starInner': 0.45,
+        'shape.rings': 6,
+        'shape.ringWidth': 0.16,
         'jitterHue': 5,
         'jitterSat': 10,
         'jitterLight': 10,
@@ -535,7 +608,131 @@
       { x: 0.30, at: 500,  color: 'gold', n: 2 },
       { x: 0.70, at: 500,  color: 'gold', n: 4 },
       { x: 0.50, at: 1000, color: 'mix',  n: 3 }
-    ]
+    ],
+
+    /* ---- Background fireworks · WHEN ------------------------------------
+       The scheduling half: how often one goes off and where it is allowed to
+       go off. Read live, so changing any of it mid-run changes the next gap
+       rather than waiting for a replay.
+
+       They start the moment the reveal finishes and run until teardown. There
+       is no end condition on purpose — the card is out by then and this is
+       what the stage settles into. */
+    ambient: {
+      enabled: true,
+      every: 1.4,           // s · mean gap between bursts
+      vary: 0.6,            // +/- fraction of it, so the rhythm is not a metronome
+      top: 0.12,            // burst band, as fractions of canvas height:
+      bottom: 0.55,         //   never right at the ceiling, never down at the GO button
+      margin: 0.08          // keep bursts this fraction of the width in from either edge
+    },
+
+    /* ---- Background fireworks · LOOK ------------------------------------
+       The ambient canvas runs a SECOND Fireworks2 instance, and this is that
+       instance's entire config — the same schema as the top of this object,
+       not a subset of it. The two engines share nothing: no buffers, no pool,
+       no settings. Tuning one cannot disturb the other.
+
+       ** THESE ARE PLACEHOLDERS. ** They are a plain, slightly smaller version
+       of the main show, chosen only so the feature has something to draw until
+       the real numbers arrive. Replace the whole object.
+
+       `background: null` for the same reason the main config has it: the
+       composite must clear to transparent or it paints over the page.
+
+       Remember what these are seen through. The blue veil blurs this canvas by
+       8px and sits over it at 60% opacity, so everything here lands softer and
+       dimmer than the same numbers do on the main canvas. */
+    ambientLook: {
+      background: null,
+
+      /* `palette` IS READ BY NOTHING. It is here because Copy config dumps the
+         filled config, defaults included, and this came back in that dump —
+         not because it does anything. Every ambient burst is handed an explicit
+         one-entry `hues` spec (see ambientTick()) and a spec always beats the
+         palette, which is also why the panel has no colour-set control for
+         these. Changing it will appear to do nothing, correctly. */
+      palette: 'fire',
+
+      scale: 3,             // yours, not a placeholder
+      count: 120,
+      explosionSize: 9,
+      poolMax: 1200,
+
+      gravity: 0.2,
+      drag: 0.9,
+      lifeDecay: 0.02,
+      lifeSpread: 0.35,
+
+      size: 0.9,
+      sizeSpread: 0.5,
+
+      trailFade: 0.14,
+      trailAlpha: 0.7,
+      glowDownscale: 4,
+      glowAlpha: 0.5,
+
+      /* All three at zero, which is what makes the colour STATIC: every sparkle
+         in a burst comes out at exactly the rolled hue, at BASE_SAT 90 and
+         BASE_LIGHT 62, with no spread around any of the three. Raise jitterHue
+         to loosen the burst back into a band of neighbouring colours. */
+      jitterHue: 0,
+      jitterSat: 0,
+      jitterLight: 0,
+
+      blast: {
+        enabled: true,
+        lead: 45,
+        radius: 70,
+        peak: 0.6,
+        rise: 0.06,
+        hold: 0.15,
+        decay: 1.8,
+        growth: 1.1,
+        stack: 1
+      },
+
+      /* The tail of the Copy config dump: engine defaults that came back
+         filled in. None of them is doing anything today, and all four are kept
+         so that re-dumping this object produces the same text rather than a
+         diff nobody made.
+
+         `shape`   the background bursts are plain spheres. Nothing aims a
+                   shape at them — that was scoped to firework 3 — but the key
+                   exists on every engine config, so it serialises.
+         `rocket`  DEAD for this canvas. ambientTick() calls burst(), never
+                   launch(), so no rocket is ever built here and none of these
+                   three is read.
+         `sub`     off, same as the show in front.
+         `deltaCap` DEAD for this canvas too: the rAF loop clamps its delta
+                   once, against the MAIN cfg, and hands the same dt to both
+                   engines. This instance never reads its own. */
+      shape: {
+        type: 'normal',
+        starPoints: 5,
+        starInner: 0.3,
+        rings: 3,
+        ringWidth: 0.04,
+        ringThickness: 0.08
+      },
+
+      deltaCap: 0.064,
+
+      rocket: {
+        size: 4,
+        launchY: 1,
+        light: 88
+      },
+
+      sub: {
+        enabled: false,
+        count: 6,
+        delay: 0.7,
+        particles: 30,
+        scale: 0.3,
+        glow: true
+      }
+    }
   };
 
   /* ---- The engine -------------------------------------------------------
@@ -553,6 +750,25 @@
      show-only keys (goSequence, goColors, fireworkSize, goHeight) survive the
      copy untouched, since the engine only ever adds to what it is given. */
   cfg = fw.cfg;
+
+  /* ---- Background fireworks · the second engine -------------------------
+     A separate Fireworks2 on a separate canvas, because the engine draws to
+     the one canvas it is handed and these have to land at a different depth in
+     the stack. There is no way to split one instance across two z-indexes.
+
+     What it costs: a second set of buffers — particle, trail and glow — sized
+     to the viewport, plus a second pool. That is the price of the layer, and
+     it is why ambientLook's poolMax is set well under the main show's.
+
+     The same reassignment trick as above, and load-bearing for the same
+     reason: the constructor deep-copies what it is handed, so the literal is
+     not the object the engine reads. Pointing cfg.ambientLook at the engine's
+     own copy does two jobs at once — the panel's controls reach the running
+     canvas, AND Copy config dumps the live values, because ambientLook is a
+     property of `cfg` like any other. Without it a tuning session on these
+     would vanish on reload with nothing to show it had happened. */
+  var amb = Fireworks2(ambCanvas, cfg.ambientLook);
+  cfg.ambientLook = amb.cfg;
 
   /* ==== Per-firework settings ==============================================
 
@@ -620,6 +836,30 @@
     // legal per firework — it is the same knob in a different form.
     { path: 'lifeDecay', label: 'How fast they die', min: 0.002, max: 0.05, step: 0.001 },
     { path: 'lifeSpread', label: 'Lifetime variety', min: 0, max: 0.9, step: 0.05 },
+
+    /* Read inside spawnSparkles(), which runs within this firework's settings
+       window — the same instant `count` and `explosionSize` are read — so the
+       shape is aimable exactly like they are. Nothing new was needed in
+       buildBreaks() for it.
+
+       The panel is schema-driven and the tabs share one table, so these rows
+       exist on all five tabs and every row defaults to `normal`. That default
+       is the engine's original even disc, so the other four fireworks are
+       unchanged until somebody deliberately changes them. Firework 3 is the
+       one this was wanted for; which shape it gets is yours to pick, and no
+       shape has been chosen here.
+
+       The four geometry knobs below each belong to ONE shape and do nothing on
+       the others. Engine 1 hid the irrelevant ones with a `showFor` mechanism
+       that was dropped in the port, so they are simply always visible. */
+    { head: 'Shape' },
+    { path: 'shape.type', label: 'Burst shape',
+      options: ['normal', 'ring', 'star burst', 'concentric'] },
+    { path: 'shape.ringThickness', label: 'Hoop depth · ring', min: 0.01, max: 1, step: 0.01 },
+    { path: 'shape.starPoints', label: 'Points · star burst', min: 3, max: 12, step: 1 },
+    { path: 'shape.starInner', label: 'Waist · star burst', min: 0.05, max: 0.95, step: 0.05 },
+    { path: 'shape.rings', label: 'Bands · concentric', min: 2, max: 8, step: 1 },
+    { path: 'shape.ringWidth', label: 'Band spread · concentric', min: 0, max: 0.3, step: 0.01 },
 
     { head: 'Colour spread' },
     { path: 'jitterHue', label: 'Hue', min: 0, max: 60, step: 1 },
@@ -698,6 +938,53 @@
     { kind: 'global', path: 'rocket.size', label: 'Rocket thickness', min: 1, max: 12, step: 0.5 },
     { kind: 'global', path: 'rocket.launchY', label: 'Launches from', min: 0.5, max: 1, step: 0.01 },
     { kind: 'global', path: 'rocket.light', label: 'How hot it burns', min: 50, max: 100, step: 1 }
+  ];
+
+  /* The background fireworks — the ones behind the blue veil, which start when
+     the reveal finishes. Appended after SHOW_SETTINGS, so they sit at the
+     bottom of the panel under their own heading, and they are visible on every
+     tab: none of this belongs to one of the five fireworks.
+
+     TWO KINDS IN ONE TABLE, and the split matters:
+
+       'global'   the SCHEDULE — when and where. These live on cfg.ambient,
+                  which is show-owned, exactly like goSequence.
+       'ambient'  the LOOK. These live on the second engine's own config, and
+                  the identical key on the main cfg is a different value on a
+                  different canvas. Changing 'How many' here cannot touch the
+                  show in front.
+
+     Both halves are carried by Copy config: the first because it is on `cfg`,
+     the second because cfg.ambientLook points at the live engine object. */
+  var AMBIENT_SETTINGS = [
+    { head: 'Background fireworks' },
+    { note: 'Behind the blue veil, so they are blurred and dimmed by it. ' +
+            'They begin when the reveal finishes and run until the overlay ' +
+            'closes. RESET silences them.' },
+
+    { kind: 'global', path: 'ambient.enabled', label: 'On', bool: true },
+    { kind: 'global', path: 'ambient.every', label: 'One every (s)', min: 0.2, max: 6, step: 0.1 },
+    { kind: 'global', path: 'ambient.vary', label: 'Timing variety', min: 0, max: 1, step: 0.05 },
+    { kind: 'global', path: 'ambient.top', label: 'Highest they go', min: 0, max: 1, step: 0.01 },
+    { kind: 'global', path: 'ambient.bottom', label: 'Lowest they go', min: 0, max: 1, step: 0.01 },
+    { kind: 'global', path: 'ambient.margin', label: 'Clear of the edges', min: 0, max: 0.4, step: 0.01 },
+
+    { head: 'Background fireworks · look' },
+    { note: 'A second engine with its own config. Nothing here reaches the ' +
+            'five fireworks in front. Each burst takes one flat colour rolled ' +
+            'from the whole hue wheel, so there is no colour set to choose.' },
+
+    { kind: 'ambient', path: 'scale', label: 'Size', min: 0.3, max: 5, step: 0.05 },
+    { kind: 'ambient', path: 'count', label: 'How many', min: 20, max: 600, step: 10 },
+    { kind: 'ambient', path: 'explosionSize', label: 'How far they fly', min: 1, max: 30, step: 0.5 },
+    { kind: 'ambient', path: 'size', label: 'Sparkle thickness', min: 0.2, max: 6, step: 0.1 },
+    { kind: 'ambient', path: 'lifeDecay', label: 'How fast they die', min: 0.002, max: 0.05, step: 0.001 },
+    { kind: 'ambient', path: 'trailAlpha', label: 'Trail strength', min: 0, max: 1, step: 0.05 },
+    { kind: 'ambient', path: 'glowAlpha', label: 'Glow strength', min: 0, max: 2, step: 0.05 },
+    { kind: 'ambient', path: 'blast.enabled', label: 'Flash at the break', bool: true },
+    { kind: 'ambient', path: 'blast.radius', label: 'Flash size', min: 20, max: 400, step: 10 },
+    { kind: 'ambient', path: 'blast.peak', label: 'How bright', min: 0, max: 3, step: 0.05 },
+    { kind: 'ambient', path: 'blast.stack', label: 'Draw it on itself (x)', min: 1, max: 10, step: 1 }
   ];
 
   function readPath(o, path) {
@@ -1003,8 +1290,76 @@
       black.classList.remove(REVEAL_STEPS[i]);
     }
     revealed = 0;
+    ambNext = 0;
+    amb.clear();
 
     goBtn.disabled = false;
+  }
+
+  /* ---- Background fireworks · the scheduler -----------------------------
+     Random in both senses the ask has: a random moment, and a random place.
+
+     GATED ON THE REVEAL, not on the clock and not on GO. The condition is
+     `revealed >= REVEAL_STEPS.length` — the same counter stepReveal() drives —
+     so these begin on the exact frame the veil finishes clearing and the card
+     lands. Tying it to a time instead would drift the moment the sequence is
+     retimed, and tying it to GO would put them on screen during the ascent,
+     where they would be hidden behind opaque black anyway.
+
+     That gate is also the whole of the stop condition. RESET puts `revealed`
+     back to 0, which silences this on the next frame without needing to know
+     anything about it.
+
+     `ambNext` starts at 0, so the first burst lands on the reveal frame rather
+     than one gap after it. */
+  var ambNext = 0;        // seconds until the next background burst
+
+  function ambientGap() {
+    var A = cfg.ambient;
+    // Never zero or negative, however the vary slider is set: a gap of 0 would
+    // burst every frame and empty the pool in well under a second.
+    return Math.max(0.05, A.every * (1 + (Math.random() * 2 - 1) * A.vary));
+  }
+
+  function ambientTick(dt) {
+    var A = cfg.ambient;
+    if (!A.enabled || revealed < REVEAL_STEPS.length) return;
+
+    ambNext -= dt;
+    if (ambNext > 0) return;
+
+    /* burst(), not launch(). These are meant to read as distant fireworks
+       already in the sky, and a rocket climbing from the bottom of the screen
+       would draw the eye down and across the card rather than settling behind
+       it. Bursting outright also costs nothing to aim: the band below is where
+       the light appears, full stop, with no ascent to solve for.
+
+       ONE COLOUR PER BURST, ANYWHERE ON THE WHEEL. The hue is rolled here and
+       handed over as a single-entry `hues` list, which pickHue() then returns
+       for every sparkle in the burst — and for its flash, which reads the same
+       spec, so the bloom matches the debris it throws.
+
+       It has to be done this way round. `palette: 'random'` looks like the
+       same thing and is not: pickHue() runs PER PARTICLE, so that setting
+       rolls a fresh hue for every sparkle and a burst comes out as confetti
+       rather than as one colour. A spec is the only way to fix a hue for the
+       whole burst. The instance's own `palette` is dead as a result — a spec
+       with hues always wins — which is why the panel has no colour-set control
+       for these.
+
+       `scale` is deliberately left off the spec: scaleOf() takes spec.scale OR
+       cfg.scale, so omitting it lets ambientLook.scale keep governing. Putting
+       a number here would silently cut the Size slider out of the loop. */
+    var w = ambCanvas.clientWidth;
+    var h = ambCanvas.clientHeight;
+    var m = A.margin * w;
+    var band = Math.max(0, A.bottom - A.top);
+
+    amb.burst(m + Math.random() * Math.max(1, w - m * 2),
+              (A.top + Math.random() * band) * h,
+              { hues: [Math.random() * 360] });
+
+    ambNext = ambientGap();
   }
 
   // ---- Loop ----
@@ -1057,6 +1412,15 @@
       if (runClock > breaksEnd) runClock = -1;
     }
 
+    /* AFTER stepReveal, so the frame that finishes the reveal is also the frame
+       the first background burst can fire on. Before it, `revealed` is still
+       one short and this returns immediately.
+
+       Outside the applyLook / restoreLook window above on purpose: that swap
+       belongs to the main engine's config, and this instance has its own. */
+    ambientTick(dt);
+    amb.update(dt);
+
     // After the engine, so a rocket launched on this frame is first integrated
     // on the next one — the same ordering the sequence has always had.
     updateSequence(dt);
@@ -1071,6 +1435,9 @@
       goBtn.disabled = false;
     }
 
+    // Separate canvases, so the order of these two is a formality — but they
+    // are written back to front, the way the layers are built.
+    amb.draw(dt);
     fw.draw(dt);
   }
 
@@ -1143,6 +1510,8 @@
     function getVal(def) {
       if (def.kind === 'size') return cfg.fireworkSize[current];
       if (def.kind === 'global') return readPath(cfg, def.path);
+      // The second engine's own config, not a branch of the main one.
+      if (def.kind === 'ambient') return readPath(cfg.ambientLook, def.path);
       if (def.kind === 'color') { var r = seqRowOf(); return r ? r.color : ''; }
       return lookOf()[def.path];
     }
@@ -1150,6 +1519,7 @@
     function setVal(def, v) {
       if (def.kind === 'size') { cfg.fireworkSize[current] = v; return; }
       if (def.kind === 'global') { writePath(cfg, def.path, v); return; }
+      if (def.kind === 'ambient') { writePath(cfg.ambientLook, def.path, v); return; }
       if (def.kind === 'color') { var r = seqRowOf(); if (r) r.color = v; return; }
       lookOf()[def.path] = v;
     }
@@ -1244,7 +1614,7 @@
       });
     }
 
-    FIREWORK_SETTINGS.concat(SHOW_SETTINGS).forEach(addRow);
+    FIREWORK_SETTINGS.concat(SHOW_SETTINGS).concat(AMBIENT_SETTINGS).forEach(addRow);
 
     /* Re-reads every control from whichever firework is selected.
 
@@ -1342,7 +1712,9 @@
     canvas.removeEventListener('click', onCanvasClick);
     root.removeEventListener('mousemove', onStageMove);
     cancelAnimationFrame(rafId);
-    fw.destroy(); // the engine owns the resize listener and the observer
+    // Both engines, each of which owns its own resize listener and observer.
+    fw.destroy();
+    amb.destroy();
     root.remove();
     document.body.style.overflow = previousOverflow;
   }
@@ -1357,6 +1729,7 @@
     window.__lsaDev = {
       cfg: cfg,
       fw: fw,
+      amb: amb,             // the background canvas's own engine
       burst: fw.burst,
       launch: fw.launch,
       stats: fw.stats,
