@@ -20,14 +20,21 @@ no congratulation card in the overlay at present** — see "What was removed".
 
 | File | Purpose | State |
 | --- | --- | --- |
-| `fireworks-engine.js` | The fireworks themselves — buffers, physics, rendering. Shared verbatim with the lab; there is no second copy. Exposes one global, `Fireworks`. | Working, ~1230 lines |
+| `fireworks-engine-2.js` | The fireworks themselves — buffers, physics, rendering. **Engine 2, the light one.** Shared verbatim with `lab/fireworks-lab-2.html`; there is no second copy. Exposes one global, `Fireworks2`. | Working, ~480 lines |
 | `lsa-experience.js` | Overlay behaviour in one IIFE — viewport gate, mount, tuned `cfg`, GO sequence, teardown. Drives the engine; contains none of it. | Working, ~430 lines |
 | `lsa-experience.css` | All overlay styles. Every selector prefixed `lsa-`, scoped under `.lsa-root`. | Working, 4 rules |
 | `lsa-mount.html` | Markup to paste into a Liferay Web Content fragment. | Working — `<link>`/`<script>` tags carry `REPLACE_WITH_ASSET_PATH` placeholders |
 
-> **Three assets ship, not two.** `fireworks-engine.js` has to be hosted
+> **Three assets ship, not two.** `fireworks-engine-2.js` has to be hosted
 > alongside `lsa-experience.js`, and has to load first — `lsa-mount.html`
 > already writes them in that order, with both `defer`red.
+>
+> **The overlay moved from engine 1 to engine 2.** `fireworks-engine.js` is
+> still in the repo and still drives `lab/fireworks-lab.html`, but **nothing in
+> the deliverable loads it any more**. Hosting the wrong engine gives a page
+> with a script defining a global nothing calls, and an overlay that throws on
+> load. What went with the swap — smoke, the centre glow, burst shapes,
+> sub-blasts — is listed under "Engine 2" below.
 | `handoff.md` | This document. | Live |
 | `progress.md` | Narrative status: what this is, constraints, decision log. | Live |
 
@@ -38,7 +45,9 @@ no congratulation card in the overlay at present** — see "What was removed".
 | `lsa-demo.html` | Local/hosted harness. 27 lines: loads the **real** CSS+JS over `bg.png`, sets `data-lsa-dev` on `<html>`. Zero inline scripts, so it cannot drift from the shipped code. Never deploy. |
 | `index.html` | GitHub Pages entry point. A redirect to `lsa-demo.html`, deliberately **not** a second copy of the harness. |
 | `bg.png` | **Placeholder** screenshot of the intranet homepage, standing in for the live page. |
-| `lab/fireworks-lab.html` | The fireworks lab — the tuning harness the shipped engine was developed in. See "The lab" below. |
+| `fireworks-engine.js` | **Engine 1.** The overlay's engine until the swap, and still the one `lab/fireworks-lab.html` drives. Kept so the swap is reversible and so its lab keeps working. Nothing shipped loads it. |
+| `lab/fireworks-lab.html` | Engine 1's lab — the tuning harness the overlay's look was originally developed in. See "The lab" below. |
+| `lab/fireworks-lab-2.html` | Engine 2's lab. Same panel idiom as the main lab, 32 controls, one per key engine 2 reads. **This is the one that matches production now.** |
 
 > **`bg.png` will be replaced by the actual intranet.** In production there is no
 > background image: the real Liferay page is the backdrop, live in the DOM behind
@@ -53,6 +62,15 @@ no congratulation card in the overlay at present** — see "What was removed".
 2. Builds `.lsa-root` and appends it to `document.body`; locks page scroll.
 3. Shows a blurred gradient backdrop, a gold **GO** button (bottom-centre) and a
    circular close button (top-right).
+   - **The backdrop starts at full strength and pulls back to 60% at the first
+     break**, over 0.8 s — `.lsa-backdrop--dim`, added from `frame()`. It fires
+     on the first burst, *not* on the GO press: the rocket climbs for over two
+     seconds first, and dimming during the ascent reads as the overlay closing
+     rather than as the sky lighting up. A canvas click counts too. **One-way
+     for the life of the overlay** — a second GO starts from 60%.
+   - `opacity` groups the element, so this fades the `backdrop-filter` blur
+     along with the gradient: the page behind comes back both lighter and
+     sharper.
 4. **GO** runs a five-firework sequence. Each row launches a rocket that rises
    and bursts at apex.
 5. **Clicking the canvas** launches a single rocket that bursts where you
@@ -178,35 +196,44 @@ Everything tunable is in one object at the top of `lsa-experience.js`, read
 **live** (per frame / per spawn), so changing a value at runtime changes the
 show while it is running.
 
+**`cfg` is engine 2's shape now, and it is flat** — the old `hanabi.*` /
+`confetti.*` nesting is gone, along with `core.*`, `shape.*` and `sub.*`.
+
 | Path | Default | What it does |
 |---|---|---|
-| `scale` | 1 | Global size — multiplies burst spread and shard size together |
-| `hanabi.layer` | `composite` | Isolate a layer: `particles` / `trail` / `glow` / `smoke` |
-| `hanabi.palette` | `fire` | Fallback palette for click-bursts: `fire` / `blue` / `purple` / `random` |
-| `hanabi.count` | 200 | Sparkles per burst |
-| `hanabi.explosionSize` | 10 | Burst spread |
-| `hanabi.poolMax` | 2000 | Hard particle cap |
-| `hanabi.gravity` | 0.2 | Per-frame² — also drives rocket ascent |
-| `hanabi.drag` | 0.9 | Per-frame; sparkles only, not the rocket |
-| `hanabi.lifeDecay` | 0.01 | Per-frame → 3.33 s base life |
-| `hanabi.trailFade` | 0.05 | Erase rate |
-| `hanabi.trailAlpha` | 0.6 | How strongly particles stamp into the trail |
-| `hanabi.glowDownscale` | 4 | Bigger = coarser, brighter twinkle |
-| `hanabi.jitterHue/Sat/Light` | 5 / 10 / 10 | Per-sparkle colour spread |
-| `hanabi.smoke.*` | — | 11 values; `enabled: true` |
-| `confetti.size` | 1 | Shard size |
-| `confetti.spin` | 250 | ±°/s — drives the wink |
-| `confetti.massSpread` | 0.33 | Varies fall rate so a burst stretches vertically |
-| `confetti.flutter` | 350 | Random walk on horizontal velocity |
-| `confetti.deltaCap` | 0.064 | rAF delta clamp, so a stalled tab resumes rather than teleports |
-| `confetti.fadeMin/Max` | 0.5 / 2.5 | Per-sparkle lifetime spread |
-| `blast.*` | — | Detonation bloom: `lead` 60 ms, `radius` 140, `peak` 0.55, rise/hold/decay 0.06/0.15/1.8 s |
-| `rocket.size` | 5 | px — a sparkle is 1–3 |
+| `scale` | 1 | Global size — what a click gets; each firework overrides it with `fireworkSize` |
+| `background` | `null` | Transparent composite. The one value that makes this an overlay, not a stage |
+| `palette` | `fire` | Fallback palette for click-bursts: `fire` / `blue` / `purple` / `random` |
+| `count` | 200 | Sparkles per burst |
+| `explosionSize` | 10 | Burst spread |
+| `poolMax` | 2000 | Hard particle cap |
+| `gravity` | 0.2 | Per-frame² — also drives rocket ascent |
+| `drag` | 0.9 | Per-frame; sparkles only, not the rocket |
+| `lifeDecay` | 0.01 | Per-frame → 3.33 s base life |
+| `lifeSpread` | 0.35 | ± fraction of life, per sparkle |
+| `size` | 1.6 | px stroke width of a sparkle |
+| `sizeSpread` | 0.5 | ± fraction of it, per sparkle |
+| `trailFade` | 0.05 | Erase rate |
+| `trailAlpha` | 0.6 | How strongly particles stamp into the trail |
+| `glowDownscale` | 4 | Bigger = coarser, brighter twinkle. **Read at allocation** — changing it needs `fw.resize()` |
+| `glowAlpha` | 1 | How hard the glow is added back on top |
+| `jitterHue/Sat/Light` | 5 / 10 / 10 | Per-sparkle colour spread |
+| `deltaCap` | 0.064 | rAF delta clamp, so a stalled tab resumes rather than teleports |
+| `blast.*` | — | The flash: `lead` 60 ms, `radius` 200, `peak` 0.6, rise/hold/decay 0.06/0.15/1.8 s, `growth` 1.1, `stack` 2. Radius/peak/growth/stack are a lab 2 tuning **both** sessions agreed on |
+| `sub.*` | `enabled: false` | Secondary bursts: `count` 6, `delay` 0.7 s, `particles` 30, `scale` 0.3, `glow` true. **Off by default**, so nothing in the show uses it until switched on |
+| `rocket.size` | 5 | px — a sparkle is ~1–2 |
 | `rocket.launchY` | 1.0 | Launch height as a fraction of canvas height |
 | `rocket.light` | 88 | Hotter than a sparkle's `BASE_LIGHT` (62) |
 | `goHeight` | 0.38 | Burst height as a fraction of canvas height |
 | `goColors` | red / gold / mix | Hue lists + white fraction |
+| `fireworkSize` | 4.4 / 4.4 / 3.9 / 4.4 / 4.4 | Per-firework size, left to right, all from lab 2 tunings. **It was 1 / 1.5 / 2 / 1.5 / 1**, growing outside-in — the show is now near-flat and no longer builds toward the centre |
+| `fireworkCfg` | 5 rows | Per-firework overrides. 1, 2, 4 and 5 share one tuning (`size` 0.5, `lifeDecay` 0.024, `blast.lead` 45); **3 has its own** (`size` 0.2, `sizeSpread` 0.15, `explosionSize` 14.5, `lifeDecay` 0.024, `blast.lead` 45). A row holds only what differs from the show — an absent key falls through |
 | `goSequence` | 5 rows | The running order |
+
+> **`cfg` is not the literal in the file — it is `fw.cfg`.** Engine 2 deep-copies
+> whatever it is handed at construction, so `lsa-experience.js` reassigns
+> `cfg = fw.cfg` immediately after. Drop that line and every slider in the dev
+> panel writes to an object nothing reads.
 
 ---
 
@@ -282,8 +309,8 @@ engine's defaults (`normal`, sub-blasts off), which is exactly what the overlay
 rendered before the extraction. Turning either on in production is now a config
 change, not a port.
 
-The panel has a **Shape** section — `normal` / `star burst` / `concentric` /
-`squiggle` / `dbs sparks` — and a **Sub-blasts** section for secondary breaks.
+The panel has a **Shape** section — `normal` / `ring` / `star burst` /
+`concentric` / `squiggle` — and a **Sub-blasts** section for secondary breaks.
 
 Every shape answers one question, in `shapePoint()`: for particle *i*, at what
 **angle** and what **fraction of maximum speed** does it leave the burst? That
@@ -298,7 +325,6 @@ is visually identical to before.**
 | star burst | Points (3–12), Valley radius | Valley radius dials from spiky spokes to a fat star |
 | concentric | Rings (2–6), Ring width | **Turn `flutter` and `massSpread` down** or the rings smear together within about a second |
 | squiggle | Weave speed, Zig-zags/s | Half-swing width is exactly `waveAmp / (2 × waveFreq)` px |
-| dbs sparks | Corner rays, Edge jitter | Hexagon body with rays off the six corners; Corner rays biases between the two |
 
 **Sub-blasts** work by marking some of a burst's particles as shells whose
 *life is the fuse* — they break when they die, so the countdown needs no extra
@@ -312,11 +338,6 @@ not as an acceleration. Accelerating was measured at only ±9 px of ripple —
 drag eats it, and the width collapses as 1/freq². As a velocity the swing width
 is exact and drag-independent, and the square wave draws straight diagonal runs
 with hard corners instead of sine ripples.
-
-> **`dbs sparks` is an assumption.** It was built as the brand hex (this project
-> already carries a POSB blue hex placeholder) with rays off the corners, not
-> matched against a supplied reference. If there is a real mark, `dbsPoint()` is
-> the only thing that needs redoing.
 
 ### Two copies, kept in sync by hand
 
@@ -334,6 +355,190 @@ git rev-parse master:lab/fireworks-lab.html fireworks-lab:lab/fireworks-lab.html
 
 To read the canonical copy while on `master`:
 `git show fireworks-lab:lab/fireworks-lab.html`.
+
+---
+
+## Engine 2 — `fireworks-engine-2.js`
+
+A **second, standalone engine**, exposing one global `Fireworks2`. It shares no
+code with `fireworks-engine.js`; both can load on the same page, though nothing
+loads both. **This is what the overlay runs.** Its two consumers are
+`lsa-experience.js` and `lab/fireworks-lab-2.html`.
+
+### What the swap cost
+
+Four things left the overlay when it moved off engine 1, because engine 2 does
+not have them. None were being tuned in the show, and two were switched off:
+
+| Gone | Was production using it? |
+|---|---|
+| Smoke | Yes — `smoke.enabled: true` |
+| The centre glow (`core`) | Yes — `core.enabled: true`. **Not** the flash; the flash came across |
+| Burst shapes | Only `normal`, which is engine 2's only mode |
+| ~~Sub-blasts~~ | No — switched off. **Since ported back into engine 2** as `cfg.sub`; see "Secondary bursts" below |
+
+**Reversible:** engine 1 and its lab are untouched on disk. Swap the script tag
+in `lsa-demo.html` / `lsa-mount.html` back, and restore the previous `cfg`
+literal from git.
+
+It is a minimal port of **Hanabi** (`github.com/avanderw/hanabi`, itself a
+conversion of a Flash/AS3 effect). Engine 1 grew burst shapes, sub-blasts,
+stamps, smoke, layer isolation and a config serialiser; this one keeps only what
+makes a firework look like a firework.
+
+| Kept | Dropped |
+|---|---|
+| Three buffers: particles → trail → glow at 1/4 res, smoothing off, additive upscale | Smoke — a fourth buffer plus a radial gradient per puff, the biggest per-frame cost |
+| The FPS_REF conversion, unchanged and non-negotiable | Burst shapes and sub-blasts |
+| `sqrt(random) * explosionSize` area-uniform disc, 200 sparkles | The DBS stamp |
+| Hue palettes and per-sparkle jitter | Mass variance and flutter |
+| The dithered trail erase and the idle fade-out | Layer isolation, the centre glow (`core`) |
+| The rocket, bursting exactly at apex | `exportConfig` / `parseConfig` — engine 2 has no serialiser |
+| **The flash** (`cfg.blast`) — see below | |
+| **Secondary bursts** (`cfg.sub`) — see below | |
+
+Same contract as engine 1: the caller owns the rAF loop, and
+`update(dt)` / `draw(dt)` / `burst` / `launch` / `clear` / `resize` / `stats` /
+`destroy` all behave as they do there, including the optional
+`spec = {hues, white, scale}`.
+
+### The flash
+
+Carried over from engine 1's `sphere without trails` pattern, which is where it
+was tuned. A hue-tinted radial bloom at the burst point that leads the sparkles
+by `lead` (60 ms), rises, holds, then decays **while expanding** — a gradient
+fading at a fixed radius appears to collapse inward, because the faint rim drops
+below the visible threshold before the bright middle does.
+
+Two things about it are worth knowing before touching it:
+
+1. **It is drawn at composite level only, never into `particleBuf`.** That
+   buffer is stamped wholesale into the trail, and a soft gradient this large
+   smeared into the trail leaves a blob sitting over the burst long after the
+   flash is gone. Measured: an 8×-stacked 300 px flash leaves 1558 lit pixels
+   behind against 1490 for no flash at all — i.e. nothing.
+2. **`peak` has a hard ceiling and `stack` is how you get past it.** Every
+   gradient stop's alpha clamps at 1, so raising `peak` saturates the stops one
+   after another and then does nothing: 2.75 and 5.0 light the *identical* 1654
+   blown-out pixels. `stack` re-fills the same gradient N times, and each fill
+   adds under the additive composite — 1 draw lights 0, 3 lights 2917, 8 lights
+   12406, still climbing. That is the big blown-out white core.
+
+   Unlike engine 1, `stack` is **not** scoped to a pattern here — engine 2 has no
+   patterns. It is always available and defaults to `1`, which is one draw and
+   the plain flash.
+
+**Testing gotcha:** with a `lead` set, `burst()` spawns **no particles on the
+frame it is called**. A hand-stepped check that steps one or two frames and reads
+the count sees zero and looks like a broken burst. Step past the lead, or set
+`blast.lead = 0` for the test.
+
+### Secondary bursts
+
+Ported back from engine 1, where the mechanism was built and tuned. **Off by
+default.**
+
+The whole trick is that a shell is an **ordinary sparkle whose life IS the
+fuse**. It breaks when it dies, so the countdown needs no extra field and the
+shard visibly dims on its way to its own break. Three properties follow from it
+and are worth not re-deriving:
+
+- **The fuse carries ±15%.** Without it every shell breaks on the same frame and
+  reads as one mechanical pop rather than a scatter. Measured at `delay: 0.7`,
+  breaks land between 0.60 s and 0.78 s.
+- **No third generation.** `spawn()` clears `p.shell`, so children can never be
+  shells themselves. Verified: zero still flagged after a full round.
+- **Children inherit the parent's hue**, so a red firework does not scatter into
+  gold. Measured across a break: hues 352–362 around a parent at 357.
+
+`p.shell` is cleared in `spawn()` because particles are **pooled** — without it
+a shell's flag leaks into whatever sparkle reuses the object. Any per-particle
+field added later needs the same treatment.
+
+> **One deliberate difference from engine 1.** Children take their *parent's*
+> scale, carried on `p.subScale`, where engine 1 used the global `cfg.scale`. In
+> this show a firework's size comes from its `spec`, not from `cfg.scale`, so
+> engine 1's version would give a 4.4× firework children sized as though it were
+> 1× — visible as almost nothing.
+
+### The overlay's dev panel, after the swap
+
+Still five tabs, one per firework, still driven by the swap-in/swap-out
+mechanism around each break's timing window. What changed is which rows a tab
+can legally hold, and that is decided by **when the engine reads the value**:
+
+- **Per-firework** (read at the break, in `burst()` / `spawnSparkles()`):
+  colour set, size, `count`, `explosionSize`, `size`, `sizeSpread`,
+  `lifeDecay`, `lifeSpread`, the three jitters, `blast.enabled`, `blast.lead`,
+  and `sub.enabled` / `sub.count` / `sub.delay`.
+- **Whole show** (read every frame while drawing, so they cannot be aimed at one
+  firework): `palette`, `scale`, the other seven `blast.*` values, `trailFade`,
+  `trailAlpha`, `glowDownscale`, `glowAlpha`, `gravity`, `drag`, `poolMax`,
+  `deltaCap`, all three `rocket.*` — read at **launch**, a different instant
+  from the break the windows are built around — and `sub.particles` /
+  `sub.scale` / `sub.glow`, read at the **second** break, one fuse after this
+  firework's window has closed.
+
+> **Making those last three per-firework needs an engine-side change, not a
+> panel one.** Engine 1 opened a *second* settings window per firework, around
+> `at + lead + delay` and widened by the fuse's own ±15%. That window was
+> dropped when the overlay moved to engine 2, which had no secondary bursts at
+> the time. Restoring it is a change to `buildBreaks()`.
+
+Between the two tables every value engine 2 reads has a control. Engine 1's
+second settings window per firework is gone with sub-blasts, so a firework now
+owns exactly one, and the `showFor` row-hiding is gone with the patterns.
+
+**Copy config is now local to `lsa-experience.js`.** Engine 1 had
+`exportConfig` / `copyText` as statics and both consumers called them; engine 2
+deliberately has neither, so the overlay carries a plain JSON serialiser. If the
+clipboard refuses — no user gesture, or an insecure context — the whole config
+is dumped to `console.warn` instead, so a tuning session is never lost.
+
+### Moving a tuning session between lab 2 and the overlay
+
+Both directions go through the clipboard, but they are **not** symmetrical, and
+neither is a whole-object paste — engine 2 has no parser, so nothing validates
+what you paste and the shapes differ at both ends.
+
+| Direction | How |
+| --- | --- |
+| **lab 2 → overlay** | `Copy for overlay` in lab 2, then paste over the matching keys in the `cfg` literal in `lsa-experience.js` |
+| **overlay → file** | `Copy config` in the dev panel, then paste over the whole `cfg` literal — this is the only way per-firework settings survive a reload |
+
+`Copy for overlay` emits **only the 22 keys the engine owns**, taken from
+`Fireworks2.defaults()` so the list cannot drift, and it forces
+`background: null` on the way out. Both of those are deliberate, and both are
+there to stop the same two accidents:
+
+- **`background`.** Lab 2 composites onto an opaque sky; the overlay must
+  composite onto the live page. Carrying the lab's value across would paint over
+  the intranet.
+- **The show-only keys.** `goColors`, `fireworkSize`, `goHeight`, `goSequence`
+  and `fireworkCfg` are the overlay's own and lab 2 knows nothing about them.
+  Replacing the whole object would delete the GO sequence and every
+  per-firework setting.
+
+> **One gotcha when both directions are in play.** `fireworkCfg` is rebuilt from
+> `cfg`'s own values at load, but a `fireworkCfg` already in the file — pasted
+> back from the overlay's `Copy config` — **wins over them**. So if the literal
+> carries a pasted `fireworkCfg` and you then paste fresh base values from lab 2,
+> the per-firework rows keep the old ones. Delete `fireworkCfg` from the literal
+> to let the new base values through.
+
+### Its lab — `lab/fireworks-lab-2.html`
+
+Sibling of the main lab, same CSS and same schema-driven panel, but its own file
+and not a copy. **32 controls, one per key engine 2 reads, and no others** —
+there is no copy/paste config box, because engine 2 has no serialiser and one was
+not invented for it. Debug hook is `window.lab2`
+(`{fw, cfg, canvas, burst, launch, step(n, dt)}`) — note the argument order is
+`step(n, dt)`, like the overlay's, not the main lab's `step(dt, n)`.
+
+One engine change the lab forced out: `glowDownscale` is used when the glow
+buffer is *allocated*, not read per frame, so a slider for it was inert.
+`resize()` now tracks the downscale it built at and rebuilds when it changes.
+**Anything added later that sizes a buffer needs the same treatment.**
 
 ---
 
@@ -428,6 +633,7 @@ addition once the backend contract exists.
 | L | Does the card come back, and what goes on it? | **Open.** Removed in the rebuild. Nothing currently shows the employee name or the milestone. |
 | M | How should the show scale to 10/15/20/25 years? | **Reopened.** The old one-rocket-per-year model is gone; the sequence is hard-wired to five fireworks. |
 | N | Should `index.html` be a landing page linking both demo and lab, instead of a redirect? | **Offered, unanswered.** |
+| O | Four whole-show values differ between the two lab 2 tuning sessions — `gravity` (0.2 vs 0.11), `drag` (0.9 vs 0.875), `trailFade` (0.12 vs 0.3), `trailAlpha` (0.85 vs 1). They cannot be per-firework, so one session has to win. | **Open.** Currently `gravity`/`drag` are on the 1/2/4/5 session's values and `trailFade`/`trailAlpha` are on neither — still the show's originals. Note `gravity` also drives rocket ascent: 0.2 → 0.11 stretches the climb from ~2.28 s to ~3.07 s and shifts every burst later by the same factor. |
 
 Resolved and kept for record: **B** one close control (confirmed sufficient) ·
 **C** once-only moved to the backend · **D** n/a, the fuse is gone · **E** true
@@ -447,8 +653,14 @@ transform-ancestor clipping trap.
   distinct sizes, whether the ~2.25 s ascent feels right, and whether the trail
   dissolves rather than snaps.
 - **Ascent speed is coupled to sparkle gravity.** The rocket shares
-  `cfg.hanabi.gravity`, so speeding up the climb without changing how sparkles
-  fall needs a separate gravity value for the rocket.
+  `cfg.gravity`, so speeding up the climb without changing how sparkles fall
+  needs a separate gravity value for the rocket.
+- **The glow contributes very little at `devicePixelRatio: 1`.** Measured on the
+  demo: turning it off and on moves total composite energy 7824 → 7832. That is
+  the Hanabi mechanism behaving correctly — a 1.6 px stroke sampled every 4th
+  pixel mostly vanishes, and the sparkle is what survives — but it means the
+  "Glow squeeze" slider looks nearly inert on a non-retina display. Flagged, not
+  changed.
 - **The CSS stacking comment is incomplete** — it reads
   `0 backdrop < 2 canvas < 4 close button` but `.lsa-go` is also at `z-index: 4`.
 

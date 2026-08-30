@@ -121,15 +121,37 @@
 
     // What the sparkles are arranged into at the moment of the break.
     shape: {
-      type: 'normal',       // normal | star burst | concentric | squiggle | dbs sparks
+      type: 'normal',       // normal | ring | star burst | concentric | squiggle
       starPoints: 5,
       starInner: 0.3,
       rings: 3,
+      // Belongs to `concentric`. Note `ringThickness` below is a DIFFERENT knob
+      // on a different shape — this one is the ± spread around each of several
+      // bands, that one is the depth of the single `ring` shell.
       ringWidth: 0.04,
+      // `ring` only: how far in from the outer edge the shell reaches. Small
+      // values are a clean hoop, large ones fill in toward the middle.
+      ringThickness: 0.08,
       waveAmp: 500,
       waveFreq: 3,
-      hexRays: 0.55,
-      hexJitter: 0.06
+
+      // Per-frame random dimming of the SPARK ITSELF, independent per particle,
+      // with no stored state or shared rhythm — so nothing about it repeats.
+      //
+      // This is NOT the existing wink (the cos(rot) width collapse in draw()):
+      // the wink is a smooth oscillation, so each spark blinks at its own
+      // STEADY rate. Only the phases and rates are random, not the blinking.
+      // This is the actually-random one.
+      //
+      // ⚠ It is also the one deliberate exception to the rule that trail
+      // effects touch the deposit only and never the head (see cfg.trail). A
+      // spark that "flickers" has to flicker whole, so this scales the deposit
+      // and the head together, by the same factor in the same frame. Turning it
+      // up also makes the head itself wink, which it otherwise never does
+      // because the wink only scales the deposit's stroke width.
+      //
+      // 0 (default) dims nothing — today's steady spark.
+      sparkFlicker: 0
     },
 
     // Shells carried out by the burst that break again a moment later.
@@ -140,6 +162,145 @@
       particles: 30,
       scale: 0.3,
       glow: true
+    },
+
+    // The second stage: a shape hung in the sky and filled with sparkles that
+    // do not move. See the stamp section further down for why these are NOT
+    // particles and keep a list of their own.
+    stamp: {
+      enabled: false,
+
+      // How the shape arrives.
+      //
+      //   'instant'  every ball placed on one frame, already where it belongs.
+      //   'bursts'   a handful of mini bursts go off inside the shape and
+      //              throw real sparks out — a random angle and a random
+      //              speed, the same formula an ordinary shell break uses —
+      //              rather than solving a velocity to land on a target. Drag
+      //              brings them to a stop wherever that honest throw put
+      //              them, so the fill is whatever that many small bursts
+      //              actually scatter, not a placement.
+      //
+      // Gravity is off for these — it would carry them down before the shape
+      // has even finished forming.
+      mode: 'bursts',
+      bursts: 8,            // how many mini bursts
+      burstSpread: 0.35,    // s · window they go off across
+      burstGlow: true,      // each mini burst gets its own flash
+
+      // Seconds the scatter is allowed to run before a ball is treated as
+      // done and the engine stops moving it. Drag is exponential and never
+      // mathematically stops a particle, so this is a cutoff, not an
+      // arrival — long enough that the decay has settled it wherever it
+      // lands.
+      //
+      // The hold, the fade and each ball's own pop below all start counting
+      // from HERE, not from launch — so a ball does not spend part of its
+      // held life still in the air.
+      settle: 1.2,
+
+      // Seconds after the break before the stamp lights.
+      //
+      // This has to clear the TRAIL, not the last sparkle — the trail keeps
+      // erasing for TRAIL_FADEOUT (0.6s) after the final spark dies, and a
+      // stamp timed off the particle count alone lands on a sky that still
+      // has 745 lit samples in it. Measured at the current lifetimes: last
+      // spark 2.72s, sky actually black 3.32s. 3.7 leaves a ~0.4s gap of
+      // genuinely empty sky before the shape appears.
+      delay: 3.7,
+
+      // The outline, as a superellipse:  |x|^n + |y|^n <= r^n
+      //
+      // n = 1 is a straight-sided diamond. Below 1 the sides bow inward and
+      // the points sharpen — 2/3 is the astroid. Lower slims the middle
+      // further: the waist sits at 50% of the point at 2/3, 35% at 0.5, and
+      // 23% at 0.38.
+      n: 0.38,
+
+      // Degrees. 0 leaves the formula untransformed, which puts the four
+      // points on the AXES and reads as a "+". 45 turns them onto the
+      // diagonals, which is the X.
+      rotation: 45,
+
+      count: 2500,
+
+      // How sparkles are shared out between directions — the exponent on the
+      // edge distance.
+      //
+      // 2 is the neutral value, not 0: a spoke's area grows as edge^2, so
+      // weighting by exactly that renders the shape faithfully — fat middle,
+      // arms tapering to points. Anything ABOVE 2 buys fuller arms by taking
+      // sparkles out of the body, and it goes wrong faster than it looks: 8
+      // strips the middle away entirely and leaves four hairlines with no
+      // shape between them.
+      //
+      // So the honest way to fill the arms is `count`, not this. Left at the
+      // neutral 2, with the arms filled by sparkle count instead.
+      fillPoints: 2,
+
+      // Scatter across the outline, so the edge is not razor-cut.
+      softness: 0.01,
+
+      // Radius, as a multiple of how far the parent burst's own sparkles
+      // reach — so the stamp arrives the same size as the firework that made
+      // it, whatever the physics is tuned to.
+      size: 1,
+
+      // 'bursts' only: how far each mini burst's own sparks scatter, as a
+      // multiplier on a radius sized so `bursts` of them roughly share the
+      // shape's area between them (R / sqrt(bursts)). 1 is that derived
+      // share; above 1 the pops overlap more and the shape reads fuller with
+      // softer edges, below 1 they stay small and distinct and can leave
+      // visible gaps between them.
+      scatter: 1,
+
+      dotSize: 1.4,
+      life: 5,              // seconds it hangs before going out
+
+      // Fraction of that life spent fading. The stamp holds FULL brightness
+      // for the rest, which is the point: a sparkle that starts dimming the
+      // instant it lights reads as already dying, and the stamp is supposed
+      // to hang there. So brightness is flat until the last `fade` of its
+      // life, then ramps to nothing.
+      //
+      // Deliberately not the linear life/maxLife that particles use — that
+      // curve suits an ember thrown out to die, not a shape held in the sky.
+      fade: 0.35,
+
+      // Each ball's own little pop as it lights: a brief lift toward white,
+      // slightly larger, decaying away. NOT one flash for the whole stamp —
+      // 2500 of them going off together is what gives the switch-on its
+      // sparkle instead of the shape simply being there on the next frame.
+      //
+      // The decay is squared so it snaps rather than oozes, and each ball
+      // carries its own flash length (+/-40%), so they do not all finish on
+      // the same frame and read as one mechanical blink.
+      // Balls do NOT all pop on the same frame, and that is not a detail.
+      // Under additive blending 2500 overlapping dots are already near
+      // saturation at rest; lift them together by even 0.3 and 77% of the
+      // shape clips to pure white, so it renders as a solid silhouette with
+      // no sparkles left in it. Spreading ignition over `flashStagger` means
+      // only a fraction are hot at any instant, which reads as the stamp
+      // crackling alight instead of a white wash. The stamp still ARRIVES
+      // instantly — every ball is placed on the same frame; only their pops
+      // are staggered.
+      flash: 0.7,           // 0-1 · how hard each ball pops · 0 = off
+      flashTime: 0.18,      // s · one ball's pop, before its own variation
+      flashStagger: 0.35,   // s · window the pops are spread across
+
+      // The hang is the boring part unless the balls are alive, so each one
+      // breathes on its own smooth cycle — its own rate and its own starting
+      // phase, so nothing about it lines up or repeats as a rhythm.
+      //
+      // Deliberately NOT the per-frame random dimming that shape.sparkFlicker
+      // uses. That is right for a spark in flight, where the eye is tracking
+      // movement; on 2500 dots nailed to the sky it reads as television
+      // static. A slow per-ball oscillation reads as twinkling instead.
+      //
+      // The rate is applied live rather than baked at spawn, so dragging the
+      // slider changes a stamp that is already hanging.
+      flicker: 0.45,        // 0-1 · how deep the dip goes · 0 = steady
+      flickerRate: 6        // Hz, before each ball's own +/-40%
     },
 
     // Per-frame values · reference runs at 30fps
@@ -192,9 +353,15 @@
       flutter: 350,
       deltaCap: 0.064,
 
-      // Lifetime spread
-      fadeMin: 0.5,
-      fadeMax: 2.5
+      // Lifetime spread. Multiplies the base life, so the real range is
+      // 1/(lifeDecay * FPS_REF) times these — 1.0s to 2.7s at the defaults.
+      //
+      // Pulled in from the reference's 0.5/2.5 so that a stamp can follow the
+      // burst onto an empty sky. At 2.5 the longest-lived sparkles run 8.3s,
+      // which no watchable stamp delay can outlast. The overlay sets its own
+      // pair and is unaffected.
+      fadeMin: 0.3,
+      fadeMax: 0.8
     },
 
     // The shell detonating · neither library has this
@@ -205,22 +372,89 @@
       peak: 0.55,
       rise: 0.06,           // s
       hold: 0.15,
-      decay: 1.8
+      decay: 1.8,
+      // End radius as a multiple of the ignition radius — same idea, and the
+      // same name, as core.growth below.
+      //
+      // Without this the bloom held ONE fixed radius for its whole hold+decay
+      // while its alpha fell, and a radial gradient fading at a fixed radius
+      // appears to COLLAPSE INWARD: the faint rim drops below the visible
+      // threshold first and the bright middle drops last, so the lit disc
+      // marches inward even though the geometry never shrinks. Expanding as
+      // it fades is what makes it read as light spreading out and dying
+      // instead of being sucked back in.
+      growth: 1.6,
+
+      // How many times the bloom is drawn on top of itself. ONLY read for
+      // shape.type 'sphere without trails'; every other pattern draws once,
+      // exactly as before.
+      //
+      // This exists because `peak` cannot reach the effect it is for. The
+      // bloom is a three-stop gradient and every stop's alpha clamps at 1, so
+      // raising `peak` saturates the stops one after another and then stops
+      // doing anything at all: measured on one burst, peak 1.0 lights 982
+      // blown-out pixels, 2.75 lights 3941, and 5.0 lights the same 3941.
+      // 3941 is simply the ceiling for one draw.
+      //
+      // Drawing again is not subject to that ceiling, because each fill adds
+      // to what is already on the canvas under the additive composite. Same
+      // measurement, stacking instead of brightening: 1 draw 0, 2 draws 1450,
+      // 3 draws 4318, 5 draws 8670 — past the single-draw ceiling by the
+      // third and still climbing. It is the big blown-out white core you get
+      // by clicking the same spot over and over, which no single value could
+      // express.
+      //
+      // One difference from really clicking repeatedly: those are separate
+      // blasts that each roll their own hue, so their halo is a blend. This
+      // repeats ONE blast, so the halo keeps that blast's single hue.
+      stack: 1
     },
 
     // The white core at the middle of the break · lights instantly, grows as
     // it dies.
     core: {
-      enabled: true,
+      // Off by default — it read as a second circle collapsing inward at the
+      // break rather than as part of one flash. Everything below still works
+      // if it is switched back on.
+      enabled: false,
       radius: 22,           // px at size 1 · multiplied by the firework's size
       life: 0.45,           // s at size 1 · likewise, so big shells burn longer
       peak: 1,              // alpha at the instant it lights
       growth: 2.2,          // end radius as a multiple of the starting radius
-      falloff: 2,           // higher = snaps out faster after the initial flash
+      // Shapes the fade: higher holds the brightness up for longer and then
+      // drops it more abruptly at the end, lower fades more evenly from the
+      // start. (Its sense changed when the fade curve was fixed — see the
+      // note in drawCores.)
+      falloff: 1.6,
       // How much of the disc stays at full alpha before the rim fades. Low
       // values are a soft smudge that vanishes into the blast; high values are
       // a hard-edged ball.
-      edge: 0.62
+      edge: 0.62,
+
+      // --- The morphing flash · opt-in, added 2026-08-28 ------------------
+      // Off leaves every value above behaving exactly as it always has. On,
+      // the core stops being a round disc: it swells while its outline slides
+      // from a circle into a four-pointed star, then shrinks away to nothing.
+      // See drawMorphCore().
+      //
+      // `edge` and `falloff` are NOT read while this is on — they shape the
+      // radial gradient, and the morphing flash is built from stacked shapes
+      // instead. `radius`, `life`, `peak` and `growth` all still apply.
+      morph: false,
+
+      // Pointiness of the star it becomes: the exponent of the superellipse
+      // |x|^n + |y|^n = r^n. Below 1 the sides bow inward and the corners come
+      // to points — the waist sits at 50% of the point at n = 0.67, 23% at
+      // 0.38. Deliberately its OWN value and deliberately not read from
+      // cfg.stamp.n: the flash and the DBS spark stamp are tuned separately
+      // and are not required to agree.
+      morphN: 0.38,
+
+      // Fraction of the core's life spent expanding and morphing; the rest is
+      // spent shrinking away. The core only lives `life` seconds (0.45 at
+      // size 1), so if the morph reads as too quick to follow, the dial to
+      // raise is `life` — this only moves where the two phases meet.
+      morphSplit: 0.55
     },
 
     // The shell on its way up.
@@ -228,6 +462,84 @@
       size: 5,              // px — a sparkle is 1-3
       launchY: 1.0,         // launches from this fraction of canvas height
       light: 88             // hotter than a sparkle's BASE_LIGHT
+    },
+
+    // Step 1 of the ribbon -> natural-trail rework: separates the deposit
+    // (what gets stamped into the persistent trail buffer — since Step 7
+    // below, an explicit teardrop rather than a plain stroke) from the head
+    // (an extra bright dot at the particle's current point, layered on top).
+    // headSize 0 draws no extra head dot at all — nothing changes there until
+    // the lab turns it on.
+    trail: {
+      width: 1,             // teardrop girth, x — the tail's width at the head end
+      headSize: 0,          // extra bright dot at the head, x sparkle size · 0 = off
+
+      // Step 6: the head's own lightness/saturation, blended toward the same
+      // "hot" reference the cooling curve flashes to (hotLight, below) — so
+      // it reads as a distinctly hotter point than the trail it's leaving,
+      // not just a bigger copy of the same colour. The glow buffer already
+      // blurs particleBuf cheaply via downscale/upscale (see sizeGlow); a
+      // bigger, brighter, rounder head is what turns that existing blur into
+      // a bloom around a point of light instead of just a fatter sliver. A
+      // per-particle radial gradient would do this more smoothly but was
+      // deliberately not built — at up to poolMax particles a gradient per
+      // particle per frame is real cost for a softening the cheap blur
+      // already gets close enough to. 0 (default) leaves the head at the
+      // particle's own colour, exactly as step 1 built it.
+      headBoost: 0,          // 0-1 · blend toward hotLight/near-white
+
+      // Step 3: tapers the DEPOSIT's width across the particle's life, same
+      // mechanism as the colour cooling above — the stamp made at each
+      // instant keeps whatever width it was stamped at. Bidirectional and
+      // centred on age 0.5, where the factor is always 1 regardless of the
+      // taper amount: +1 stamps full width near spawn narrowing to zero by
+      // death, -1 the reverse, 0 (default) stamps the old constant width.
+      // Which sign reads as "natural" is not obvious from the geometry alone
+      // — decide by eye.
+      taper: 0,
+
+      // Step 4: every ember today deposits at the same strength, so a whole
+      // burst decays in lockstep — a comb of identical streaks. This gives
+      // each particle its own deposit-strength factor, fixed at spawn, so
+      // some run as long streamers and others barely leave a mark, at the
+      // SAME global erase rate. 0 (default) assigns every particle strength
+      // 1 — today's uniform deposit, unchanged.
+      spread: 0,
+
+      // Step 5: the existing wink (the width's cos(rot) collapse, above) is a
+      // slow smooth oscillation — regular beads along the streak. This is a
+      // separate, faster effect: an independent random jitter on the
+      // DEPOSIT's alpha every single frame, per particle, with no shared
+      // rhythm to read as mechanical. The wink is deliberately left exactly
+      // as it was and still only touches the deposit's width — the head
+      // stays steady, the same call made for cool/taper/spread above, so the
+      // head keeps reading as the particle's true, unflickering state.
+      // 0 (default) applies no jitter — today's flat deposit alpha.
+      flicker: 0,
+
+      // Step 2: cools the DEPOSIT's colour across the particle's life — a
+      // brief hot flash near spawn, settling into the particle's own assigned
+      // colour, then dimming toward a fixed ember hue as it dies. The head
+      // (above) is unaffected — it always shows the particle's true colour,
+      // full brightness, as the actively burning tip. `cool` is a blend
+      // against the flat colour used before this existed; 0 reproduces it
+      // exactly, so nothing changes until the lab turns it up.
+      cool: 0,               // 0-1 · blend toward the cooling curve below
+      hotLight: 95,          // lightness of the near-spawn flash
+      emberHue: 15,          // hue the deposit dims toward by end of life
+      emberLight: 25,        // lightness at end of life
+
+      // Step 7: the tail's own LENGTH, independent of the particle's speed or
+      // size. Before this, what read as a trail was just the distance a
+      // particle happened to move that frame, stroked from last frame's
+      // position to this one — coupling apparent length to speed (and, via
+      // drag, to age) with no way to set it directly. Every spark is now
+      // drawn each frame as an explicit teardrop — a round head (still sized
+      // by `width` above) with a tail extending straight back, opposite its
+      // direction of travel (see p.dirAngle in spawn()/draw()), by this many
+      // px. Deliberately NOT scaled by the firework's own size or by
+      // `width` — a direct, standalone control.
+      length: 8              // tail length, px
     }
   };
 
@@ -248,6 +560,101 @@
   }
 
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  // Shortest-path hue blend — hue is circular, so a plain lerp from 350 to 10
+  // would swing the long way through 180 instead of the short way through 0.
+  function lerpHue(a, b, t) {
+    var d = ((b - a + 540) % 360) - 180;
+    return (a + d * t + 360) % 360;
+  }
+
+  // Fraction of a particle's life spent riding the hot flash down into its
+  // own assigned colour, before it starts dimming toward the ember. Not
+  // exposed as a slider — the four cfg.trail fields already cover the range
+  // that matters, and a wider hot phase mostly just delays when the ember
+  // dimming starts.
+  var TRAIL_HOT_SPAN = 0.18;
+
+  // The deposit's colour at this instant of a particle's life: hot flash ->
+  // true colour -> ember, scaled by T.cool. At T.cool === 0 this returns
+  // p.h/p.s/p.l exactly (t and t2 both land on 0), which is the flat colour
+  // used before cooling existed.
+  function trailColor(p, T, out) {
+    var age = 1 - p.life / p.maxLife; // 0 at spawn, 1 at death
+    if (age <= TRAIL_HOT_SPAN) {
+      var t = (TRAIL_HOT_SPAN ? age / TRAIL_HOT_SPAN : 1) * T.cool;
+      out.h = p.h;
+      out.s = p.s + (8 - p.s) * t;
+      out.l = p.l + (T.hotLight - p.l) * t;
+    } else {
+      var t2 = ((age - TRAIL_HOT_SPAN) / (1 - TRAIL_HOT_SPAN)) * T.cool;
+      out.h = lerpHue(p.h, T.emberHue, t2);
+      out.s = p.s;
+      out.l = p.l + (T.emberLight - p.l) * t2;
+    }
+  }
+
+  /* ---- The stamp's outline ----------------------------------------------
+     The stamp is a superellipse,  |x|^n + |y|^n <= r^n,  with n below 1 so
+     the sides bow inward and the four corners come to points.
+
+     Filling it needs the EDGE, not the test — "is this point inside" throws
+     away most of what it computes, and at a sharp n it throws away almost
+     everything. So solve the equation for the radius instead. Substituting
+     x = p*cos(a), y = p*sin(a):
+
+         p^n * (|cos a|^n + |sin a|^n) = r^n
+         p(a) = r / (|cos a|^n + |sin a|^n)^(1/n)
+
+     which is the distance from the centre out to the edge along any angle,
+     exactly. Verified against the original equation across the useful range
+     of n: |x|^n + |y|^n comes back as 1 to within 2.2e-16. */
+
+  var STAMP_STEPS = 1440; // angle buckets in the sampling table below
+
+  // Edge distance along `angle`, normalised so a point sits at exactly 1.
+  function stampEdge(angle, n, rotation) {
+    var a = angle - rotation * Math.PI / 180;
+    var d = Math.pow(Math.abs(Math.cos(a)), n) + Math.pow(Math.abs(Math.sin(a)), n);
+    return 1 / Math.pow(d, 1 / n);
+  }
+
+  /* ---- The morphing flash's shape ---------------------------------------
+     The same superellipse as the stamp above, reused rather than re-derived —
+     there is one copy of this equation in the file and this is it. What
+     differs is only that `n` is animated: the flash slides from a circle to a
+     star while it burns, where the stamp is placed at a fixed pointiness. */
+
+  // n = 2 is the exact circle case: |cos|^2 + |sin|^2 is 1 at every angle, so
+  // stampEdge returns 1 all the way round. That is what makes a plain lerp on
+  // n a true circle-to-star morph with no special-casing at the start.
+  var CORE_MORPH_ROUND = 2;
+
+  // Degrees. 0 puts the points on the axes and reads as a "+"; 45 turns them
+  // onto the diagonals, which is the X. Fixed rather than exposed — it is what
+  // makes the shape the shape, not something to dial mid-show.
+  var CORE_MORPH_ROTATION = 45;
+
+  // Perimeter points per outline. A very low n is sharp enough that uniform
+  // angular sampling slightly rounds the four tips; 360 is fine at flash
+  // sizes, and this is the number to raise if the points ever read blunt.
+  var CORE_MORPH_STEPS = 360;
+
+  // A radial gradient is circular by nature and cannot be given a shape, so
+  // the morphing flash is built from stacked outlines instead: wide and faint
+  // through to small and bright. Under the additive composite they sum into a
+  // falloff that follows the STAR rather than a circle. Three is a deliberate
+  // cap — enough to read as a glow, cheap enough to stay light.
+  var CORE_MORPH_LAYERS = [
+    { scale: 1.00, alpha: 0.30 },
+    { scale: 0.70, alpha: 0.50 },
+    { scale: 0.42, alpha: 0.90 }
+  ];
+
+  // Eased at both ends, so the morph does not snap into motion or stop dead.
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
 
   /* ---- Shared sprites ---------------------------------------------------
      Built once for the whole page rather than per instance: they are
@@ -414,9 +821,14 @@
       if (particles.length >= cfg.hanabi.poolMax) return null;
       var p = pool.pop() || {};
       p.x = x; p.y = y;
-      p.px = x; p.py = y; // previous-frame position, for gap-free trail segments
       p.vx = vx; p.vy = vy;
       p.life = life; p.maxLife = life;
+
+      // The tail's aim: updated live in draw() while the particle is
+      // actually moving, but seeded here so a particle drawn before its
+      // first update() (the same frame it spawns) already points somewhere
+      // sensible instead of defaulting to 0.
+      p.dirAngle = Math.atan2(vy, vx);
 
       // Cleared explicitly: pooled particles are reused, so a shell or a
       // squiggle would otherwise leak its behaviour into whatever object comes
@@ -430,6 +842,11 @@
       // does not secretly change how fast everything falls. 0.33 reproduces
       // confetti's own 2-4 height range; 0 makes every particle fall alike.
       p.mass = 1 + (Math.random() - 0.5) * 2 * cfg.confetti.massSpread;
+
+      // Deposit-strength factor: fixed once here at spawn like mass above,
+      // read every frame in draw(). Uniform in [1 - spread, 1], so spread 0
+      // always lands on exactly 1 — no per-particle variation, today's look.
+      p.trailStrength = 1 - Math.random() * cfg.trail.spread;
 
       // Colour: a palette hue with Hanabi's per-particle jitter, so a burst is
       // not a flat block of one colour. Stored as numbers, not a string —
@@ -468,6 +885,7 @@
 
     var blasts = [];
     var pendingBursts = [];
+    var pendingStamps = [];
 
     // Bloom takes a hue from the same set as its sparkles, so a red firework
     // does not detonate gold. Also carries the firework's size, so the bloom
@@ -494,6 +912,10 @@
 
     function drawBlasts() {
       var B = cfg.blast;
+      // Scoped to the one pattern it was asked for; everything else draws once
+      // and is byte-for-byte unchanged. See the note on B.stack.
+      var reps = cfg.shape.type === 'sphere without trails'
+        ? Math.max(1, Math.round(B.stack)) : 1;
       for (var i = 0; i < blasts.length; i++) {
         var b = blasts[i];
         var alpha, grow;
@@ -502,16 +924,26 @@
           var up = b.age / B.rise;
           alpha = B.peak * up;
           grow = 0.55 + 0.45 * up;   // expands as it ignites
-        } else if (b.age < B.rise + B.hold) {
-          alpha = B.peak;            // sits at full brightness before fading
-          grow = 1;
         } else {
-          var down = (b.age - B.rise - B.hold) / B.decay;
-          if (down >= 1) continue;
-          // Squared falloff: bright for a moment, then a long soft tail rather
-          // than a linear ramp, which reads as a light source dying out.
-          alpha = B.peak * (1 - down) * (1 - down);
-          grow = 1;
+          // Keeps expanding for the whole rest of its life, rather than
+          // freezing at the ignition radius — see the note on B.growth.
+          // Starts at exactly 1, where the ignition ramp above ended, so the
+          // size never jumps; and decelerates from there, which is how an
+          // expanding bloom actually behaves and stops the hand-off from
+          // reading as the glow stopping dead.
+          var after = (b.age - B.rise) / (B.hold + B.decay);
+          grow = 1 + (B.growth - 1) * (1 - (1 - after) * (1 - after));
+
+          if (b.age < B.rise + B.hold) {
+            alpha = B.peak;          // sits at full brightness before fading
+          } else {
+            var down = (b.age - B.rise - B.hold) / B.decay;
+            if (down >= 1) continue;
+            // Squared falloff: bright for a moment, then a long soft tail
+            // rather than a linear ramp, which reads as a light source dying
+            // out.
+            alpha = B.peak * (1 - down) * (1 - down);
+          }
         }
 
         // Scaled by the firework's own size, so a 2x burst gets a 2x bloom and
@@ -524,7 +956,13 @@
         g.addColorStop(1, 'hsla(' + b.hue.toFixed(0) + ',100%,60%,0)');
 
         ctx.fillStyle = g;
-        ctx.fillRect(b.x - r, b.y - r, r * 2, r * 2);
+        // The gradient is built once and re-filled: each fill ADDS to what is
+        // already there under the additive composite, which is the whole
+        // point — it is repeated draws, not a brighter one, that get past the
+        // alpha-clamp ceiling.
+        for (var q = 0; q < reps; q++) {
+          ctx.fillRect(b.x - r, b.y - r, r * 2, r * 2);
+        }
       }
     }
 
@@ -559,19 +997,90 @@
       }
     }
 
+    /* The morphing flash. Opt-in via cfg.core.morph; the round core below is
+       untouched and is still what draws when it is off.
+
+       Two phases across the core's own life, meeting at `morphSplit`:
+
+         phase 1  swells from its lit size out to full while the outline slides
+                  from a circle to the star. Holds full brightness the whole
+                  way — the flash IS the event, so it does not ramp up to it.
+         phase 2  shape locked, shrinks away to nothing while it fades out.
+
+       The shrink is the one place this deliberately contradicts the round core
+       below, which grows for its whole life. That was a considered decision
+       there (a lit disc marching inward reads as collapsing) and this is a
+       considered decision against it: as a star that closes back down it reads
+       as the shape being withdrawn rather than the light failing. Asked for
+       explicitly — see phase 2. */
+    function drawMorphCore(c, t, C) {
+      // Guarded away from 0 and 1: either end would divide by zero below.
+      var split = clamp(C.morphSplit, 0.01, 0.99);
+      var n, r, alpha;
+
+      if (t < split) {
+        var u = easeInOutCubic(t / split);
+        // Starts at the size it lit at, NOT at a dot — the round core's own
+        // behaviour, kept deliberately.
+        r = c.radius * (1 + (C.growth - 1) * u);
+        n = CORE_MORPH_ROUND + (C.morphN - CORE_MORPH_ROUND) * u;
+        alpha = C.peak;
+      } else {
+        var v = easeInOutCubic((t - split) / (1 - split));
+        r = c.radius * C.growth * (1 - v);
+        n = C.morphN;
+        alpha = C.peak * (1 - v);
+      }
+
+      if (r <= 0 || alpha <= 0) return;
+
+      for (var k = 0; k < CORE_MORPH_LAYERS.length; k++) {
+        var L = CORE_MORPH_LAYERS[k];
+        var rk = r * L.scale;
+        ctx.beginPath();
+        for (var s = 0; s <= CORE_MORPH_STEPS; s++) {
+          var a = s / CORE_MORPH_STEPS * TAU;
+          var e = stampEdge(a, n, CORE_MORPH_ROTATION) * rk;
+          var px = c.x + Math.cos(a) * e;
+          var py = c.y + Math.sin(a) * e;
+          if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        // White throughout, like the round core — this is the overexposed
+        // centre, not coloured light. The layers stack additively, so the
+        // middle blows out to solid white while the arms stay soft.
+        ctx.fillStyle = 'rgba(255,255,255,' + (alpha * L.alpha).toFixed(3) + ')';
+        ctx.fill();
+      }
+    }
+
     function drawCores() {
       var C = cfg.core;
       for (var i = 0; i < cores.length; i++) {
         var c = cores[i];
         var t = c.age / c.life;             // 0 at the break, 1 when it is out
 
+        // Opt-in: everything below this line is the original round core.
+        if (C.morph) { drawMorphCore(c, t, C); continue; }
+
         // Grows gradually across its whole life, rather than expanding in a
         // burst at the start the way `blast` does.
         var r = c.radius * (1 + (C.growth - 1) * t);
 
-        // Full brightness immediately, then a curved decay — the flash IS the
-        // event, so there is no ramp up to it.
-        var alpha = C.peak * Math.pow(1 - t, C.falloff);
+        // Full brightness immediately — the flash IS the event, so there is no
+        // ramp up to it — then a gradual fade that only drops off sharply at
+        // the very end.
+        //
+        // NOT pow(1 - t, falloff), which is what this used to be. That crashes
+        // the brightness almost at once (a quarter of peak by half-life at
+        // falloff 2) and leaves a long, very dim tail. Through that tail the
+        // radius is still growing, but the soft rim keeps sinking below the
+        // visible threshold faster than the growth widens it — so the lit disc
+        // marches INWARD and the whole thing reads as collapsing, which is
+        // exactly the opposite of what a real core does. Holding the
+        // brightness up and dropping it late confines that effect to the last
+        // few percent of its life, where it is too brief and too faint to see.
+        var alpha = C.peak * (1 - Math.pow(t, C.falloff));
 
         var g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
         // White throughout: this is the overexposed core, not coloured light.
@@ -657,6 +1166,22 @@
     function burst(x, y, spec) {
       var B = cfg.blast;
 
+      // The second stage, queued from the break itself so it inherits the
+      // firework's own point and `spec` — same centre, same size, same colour.
+      // Queued here rather than at the end of the sparkles' lives because the
+      // stamp is a scheduled beat of the show, not something the sparkles
+      // cause: it has to land on time even if the burst was clipped by the
+      // pool or the sparkles happen to outlive their welcome.
+      // 'dbs sparks' is a firework TYPE, not just a launch geometry, and it is
+      // the one entry in the pattern list that is. Every other pattern answers
+      // only "what angle and speed does each spark leave at"; this one also
+      // says what happens afterwards — an even sphere, then the DBS spark
+      // assembling on the emptied sky. It therefore turns the stamp on by
+      // itself rather than waiting to be paired with it by hand.
+      if (cfg.stamp.enabled || cfg.shape.type === 'dbs sparks') {
+        pendingStamps.push({ x: x, y: y, t: cfg.stamp.delay, spec: spec });
+      }
+
       // The centre glow lights here, before anything else and outside the
       // blast's enabled/lead handling — it marks the break itself, so it is not
       // delayed by `lead` and does not depend on the coloured wash existing.
@@ -676,6 +1201,16 @@
           pendingBursts[i] = pendingBursts[pendingBursts.length - 1];
           pendingBursts.pop();
           spawnSparkles(q.x, q.y, q.spec);
+        }
+      }
+
+      for (var k = pendingStamps.length - 1; k >= 0; k--) {
+        var p = pendingStamps[k];
+        p.t -= dt;
+        if (p.t <= 0) {
+          pendingStamps[k] = pendingStamps[pendingStamps.length - 1];
+          pendingStamps.pop();
+          spawnStamp(p.x, p.y, p.spec);
         }
       }
     }
@@ -701,28 +1236,15 @@
       return 1 - d * (1 - inner);
     }
 
-    // The DBS/POSB brand hex, thrown outward: a hexagon body with bright rays
-    // shooting from the six corners. `hexRays` splits the particles between the
-    // two — 0 is a plain hex outline, 1 is six bare spokes.
-    function dbsPoint(S) {
-      var seg = TAU / 6;
+    function shapePoint(i, S, type) {
+      switch (type) {
+        // A hollow hoop: every spark starts at the outer edge, so the middle
+        // stays empty instead of filling in. `concentric` with one ring is a
+        // near neighbour, but this is the shape people actually reach for and
+        // it should not need discovering.
+        case 'ring':
+          return [Math.random() * TAU, 1 - Math.random() * S.ringThickness];
 
-      if (Math.random() < S.hexRays) {
-        var corner = Math.floor(Math.random() * 6) * seg;
-        return [corner + (Math.random() - 0.5) * seg * 0.18, 0.55 + Math.random() * 0.45];
-      }
-
-      // Regular-polygon edge in polar form: the flat runs closer to the centre
-      // than the corners do, which is what makes the six points read as points.
-      var a = Math.random() * TAU;
-      var t = (a % seg) / seg;
-      var r = Math.cos(seg / 2) / Math.cos((t - 0.5) * seg);
-      // 0.72 keeps the body inside the corner rays so the rays visibly overshoot.
-      return [a, r * 0.72 * (1 + (Math.random() - 0.5) * 2 * S.hexJitter)];
-    }
-
-    function shapePoint(i, S) {
-      switch (S.type) {
         case 'star burst': {
           var sa = Math.random() * TAU;
           return [sa, Math.sqrt(Math.random()) * starRadius(sa, Math.round(S.starPoints), S.starInner)];
@@ -741,8 +1263,19 @@
         case 'squiggle':
           return [Math.random() * TAU, 0.55 + Math.random() * 0.45];
 
+        // Two entries land on the plain even sphere deliberately, and are
+        // listed rather than left to fall through so it is clear each is a
+        // chosen shape and not an unrecognised name hitting the default.
+        //
+        //   'dbs sparks'            the opening burst — the DBS spark itself
+        //                           arrives later, as the stamp.
+        //   'sphere without trails' the same sphere, drawn with no streak
+        //                           behind each spark. The geometry is
+        //                           identical to 'normal'; what makes it its
+        //                           own entry happens in draw(), at the trail
+        //                           stamp.
         case 'dbs sparks':
-          return dbsPoint(S);
+        case 'sphere without trails':
 
         // sqrt gives uniform density per unit AREA. A plain uniform radius piles
         // particles toward the centre and reads as a hollow-cored blob; this
@@ -753,13 +1286,15 @@
     }
 
     function spawnSparkles(x, y, spec) {
+      var S = cfg.shape;
+      var type = cfg.shape.type;
+      var squiggle = type === 'squiggle';
       var n = cfg.hanabi.count;
       var speedMax = cfg.hanabi.explosionSize * FPS_REF * scaleOf(spec);
+
       var baseLife = 1 / (cfg.hanabi.lifeDecay * FPS_REF);
       var lifeMin = cfg.confetti.fadeMin;
       var lifeSpan = cfg.confetti.fadeMax - cfg.confetti.fadeMin;
-      var S = cfg.shape;
-      var squiggle = S.type === 'squiggle';
 
       // Shells are ordinary particles whose life IS the fuse: they burst when
       // they die, so the countdown costs no extra field and the shard visibly
@@ -767,13 +1302,13 @@
       var shells = cfg.sub.enabled ? Math.min(Math.round(cfg.sub.count), n) : 0;
 
       for (var i = 0; i < n; i++) {
-        var g = shapePoint(i, S);
+        var g = shapePoint(i, S, type);
         var angle = g[0];
-        var speed = g[1] * speedMax;
         // Wide per-particle lifetime spread, so the burst dissolves instead of
         // all dying on the same frame.
         var life = baseLife * (lifeMin + Math.random() * lifeSpan);
 
+        var speed = g[1] * speedMax;
         // Shells get +/-15% on the fuse. With an exact delay every shell breaks
         // on the same frame, which reads as one mechanical pop instead of a
         // scatter of secondary breaks.
@@ -782,6 +1317,9 @@
                       spec);
         if (!p) break; // pool is full — the rest of this burst would be dropped anyway
 
+        // Set here rather than in spawn(), which has no idea what shape it is
+        // spawning for — the same place, and the same reason, the squiggle's
+        // own per-particle fields are set just below.
         if (i < shells) p.shell = true;
 
         if (squiggle) {
@@ -820,6 +1358,264 @@
         var speed = Math.sqrt(Math.random()) * speedMax;
         spawn(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed,
               baseLife * (lifeMin + Math.random() * lifeSpan), spec);
+      }
+    }
+
+    /* ---- The stamp --------------------------------------------------------
+       The second stage: a shape hung in the sky. In 'instant' mode every
+       sparkle is placed already motionless; in 'bursts' mode each one is
+       thrown from its mini burst at a real angle and speed and drags to a
+       stop, same as an ordinary spark, then holds still once settled.
+
+       These are deliberately NOT particles, even the ones briefly
+       scattering. A stamp sparkle has no gravity, no flutter, no mass and no
+       trail — 'bursts' mode gives it velocity and drag in a small loop of
+       its own, but nothing else it shares with a real sparkle but a colour.
+       Keeping its own list buys four things at once:
+
+         · It stays out of the particle pool. A stamp is ~1200 sparkles and
+           poolMax is 2000, so putting them in the pool would let one stamp
+           starve the firework that follows it.
+         · It skips the SHARED physics loop — gravity, flutter, mass spread,
+           trail — so even a scattering ball only pays for a plain drag
+           decay, not that whole pipeline.
+         · It can be drawn AFTER the trail has been stamped, which is the only
+           way to leave no streak — the trail stamp is wholesale, so a particle
+           can never opt out of it.
+         · spawn() is untouched, so none of its pooled fields need clearing and
+           none of them can leak into the next firework. */
+
+    var stamps = [];
+    var stampPool = [];
+
+    // Cumulative weight per angle bucket, so a direction can be drawn straight
+    // from the distribution instead of by rejection.
+    //
+    // Rejection was the obvious way and it does not scale: at fillPoints 12 it
+    // needed ~1,558 throws per sparkle, about 1.9 MILLION iterations to place
+    // one stamp. This table makes the cost flat no matter how hard the
+    // distribution is skewed — a whole stamp is ~1ms at any setting — so
+    // fillPoints can be turned up as far as the shape needs.
+    //
+    // Rebuilt only when one of the three values it depends on changes, since
+    // cfg is read live and a slider drag would otherwise rebuild it per frame.
+    var stampCum = null;
+    var stampKey = '';
+
+    function stampAngles() {
+      var S = cfg.stamp;
+      var key = S.n + '|' + S.rotation + '|' + S.fillPoints;
+      if (stampCum && key === stampKey) return stampCum;
+
+      var cum = new Float64Array(STAMP_STEPS + 1);
+      var total = 0;
+      for (var i = 0; i < STAMP_STEPS; i++) {
+        var a = (i + 0.5) / STAMP_STEPS * TAU;
+        total += Math.pow(stampEdge(a, S.n, S.rotation), S.fillPoints);
+        cum[i + 1] = total;
+      }
+      stampCum = cum;
+      stampKey = key;
+      return cum;
+    }
+
+    // One direction, drawn from the table. Binary search for the bucket, then
+    // a uniform spread inside it so the result is continuous rather than
+    // quantised to 1440 spokes.
+    function stampAngle(cum) {
+      var u = Math.random() * cum[STAMP_STEPS];
+      var lo = 0, hi = STAMP_STEPS - 1;
+      while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (cum[mid + 1] <= u) lo = mid + 1; else hi = mid;
+      }
+      return (lo + Math.random()) / STAMP_STEPS * TAU;
+    }
+
+    // Mini bursts waiting to go off — their flashes, fired on the sim clock so
+    // hand-stepped frames reproduce the same show.
+    var stampBlasts = [];
+
+    function spawnStamp(x, y, spec) {
+      var S = cfg.stamp;
+      var cum = stampAngles();
+      var j = cfg.hanabi;
+      var burstMode = S.mode === 'bursts';
+
+      // Where the mini bursts sit. Drawn from the SHAPE itself rather than
+      // spread evenly over a circle, so a couple land in the fat middle and
+      // the rest sit out along the arms — which is what keeps every ball's
+      // flight short and the assembly quick to read.
+      var cN = burstMode ? Math.max(1, Math.round(S.bursts)) : 0;
+      var cxs = [], cys = [], cAt = [];
+      var ci;
+      for (ci = 0; ci < cN; ci++) {
+        var ca = stampAngle(cum);
+        var cr = stampEdge(ca, S.n, S.rotation) * Math.sqrt(Math.random());
+        cxs.push(Math.cos(ca) * cr);
+        cys.push(Math.sin(ca) * cr);
+        cAt.push(Math.random() * S.burstSpread);
+      }
+      // Drag covers distance v / (FPS_REF * ln(1/drag)), so this inverts it:
+      // multiply a distance by it and get the launch speed that runs out there.
+      var toSpeed = FPS_REF * Math.log(1 / j.drag);
+
+      // How far a sparkle actually travels on its launch speed. Drag is applied
+      // as v *= drag^(dt*FPS_REF), so the distance covered before it stops is
+      // the integral of that: v / (FPS_REF * ln(1/drag)). Deriving the stamp's
+      // radius from it is what makes the stamp arrive the same size as the
+      // burst that made it, at any tuning — rather than a pixel number that
+      // silently stops matching the moment drag or explosionSize is touched.
+      var reach = 1 / (FPS_REF * Math.log(1 / j.drag));
+      var R = j.explosionSize * FPS_REF * scaleOf(spec) * reach * S.size;
+
+      // Each mini burst's own reach — sized so `bursts` of them roughly share
+      // the shape's area between them, then scaled by `scatter`.
+      var localMax = burstMode ? (R / Math.sqrt(cN)) * S.scatter : 0;
+
+      for (var i = 0; i < Math.round(S.count); i++) {
+        var p = stampPool.pop() || {};
+
+        if (burstMode) {
+          // Round-robin across the mini bursts — there is no target to find
+          // the nearest one to any more. Each spark is thrown from its burst
+          // point at a real random angle and speed, the same formula an
+          // ordinary shell break uses (spawnSub), and left to drag to a stop
+          // rather than solved to land somewhere exact. The shape is only
+          // ever the mini-burst CENTRES; the fill is whatever that many
+          // honest little bursts happen to scatter.
+          ci = i % cN;
+          p.x = x + cxs[ci] * R;
+          p.y = y + cys[ci] * R;
+          var angle = Math.random() * TAU;
+          var speed = Math.sqrt(Math.random()) * localMax * toSpeed;
+          p.vx = Math.cos(angle) * speed;
+          p.vy = Math.sin(angle) * speed;
+          p.delay = cAt[ci];
+          p.moving = true;
+        } else {
+          // 'instant': placed straight onto the shape's own outline, no
+          // burst, no motion — the same sampler the mini-burst centres use.
+          var oa = stampAngle(cum);
+          var edge = stampEdge(oa, S.n, S.rotation);
+          // sqrt spaces the sparkles evenly along the spoke by AREA rather
+          // than by length — the same reason the radial burst uses it.
+          var r = edge * Math.sqrt(Math.random());
+          if (S.softness > 0) {
+            r += (Math.random() - 0.5) * 2 * S.softness;
+            if (r < 0) r = 0;
+          }
+          p.x = x + Math.cos(oa) * r * R;
+          p.y = y + Math.sin(oa) * r * R;
+          p.vx = 0; p.vy = 0;
+          p.delay = 0;
+          p.moving = false;
+        }
+
+        // Same colour treatment a sparkle gets, so the stamp reads as the same
+        // firework carrying on rather than something new arriving.
+        if (spec && spec.white && Math.random() < spec.white) {
+          p.h = 45;
+          p.s = clamp(8 + (Math.random() - 0.5) * 2 * j.jitterSat, 0, 20);
+          p.l = clamp(95 + (Math.random() - 0.5) * j.jitterLight, 80, 100);
+        } else {
+          p.h = pickHue(spec) + (Math.random() - 0.5) * 2 * j.jitterHue;
+          p.s = clamp(BASE_SAT + (Math.random() - 0.5) * 2 * j.jitterSat, 30, 100);
+          p.l = clamp(BASE_LIGHT + (Math.random() - 0.5) * 2 * j.jitterLight, 30, 100);
+        }
+
+        p.size = S.dotSize * cfg.confetti.size;
+
+        // The hold-and-fade clock starts once the scatter is done, not at
+        // launch — otherwise `settle` would be eaten out of `stamp.life`
+        // before the ball ever holds still. Zero for 'instant', which never
+        // scatters.
+        var settle = burstMode ? S.settle : 0;
+        p.settle = settle;
+        p.life = settle + S.life + p.delay;
+        p.maxLife = p.life;
+
+        // Per-ball variation for the flash and the twinkle. Set unconditionally
+        // — these objects come back off stampPool, so a value left unwritten
+        // would be the previous stamp's and would leak across fireworks.
+        //
+        // The pop fires once a ball is done scattering, not as it launches —
+        // it reads as the shape crackling alight once it has actually formed.
+        p.flashT = S.flashTime * (0.6 + Math.random() * 0.8);
+        p.flashAt = settle + Math.random() * S.flashStagger;
+        p.twPhase = Math.random() * TAU;
+        p.twMul = 0.6 + Math.random() * 0.8; // multiplies the live flickerRate
+
+        // The settled colour, built ONCE here instead of per frame in draw().
+        // Measured at 12,500 balls: composing an hsla() per ball per frame
+        // costs 25.5ms a frame, against 12.5ms reusing a cached string and
+        // carrying the alpha on globalAlpha. The geometry is not the cost —
+        // arcs and rects measure the same; the string is.
+        p.css = 'hsl(' + p.h.toFixed(0) + ',' + p.s.toFixed(0) + '%,' + p.l.toFixed(0) + '%)';
+
+        stamps.push(p);
+      }
+
+      // Queue each mini burst's own flash for the moment it goes off.
+      if (burstMode && S.burstGlow && cfg.blast.enabled) {
+        for (ci = 0; ci < cN; ci++) {
+          stampBlasts.push({
+            x: x + cxs[ci] * R,
+            y: y + cys[ci] * R,
+            t: cAt[ci],
+            spec: spec
+          });
+        }
+      }
+    }
+
+    function updateStamps(dt) {
+      // Mini-burst flashes coming due.
+      for (var b = stampBlasts.length - 1; b >= 0; b--) {
+        var sb = stampBlasts[b];
+        sb.t -= dt;
+        if (sb.t <= 0) {
+          stampBlasts[b] = stampBlasts[stampBlasts.length - 1];
+          stampBlasts.pop();
+          // Small on purpose. A blast decays over ~1.8s, so eight of them
+          // overlapping sit on the shape for longer than the shape takes to
+          // assemble and wash it out entirely. Scaled well down so they read
+          // as eight pops rather than one cloud; turn them off with
+          // stamp.burstGlow if even this is too much.
+          spawnBlast(sb.x, sb.y, { hues: [pickHue(sb.spec)], scale: cfg.stamp.size * 0.18 });
+        }
+      }
+
+      var damp = Math.pow(cfg.hanabi.drag, dt * FPS_REF);
+
+      for (var i = stamps.length - 1; i >= 0; i--) {
+        var p = stamps[i];
+
+        // Scattering outward on drag alone, no gravity — gravity would carry
+        // it down before the shape has even finished forming. Nothing pins it
+        // to an exact point: wherever drag has carried it by `settle` is
+        // where it stays, so the fill is the honest result of the burst
+        // rather than a solved position.
+        if (p.moving) {
+          var own = p.maxLife - p.life - p.delay;
+          if (own >= p.settle) {
+            p.moving = false;
+          } else if (own >= 0) {
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vx *= damp;
+            p.vy *= damp;
+          }
+        }
+
+        p.life -= dt;
+        if (p.life <= 0) {
+          // Swap-and-pop, same as the particle loop: draw order does not matter
+          // under additive blending.
+          stamps[i] = stamps[stamps.length - 1];
+          stamps.pop();
+          stampPool.push(p);
+        }
       }
     }
 
@@ -916,16 +1712,15 @@
       for (var i = particles.length - 1; i >= 0; i--) {
         var p = particles[i];
 
+        // mass is the per-particle spread that makes a burst stretch as it falls.
         p.vy += gravity * p.mass * dt;
+
         // Random walk on horizontal velocity — confetti's swish. Bounded by the
         // damping below, so it meanders rather than running away.
         p.vx += (Math.random() - 0.5) * 2 * flutter * dt;
 
         p.vx *= damp;
         p.vy *= damp;
-
-        p.px = p.x;
-        p.py = p.y;
 
         if (p.waveAmp) {
           // The weave is added as a sideways VELOCITY at integration time rather
@@ -970,10 +1765,15 @@
       updateSmoke(dt);
       updateBlasts(dt);
       updateCores(dt);
+      updateStamps(dt);
       updatePending(dt); // last, so sparkles released this frame are drawn at full life
     }
 
     /* ---- Rendering -------------------------------------------------------- */
+
+    // Reused every frame, every particle, so the cooling-curve lookup in
+    // trailColor() does not allocate at burst densities.
+    var trailHsl = { h: 0, s: 0, l: 0 };
 
     // Seconds since the last particle died. See the fade-out note in draw().
     var idleTime = 0;
@@ -995,25 +1795,123 @@
       // Drawn once, then reused as the source for both the trail and the glow.
       particleCtx.clearRect(0, 0, w, h);
       particleCtx.lineCap = 'round';
+      var headSize = cfg.trail.headSize;
+      var cool = cfg.trail.cool;
+      var sparkFlicker = cfg.shape.sparkFlicker;
       for (var i = 0; i < particles.length; i++) {
         var p = particles[i];
         var alpha = p.life / p.maxLife;
+        // One draw of the dice per particle per frame, shared by BOTH the
+        // deposit and the head below — a spark that flickers has to flicker
+        // whole, and rolling separately would let its tip and its tail
+        // disagree. This is the deliberate exception to the deposit-only rule
+        // the rest of the trail effects follow (see cfg.shape.sparkFlicker).
+        //
+        // Range is [1 - sparkFlicker, 1] and alpha is already 0-1, so the
+        // product cannot leave 0-1 and build an invalid hsla() string — the
+        // failure that silently leaves the PREVIOUS particle's strokeStyle in
+        // place rather than erroring.
+        var flick = sparkFlicker > 0 ? 1 - Math.random() * sparkFlicker : 1;
         // Width collapses to zero as the shard turns edge-on, then opens back
         // up — the wink.
-        var sw = p.size * Math.abs(Math.cos(p.rot));
-        if (sw <= 0) continue;
-        // Stroked from last frame's position to this one, rather than a dot at
-        // just the current position — a fast-moving particle can travel several
-        // px between frames, and a single point leaves a gap the trail buffer
-        // never fills in. The segment always meets the previous frame's segment
-        // exactly, so the trail stays unbroken at any speed.
-        particleCtx.strokeStyle = 'hsla(' + p.h.toFixed(0) + ',' + p.s.toFixed(0) + '%,' +
-                                p.l.toFixed(0) + '%,' + alpha.toFixed(3) + ')';
-        particleCtx.lineWidth = sw;
-        particleCtx.beginPath();
-        particleCtx.moveTo(p.px, p.py);
-        particleCtx.lineTo(p.x, p.y);
-        particleCtx.stroke();
+        var sw = p.size * Math.abs(Math.cos(p.rot)) * cfg.trail.width;
+        if (cfg.trail.taper) {
+          // 1 at age 0.5 always, whatever the taper amount — so the pivot age
+          // stamps at the untapered width and only the two ends diverge.
+          var taperAge = 1 - p.life / p.maxLife;
+          sw *= 1 - cfg.trail.taper * (2 * taperAge - 1);
+        }
+        if (sw > 0) {
+          // THE DEPOSIT: what gets stamped into the persistent trailBuf below,
+          // so its own colour is the tail's, not the head's — which is why
+          // it, not the head below, is what cools across the particle's
+          // life. Drawn as an explicit teardrop — a round head at the
+          // particle's own point, tapering to a spot straight behind it,
+          // opposite its direction of travel, by cfg.trail.length px (see
+          // p.dirAngle, below) — deliberately NOT how far the particle
+          // actually moved this frame, which is what tied trail length to
+          // speed and size with no direct control. One consequence worth
+          // knowing: a particle moving faster than `length` per frame now
+          // draws separate teardrops rather than one unbroken stroke; dial
+          // `length` past the fastest per-frame travel for a solid streak,
+          // or leave it short for a beaded, discrete look.
+          var dh = p.h, ds = p.s, dl = p.l;
+          if (cool > 0) {
+            trailColor(p, cfg.trail, trailHsl);
+            dh = trailHsl.h; ds = trailHsl.s; dl = trailHsl.l;
+          }
+          // trailStrength (fixed per particle at spawn, see spawn()) only
+          // scales the DEPOSIT's alpha, not the head's below — a faint ember
+          // still burns at full brightness, it just leaves less of a mark.
+          var depositAlpha = alpha * p.trailStrength * flick;
+          if (cfg.trail.flicker > 0) {
+            // Independent per particle per frame — no phase or stored state,
+            // so nothing about it repeats on a rhythm. Clamped: an unclamped
+            // value outside 0-1 makes an invalid hsla() string, which the
+            // browser silently ignores, leaving the PREVIOUS particle's
+            // fillStyle in place for this one.
+            depositAlpha = clamp(depositAlpha * (1 + (Math.random() - 0.5) * 2 * cfg.trail.flicker), 0, 1);
+          }
+          particleCtx.fillStyle = 'hsla(' + dh.toFixed(0) + ',' + ds.toFixed(0) + '%,' +
+                                  dl.toFixed(0) + '%,' + depositAlpha.toFixed(3) + ')';
+
+          // Direction updates only while actually moving, so a particle that
+          // stalls to a near-stop (e.g. drag settling it) keeps pointing the
+          // way it was last headed instead of collapsing toward angle 0.
+          if (p.vx * p.vx + p.vy * p.vy > 1e-4) p.dirAngle = Math.atan2(p.vy, p.vx);
+          var hw = sw / 2;
+          var tlen = cfg.trail.length;
+          if (tlen > 0) {
+            var dx = -Math.cos(p.dirAngle), dy = -Math.sin(p.dirAngle);
+            var nx = -dy, ny = dx; // perpendicular to the direction of travel
+            particleCtx.beginPath();
+            particleCtx.moveTo(p.x + dx * tlen, p.y + dy * tlen);
+            particleCtx.lineTo(p.x + nx * hw, p.y + ny * hw);
+            particleCtx.lineTo(p.x - nx * hw, p.y - ny * hw);
+            particleCtx.closePath();
+            particleCtx.fill();
+          }
+          // The round head rounds off the fat end of the tail above into an
+          // actual teardrop, and alone (tlen 0) is the whole shape — every
+          // spark is at minimum this circle, whatever `length` is set to.
+          particleCtx.beginPath();
+          particleCtx.arc(p.x, p.y, hw, 0, TAU);
+          particleCtx.fill();
+        }
+
+        // The HEAD: an extra bright dot at the particle's current point only,
+        // drawn on top of the deposit above. Because it lands in particleBuf
+        // before the trail stamp below, this frame's trail segment is a
+        // little brighter right where the particle is now than the segments
+        // stamped in earlier frames — which then age and dim under the usual
+        // erase, exactly like a real ember cooling behind its own spark.
+        // headSize 0 (today's default) skips this entirely.
+        if (headSize > 0) {
+          var hr = p.size * headSize * 0.5;
+          // The wink has only ever scaled the DEPOSIT's stroke width, which
+          // makes a round head the one part of a spark that never blinks. That
+          // quietly cancels the flicker in exactly the case where the head is
+          // all you can see — trails off, so the deposit is a one-frame sliver
+          // and the head IS the spark. Winking the radius as well keeps a
+          // round point of light flickering. Gated, so a head drawn without
+          // sparkFlicker stays the steady dot it has always been.
+          if (sparkFlicker > 0) hr *= Math.abs(Math.cos(p.rot));
+          // Boosted toward the same hot reference the cooling curve flashes
+          // to (step 6), so the head reads as a hotter point, not just a
+          // bigger patch of the same colour. 0 (default) is p.h/p.s/p.l
+          // exactly — step 1's original head.
+          var hb = cfg.trail.headBoost;
+          var headS = p.s, headL = p.l;
+          if (hb > 0) {
+            headS = p.s + (8 - p.s) * hb;
+            headL = p.l + (cfg.trail.hotLight - p.l) * hb;
+          }
+          particleCtx.beginPath();
+          particleCtx.arc(p.x, p.y, hr, 0, TAU);
+          particleCtx.fillStyle = 'hsla(' + p.h.toFixed(0) + ',' + headS.toFixed(0) + '%,' +
+                                  headL.toFixed(0) + '%,' + (alpha * flick).toFixed(3) + ')';
+          particleCtx.fill();
+        }
       }
 
       // Rockets, drawn the same way into the same buffer — one bigger node, at
@@ -1075,9 +1973,103 @@
       trailCtx.fillRect(0, 0, w, h);
       trailCtx.restore();
 
-      trailCtx.globalAlpha = cfg.hanabi.trailAlpha;
-      trailCtx.drawImage(particleBuf, 0, 0, w, h);
-      trailCtx.globalAlpha = 1;
+      // 'sphere without trails' skips the deposit entirely — this is the whole
+      // of what that pattern is. Everything else about the frame is untouched,
+      // so the blast flash, the centre glow, the bloom and the smoke all still
+      // draw; only the streak behind each spark goes.
+      //
+      // Gating the STAMP rather than the composite's trail draw matters: with
+      // the stamp skipped nothing accumulates while the pattern is selected,
+      // so switching back to another pattern cannot pop a stored image of
+      // everything that just fired into view. The erase above still runs every
+      // frame, so a trail left behind by a previous pattern dissolves at its
+      // normal rate instead of freezing on screen.
+      //
+      // The rocket is drawn into particleBuf too, so its ascent trail goes with
+      // the sparks'. The stamp is wholesale — excluding only the sparkles would
+      // need a second draw pass, the same constraint the stamp system works
+      // around by drawing AFTER this line.
+      if (cfg.shape.type !== 'sphere without trails') {
+        trailCtx.globalAlpha = cfg.hanabi.trailAlpha;
+        trailCtx.drawImage(particleBuf, 0, 0, w, h);
+        trailCtx.globalAlpha = 1;
+      }
+
+      // ---- Stamp ----
+      // Drawn into particleBuf immediately AFTER the trail has been stamped
+      // from it. That ordering is the entire trick: the stamp into trailBuf is
+      // wholesale, so a particle drawn before it can never opt out, and these
+      // sparkles must leave no streak at all. Landing here they miss the trail
+      // buffer completely, but still reach the glow (built from particleBuf a
+      // few lines below) and the composite — so they bloom like everything
+      // else while trailing nothing.
+      var ST = cfg.stamp;
+      for (var si = 0; si < stamps.length; si++) {
+        var sp = stamps[si];
+        // This ball's own clock. In mini-burst mode it has not been thrown yet
+        // until its burst goes off, and drawing it early would show the whole
+        // shape sitting at the burst points before anything fires.
+        var sAgeS = sp.maxLife - sp.life - sp.delay;
+        if (sAgeS < 0) continue;
+
+        // Held time: negative while still scattering, 0 the instant a ball is
+        // done (already 0 for 'instant', which never scatters), running to
+        // ST.life at death. The flat-then-fade curve below is measured
+        // against THIS, not the age since launch, so `settle` is never eaten
+        // out of the held life.
+        var heldAge = sAgeS - sp.settle;
+        var heldFrac = heldAge / ST.life;
+
+        // Flat at full brightness while still scattering and through most of
+        // the hold, then a ramp over the last `fade` of ST.life. Guarded
+        // against fade 0, which would divide by zero and put NaN into the
+        // colour string — an invalid hsla() is silently ignored by the
+        // browser, so every sparkle would quietly inherit the previous one's
+        // fillStyle instead of erroring.
+        var sAlpha = (heldAge >= 0 && ST.fade > 0 && heldFrac > 1 - ST.fade)
+          ? (1 - heldFrac) / ST.fade
+          : 1;
+
+        // Twinkle: a smooth per-ball cycle, its own rate and its own phase.
+        // Normalised to 0..1 so the dip can never drive alpha negative.
+        if (ST.flicker > 0) {
+          var osc = (1 + Math.sin(sAgeS * sp.twMul * ST.flickerRate * TAU + sp.twPhase)) * 0.5;
+          sAlpha *= 1 - ST.flicker * osc;
+        }
+
+        // The pop as it lights: toward white, desaturated, a little bigger.
+        // Squared decay so it snaps away rather than oozing.
+        //
+        // The size lift is deliberately small. Radius scales area by its
+        // square, and 2500 of these already overlap, so a boost that looks
+        // modest per ball drives the whole stamp to saturated white and the
+        // shape renders as a solid silhouette with no sparkles in it. 0.3 is
+        // enough to read as a pop while the grain survives.
+        //
+        // Only a ball actually mid-pop pays for a fresh colour string; the
+        // stagger means that is a small slice of them at any instant, and
+        // every other ball reuses the one cached at spawn.
+        var sR = sp.size;
+        var sSince = sAgeS - sp.flashAt; // this ball's own clock, not the stamp's
+        if (ST.flash > 0 && sSince >= 0 && sSince < sp.flashT) {
+          var f = 1 - sSince / sp.flashT;
+          var boost = ST.flash * f * f;
+          sR = sp.size * (1 + boost * 0.3);
+          particleCtx.fillStyle = 'hsl(' + sp.h.toFixed(0) + ',' +
+            (sp.s * (1 - boost * 0.55)).toFixed(0) + '%,' +
+            (sp.l + (100 - sp.l) * boost).toFixed(0) + '%)';
+        } else {
+          particleCtx.fillStyle = sp.css;
+        }
+
+        particleCtx.globalAlpha = clamp(sAlpha, 0, 1);
+        // A square, not an arc. They measure the same, and at these radii the
+        // glow buffer blurs the difference away entirely.
+        particleCtx.fillRect(sp.x - sR, sp.y - sR, sR * 2, sR * 2);
+      }
+      // Reset, or the next frame's particles and rockets inherit the last
+      // stamp sparkle's alpha — this context is reused across frames.
+      particleCtx.globalAlpha = 1;
 
       // ---- Smoke ----
       drawSmoke(w, h);
@@ -1145,10 +2137,14 @@
       particles.length = 0;
       for (var j = 0; j < smoke.length; j++) smokePool.push(smoke[j]);
       smoke.length = 0;
+      for (var k = 0; k < stamps.length; k++) stampPool.push(stamps[k]);
+      stamps.length = 0;
+      stampBlasts.length = 0;
       blasts.length = 0;
       cores.length = 0;
       rockets.length = 0;
       pendingBursts.length = 0; // or a queued burst fires into the cleared stage
+      pendingStamps.length = 0; // likewise — Clear must mean nothing is still coming
       // The trail is persistent, so it has to be wiped explicitly or the last
       // burst bleeds into the next one.
       trailCtx.clearRect(0, 0, trailBuf.width, trailBuf.height);
@@ -1173,6 +2169,7 @@
 
       burst: burst,
       launch: launch,
+      stamp: spawnStamp,
       update: update,
       draw: draw,
       resize: resize,
@@ -1188,7 +2185,8 @@
           rockets: rockets.length,
           smoke: smoke.length,
           blasts: blasts.length,
-          cores: cores.length
+          cores: cores.length,
+          stamps: stamps.length
         };
       },
 
@@ -1201,6 +2199,7 @@
         smoke: smoke,
         blasts: blasts,
         cores: cores,
+        stamps: stamps,
         particleBuf: particleBuf,
         trailBuf: trailBuf,
         glowBuf: glowBuf,

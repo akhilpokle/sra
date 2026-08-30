@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<!-- Fireworks lab 2 — the tuning stage for fireworks-engine-2.js, the light
+     engine. Experimentation only, not part of the Liferay deliverable.
+
+     Sibling of fireworks-lab.html, and deliberately NOT a copy of it: that one
+     drives fireworks-engine.js, which has a far larger config. Every control
+     here maps to a key engine 2 actually reads, and there are no others —
+     nothing on this page adds behaviour the engine does not already have. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fireworks Lab 2</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #fff;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #1a1a1a;
+  }
+
+  .lab {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    height: 100%;
+  }
+
+  .lab-stage {
+    position: relative;
+    min-width: 0; /* let the canvas shrink instead of forcing the grid wider */
+  }
+
+  .lab-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #050a18; /* engine 2's default sky — also painted per frame */
+    cursor: crosshair;
+  }
+
+  .lab-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lab-actions button {
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 12px;
+    border: 1px solid #d5d5d5;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .lab-actions button:hover { border-color: #999; }
+
+  .lab-actions button.primary {
+    background: #1a1a1a;
+    border-color: #1a1a1a;
+    color: #fff;
+  }
+
+  .lab-actions label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #666;
+  }
+
+  .lab-stats {
+    font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #666;
+    background: #fafafa;
+  }
+
+  .lab-stats b {
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+
+  .lab-hint {
+    font-size: 11px;
+    color: #8a8a8a;
+    background: #fafafa;
+  }
+
+  .lab-hint + .lab-hint,
+  .lab-actions + .lab-hint {
+    margin-top: 8px;
+    background: none;
+  }
+
+  /* The scratch textarea the copy falls back to when navigator.clipboard is
+     unavailable. It has to be in the document and selectable for execCommand
+     to see it, so it cannot be display:none — parked off-screen instead. */
+  .lab-clip {
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+    opacity: 0;
+  }
+
+  .lab-panel {
+    border-left: 1px solid #e2e2e2;
+    overflow-y: auto;
+    padding: 0 0 32px;
+  }
+
+  /* ---- Panel ------------------------------------------------------------ */
+
+  .lab-section {
+    border-bottom: 1px solid #ededed;
+    padding: 14px 16px 16px;
+  }
+
+  .lab-section > h2 {
+    margin: 0 0 2px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+  }
+
+  .lab-section > p {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: #8a8a8a;
+  }
+
+  .lab-field {
+    display: grid;
+    grid-template-columns: 1fr 92px 44px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+
+  .lab-field > label {
+    font-size: 12px;
+    color: #444;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .lab-field > .lab-val {
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #666;
+    text-align: right;
+  }
+
+  .lab-field input[type="range"] {
+    width: 100%;
+    margin: 0;
+  }
+
+  .lab-field select {
+    grid-column: 2 / span 2;
+    width: 100%;
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid #d5d5d5;
+    border-radius: 3px;
+    background: #fff;
+  }
+
+  .lab-field input[type="checkbox"] {
+    grid-column: 2;
+    justify-self: start;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="lab">
+  <div class="lab-stage">
+    <canvas class="lab-canvas" id="stage"></canvas>
+  </div>
+  <div class="lab-panel" id="panel">
+    <div class="lab-section lab-actions">
+      <button class="primary" id="act-launch">Launch</button>
+      <button id="act-burst">Burst</button>
+      <button id="act-clear">Clear</button>
+      <button id="act-reset">Reset</button>
+      <label><input type="checkbox" id="act-auto"> auto</label>
+    </div>
+    <div class="lab-section lab-hint">
+      Click the sky to burst there · shift-click to send a rocket up to that height.
+    </div>
+    <div class="lab-section">
+      <div class="lab-actions">
+        <button id="act-copy">Copy for overlay</button>
+      </div>
+      <div class="lab-hint">
+        Emits only the keys the engine owns, ready to paste over the matching
+        ones in <code>cfg</code> in lsa-experience.js. The overlay's show-only
+        keys are not included and must be left alone.
+      </div>
+    </div>
+    <div class="lab-section lab-stats" id="stats"></div>
+  </div>
+</div>
+
+<!-- The light engine, loaded as a plain classic script so this page still works
+     opened straight off disk. It is standalone: fireworks-engine.js is NOT
+     loaded here, and neither file knows about the other. -->
+<script src="../fireworks-engine-2.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ======================================================================
+     Control schema.
+
+     One row per key engine 2 reads — no more, no less. Defaults restate the
+     engine's own DEFAULTS, so a Reset here lands exactly where a fresh
+     Fireworks2() would.
+
+     Where a number is PER FRAME at 30fps the label says so, because those are
+     the ones that look wrong if read as per-second. See the FPS_REF note at
+     the top of the engine.
+     ====================================================================== */
+
+  var SCHEMA = [
+    {
+      title: 'Stage',
+      note: 'the sky the fireworks are drawn on · additive blending needs real pixels underneath to add to, which is why transparent looks flatter',
+      fields: [
+        { path: 'background', label: 'Background', type: 'select', value: '#050a18',
+          options: ['#050a18', '#0b1a30', '#000000', 'transparent'] },
+        { path: 'scale', label: 'Firework size', min: 0.3, max: 5, step: 0.05, value: 1 }
+      ]
+    },
+    {
+      title: 'Colour',
+      note: 'a palette is a list of hues · every spark takes one at random and then jitters away from it, so a burst is never one flat colour',
+      fields: [
+        { path: 'palette', label: 'Colour set', type: 'select', value: 'fire',
+          options: ['fire', 'blue', 'purple', 'random'] },
+        { path: 'jitterHue', label: 'Colour spread', min: 0, max: 60, step: 1, value: 5 },
+        { path: 'jitterSat', label: 'Richness spread', min: 0, max: 40, step: 1, value: 10 },
+        { path: 'jitterLight', label: 'Brightness spread', min: 0, max: 40, step: 1, value: 10 }
+      ]
+    },
+    {
+      title: 'The explosion',
+      note: 'sparks leave in every direction at sqrt(random) of top speed — that fills the disc evenly instead of crowding the middle',
+      fields: [
+        { path: 'count', label: 'Number of sparks', min: 10, max: 500, step: 10, value: 200 },
+        { path: 'explosionSize', label: 'How far sparks fly', min: 1, max: 40, step: 0.5, value: 10 },
+        { path: 'poolMax', label: 'Max sparks on screen', min: 200, max: 4000, step: 100, value: 2000 }
+      ]
+    },
+    {
+      title: 'The flash',
+      note: 'the shell detonating · the light arrives just BEFORE its own sparkles, and is drawn over everything without ever touching the trail · brought over from engine 1',
+      fields: [
+        { path: 'blast.enabled', label: 'Turn on', type: 'check', value: true },
+        { path: 'blast.lead', label: 'Light arrives early by (ms)', min: 0, max: 400, step: 5, value: 60 },
+        { path: 'blast.radius', label: 'How wide (px)', min: 20, max: 500, step: 10, value: 140 },
+
+        // Deliberately allowed past its own ceiling so the ceiling is visible:
+        // every gradient stop's alpha clamps at 1, so this stops doing anything
+        // at all somewhere around 2.75 — 2.75 and 5.0 measure the identical
+        // 1654 blown-out pixels. Past that point the control to reach for is
+        // "Draw it on itself" below, which is not subject to the clamp.
+        { path: 'blast.peak', label: 'How bright', min: 0, max: 3, step: 0.05, value: 0.55 },
+
+        { path: 'blast.rise', label: 'Time to ignite (s)', min: 0.01, max: 0.5, step: 0.01, value: 0.06 },
+        { path: 'blast.hold', label: 'Time at full brightness (s)', min: 0, max: 1, step: 0.01, value: 0.15 },
+        { path: 'blast.decay', label: 'Time fading out (s)', min: 0.1, max: 5, step: 0.1, value: 1.8 },
+
+        // Below 1 the bloom shrinks while it fades and reads as being sucked
+        // back in, which is the artefact this value exists to prevent.
+        { path: 'blast.growth', label: 'How much it spreads as it dies', min: 1, max: 4, step: 0.1, value: 1.6 },
+
+        // The big blown-out white core. Repeated additive fills, so unlike
+        // brightness it has no ceiling: 1 draw lights 0 blown-out pixels,
+        // 3 lights 2917, 8 lights 12406.
+        { path: 'blast.stack', label: 'Draw it on itself (x)', min: 1, max: 10, step: 1, value: 1 }
+      ]
+    },
+    {
+      title: 'Secondary bursts',
+      note: 'some of the first burst\'s own sparkles break again · a shell is an ordinary sparkle whose LIFE is the fuse, so it dims as it travels and breaks at the moment it would have died · children keep their parent\'s colour and never break a third time',
+      fields: [
+        { path: 'sub.enabled', label: 'Turn on', type: 'check', value: false },
+        { path: 'sub.count', label: 'How many break again', min: 1, max: 40, step: 1, value: 6 },
+
+        // Carries ±15% per shell. Without the jitter every shell breaks on the
+        // same frame and it reads as one mechanical pop instead of a scatter.
+        { path: 'sub.delay', label: 'Fuse (s)', min: 0.1, max: 2.5, step: 0.05, value: 0.7 },
+
+        { path: 'sub.particles', label: 'Sparkles from each', min: 5, max: 200, step: 5, value: 30 },
+        { path: 'sub.scale', label: 'Size of each', min: 0.05, max: 1.5, step: 0.05, value: 0.3 },
+        { path: 'sub.glow', label: 'Flash when they break', type: 'check', value: true }
+      ]
+    },
+    {
+      title: 'Physics',
+      note: 'the three numbers the whole look rests on, all PER FRAME at 30fps · gravity 0.2 and drag 0.9 together settle at a ~55 px/s fall',
+      fields: [
+        { path: 'gravity', label: 'Gravity (per frame)', min: 0, max: 1, step: 0.01, value: 0.2 },
+        { path: 'drag', label: 'Air resistance (per frame)', min: 0.8, max: 1, step: 0.005, value: 0.9 },
+        { path: 'lifeDecay', label: 'How fast sparks die (per frame)', min: 0.002, max: 0.05, step: 0.001, value: 0.01 },
+        { path: 'lifeSpread', label: 'Lifetime variety', min: 0, max: 0.9, step: 0.05, value: 0.35 },
+        { path: 'deltaCap', label: 'Longest frame allowed (s)', min: 0.016, max: 0.25, step: 0.002, value: 0.064 }
+      ]
+    },
+    {
+      title: 'The sparks',
+      note: 'each spark is a short stroke from where it was last frame to where it is now — a dot would leave gaps at these speeds',
+      fields: [
+        { path: 'size', label: 'Spark thickness (px)', min: 0.2, max: 6, step: 0.1, value: 1.6 },
+        { path: 'sizeSpread', label: 'Thickness variety', min: 0, max: 1, step: 0.05, value: 0.5 }
+      ]
+    },
+    {
+      title: 'Trail',
+      note: 'the streak left behind · it lives on its own buffer that is never cleared, only eroded a little each frame',
+      fields: [
+        { path: 'trailFade', label: 'How fast it fades (per frame)', min: 0.005, max: 0.3, step: 0.005, value: 0.05 },
+        { path: 'trailAlpha', label: 'How strongly sparks stamp it', min: 0, max: 1, step: 0.05, value: 0.6 }
+      ]
+    },
+    {
+      title: 'Glow',
+      note: 'the twinkle is pixels LOST when the sparks are squeezed down to this fraction of the size and blown back up · nothing is animated to flicker',
+      fields: [
+        { path: 'glowDownscale', label: 'Squeeze down by', min: 1, max: 12, step: 1, value: 4 },
+        { path: 'glowAlpha', label: 'How hard it is added back', min: 0, max: 2, step: 0.05, value: 1 }
+      ]
+    },
+    {
+      title: 'The rocket',
+      note: 'no drag on the way up, so launch speed solves exactly for the height and it always bursts at the top of its arc',
+      fields: [
+        { path: 'rocket.size', label: 'Rocket thickness (px)', min: 1, max: 12, step: 0.5, value: 4 },
+        { path: 'rocket.launchY', label: 'Launches from (fraction of height)', min: 0.5, max: 1, step: 0.01, value: 1 },
+        { path: 'rocket.light', label: 'How hot it burns', min: 50, max: 100, step: 1, value: 88 }
+      ]
+    }
+  ];
+
+  /* ---- Config -----------------------------------------------------------
+     Built from the schema so the two cannot drift apart, then handed to the
+     engine, which reads it LIVE — per frame, per spawn. That is what lets a
+     slider change the show while it is running. */
+
+  function setPath(obj, path, val) {
+    var keys = path.split('.');
+    var last = keys.pop();
+    var node = keys.reduce(function (acc, k) {
+      acc[k] = acc[k] || {};
+      return acc[k];
+    }, obj);
+    node[last] = val;
+  }
+
+  // 'transparent' is the panel's word for the engine's null background.
+  function toCfg(path, raw) {
+    if (path === 'background') return raw === 'transparent' ? null : raw;
+    return raw;
+  }
+
+  var cfg = {};
+  SCHEMA.forEach(function (section) {
+    section.fields.forEach(function (f) {
+      setPath(cfg, f.path, toCfg(f.path, f.value));
+    });
+  });
+
+  var canvas = document.getElementById('stage');
+  var fw = Fireworks2(canvas, cfg);
+  cfg = fw.cfg;   // the engine filled in anything the schema left out
+
+  /* ---- Render ----------------------------------------------------------- */
+
+  var panel = document.getElementById('panel');
+  var controls = [];
+
+  function buildField(f) {
+    var row = document.createElement('div');
+    row.className = 'lab-field';
+
+    var label = document.createElement('label');
+    label.textContent = f.label;
+    row.appendChild(label);
+
+    var input, readout = null;
+
+    if (f.type === 'check') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = f.value;
+      input.addEventListener('change', function () {
+        setPath(cfg, f.path, input.checked);
+      });
+    } else if (f.type === 'select') {
+      input = document.createElement('select');
+      f.options.forEach(function (opt) {
+        var o = document.createElement('option');
+        o.value = o.textContent = opt;
+        input.appendChild(o);
+      });
+      input.value = f.value;
+      input.addEventListener('change', function () {
+        setPath(cfg, f.path, toCfg(f.path, input.value));
+      });
+    } else {
+      input = document.createElement('input');
+      input.type = 'range';
+      input.min = f.min;
+      input.max = f.max;
+      input.step = f.step;
+      input.value = f.value;
+
+      readout = document.createElement('span');
+      readout.className = 'lab-val';
+      readout.textContent = f.value;
+
+      input.addEventListener('input', function () {
+        var v = parseFloat(input.value);
+        setPath(cfg, f.path, v);
+        readout.textContent = v;
+        // The glow buffer is allocated, not read per frame, so this one value
+        // needs the engine told. resize() no-ops when nothing changed.
+        if (f.path === 'glowDownscale') fw.resize();
+      });
+    }
+
+    label.htmlFor = input.id = 'f-' + f.path.replace(/\./g, '-');
+    row.appendChild(input);
+    if (readout) row.appendChild(readout);
+    controls.push({ f: f, input: input, readout: readout });
+    return row;
+  }
+
+  SCHEMA.forEach(function (section) {
+    var el = document.createElement('div');
+    el.className = 'lab-section';
+
+    var h = document.createElement('h2');
+    h.textContent = section.title;
+    el.appendChild(h);
+
+    if (section.note) {
+      var p = document.createElement('p');
+      p.textContent = section.note;
+      el.appendChild(p);
+    }
+
+    section.fields.forEach(function (f) { el.appendChild(buildField(f)); });
+    panel.appendChild(el);
+  });
+
+  /* ---- Actions ----------------------------------------------------------- */
+
+  function stageSize() { return fw.size(); }
+
+  function randomBurst() {
+    var s = stageSize();
+    fw.burst(s.w * (0.2 + Math.random() * 0.6), s.h * (0.2 + Math.random() * 0.35));
+  }
+
+  function randomLaunch() {
+    var s = stageSize();
+    fw.launch(s.w * (0.15 + Math.random() * 0.7), s.h * (0.2 + Math.random() * 0.3));
+  }
+
+  document.getElementById('act-launch').addEventListener('click', randomLaunch);
+  document.getElementById('act-burst').addEventListener('click', randomBurst);
+  document.getElementById('act-clear').addEventListener('click', function () { fw.clear(); });
+
+  document.getElementById('act-reset').addEventListener('click', function () {
+    controls.forEach(function (c) {
+      if (c.f.type === 'check') c.input.checked = c.f.value;
+      else c.input.value = c.f.value;
+      if (c.readout) c.readout.textContent = c.f.value;
+      setPath(cfg, c.f.path, toCfg(c.f.path, c.f.value));
+    });
+    fw.resize();   // glowDownscale may have gone back to its default
+    fw.clear();
+  });
+
+  /* ---- Copy for overlay -------------------------------------------------
+     The one route from this lab into lsa-experience.js. It is deliberately NOT
+     a dump of `cfg`, because two things about this lab's config are wrong for
+     the overlay and a wholesale paste would carry both across:
+
+       background   this lab needs an opaque sky to composite onto; the overlay
+                    needs `null`, or it paints over the live Liferay page. It is
+                    forced to null here rather than left to be remembered.
+       show-only    goColors, fireworkSize, goHeight, goSequence, fireworkCfg —
+                    the overlay's own, which this lab has no idea about.
+                    Replacing the whole object would delete the GO sequence and
+                    every per-firework setting.
+
+     So the emitted text is the engine-owned keys ONLY, at the overlay's own
+     indentation, with a trailing comma on each so it slots straight in above
+     the show-only half.
+
+     The key list comes from Fireworks2.defaults() rather than being written out
+     here, so a key added to the engine appears in the export with no change to
+     this file — the two cannot drift apart. */
+  function exportForOverlay() {
+    var owned = Fireworks2.defaults();
+    var out = [
+      '/* Engine settings from fireworks lab 2.',
+      '   Paste over the matching keys in the `cfg` literal in lsa-experience.js.',
+      '   The show-only keys below them — goColors, fireworkSize, goHeight,',
+      '   goSequence, fireworkCfg — are NOT in here and must be left alone.',
+      '   `background` is forced to null: the overlay composites onto the page. */'
+    ];
+
+    Object.keys(owned).forEach(function (k) {
+      var v = (k === 'background') ? null : cfg[k];
+      // Nested objects (blast, rocket) are pretty-printed and re-indented so
+      // they land at the same depth as everything around them.
+      var text = JSON.stringify(v, null, 2).split('\n').join('\n  ');
+      out.push('  ' + k + ': ' + text + ',');
+    });
+
+    return out.join('\n');
+  }
+
+  /* navigator.clipboard needs a secure context and a real user gesture. Both
+     hold for a click on this button, but a hosted http lab has neither, so the
+     old execCommand route stays as a fallback and the console gets the text if
+     even that is refused — a tuning session is never lost to a copy failing. */
+  function copyText(text, done) {
+    function legacy() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.className = 'lab-clip';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.remove();
+      return ok;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { done(true); },
+        function () { done(legacy()); }
+      );
+      return;
+    }
+    done(legacy());
+  }
+
+  var copyBtn = document.getElementById('act-copy');
+  copyBtn.addEventListener('click', function () {
+    var text = exportForOverlay();
+    copyText(text, function (ok) {
+      copyBtn.textContent = ok ? 'Copied' : 'Copy failed — see console';
+      if (!ok) console.warn('[lab2] clipboard refused; config follows:\n' + text);
+      setTimeout(function () { copyBtn.textContent = 'Copy for overlay'; }, 1600);
+    });
+  });
+
+  // Hanabi detonates once a second on its own; this is the same beat.
+  var auto = document.getElementById('act-auto');
+  var autoTimer = 0;
+
+  canvas.addEventListener('click', function (e) {
+    var r = canvas.getBoundingClientRect();
+    var x = e.clientX - r.left, y = e.clientY - r.top;
+    if (e.shiftKey) fw.launch(x, y);
+    else fw.burst(x, y);
+  });
+
+  /* ---- Loop --------------------------------------------------------------
+     The engine never starts a requestAnimationFrame loop of its own, so this
+     page owns the clock. dt is passed straight through; the engine clamps it
+     against deltaCap. */
+
+  var statsEl = document.getElementById('stats');
+  var last = 0, frames = 0, sampled = 0, fps = 0;
+
+  function tick(now) {
+    var dt = last ? (now - last) / 1000 : 1 / 60;
+    last = now;
+
+    if (auto.checked) {
+      autoTimer -= dt;
+      if (autoTimer <= 0) { randomLaunch(); autoTimer = 1; }
+    }
+
+    fw.update(dt);
+    fw.draw(dt);
+
+    frames++;
+    if (now - sampled >= 500) {
+      fps = Math.round(frames * 1000 / (now - sampled));
+      frames = 0;
+      sampled = now;
+      var s = fw.stats();
+      statsEl.innerHTML = '<b>' + fps + '</b> fps &middot; <b>' + s.particles +
+                          '</b> live &middot; <b>' + s.pooled + '</b> pooled &middot; <b>' +
+                          s.rockets + '</b> in flight';
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  /* ---- Debug hook --------------------------------------------------------
+     step() drives frames synchronously, so the show can be advanced by hand
+     when requestAnimationFrame is not firing — which is how this project's
+     visual checks are done. Argument order matches the engine's own draw(dt).
+  */
+  window.lab2 = {
+    fw: fw,
+    cfg: cfg,
+    canvas: canvas,
+    burst: randomBurst,
+    launch: randomLaunch,
+    exportForOverlay: exportForOverlay,
+    step: function (n, dt) {
+      dt = dt || 1 / 60;
+      for (var i = 0; i < n; i++) { fw.update(dt); fw.draw(dt); }
+    }
+  };
+})();
+</script>
+
+</body>
+</html>

@@ -111,10 +111,32 @@
     color: #1a1a1a;
   }
 
-  .lab-section > p {
+  .lab-body > p {
     margin: 0 0 12px;
     font-size: 11px;
     color: #8a8a8a;
+  }
+
+  /* A collapsible section's h2 is the disclosure control — its note and
+     fields live in .lab-body, the one thing collapsing actually hides. */
+  .lab-section.collapsible > h2 {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .lab-section.collapsible > h2::before {
+    content: '\25BE';
+    display: inline-block;
+    width: 12px;
+    transition: transform 0.15s;
+  }
+
+  .lab-section.collapsible.collapsed > h2::before {
+    transform: rotate(-90deg);
+  }
+
+  .lab-section.collapsible.collapsed > .lab-body {
+    display: none;
   }
 
   .lab-sub {
@@ -179,7 +201,9 @@
   </div>
   <div class="lab-panel" id="panel">
     <div class="lab-section lab-actions">
-      <button class="primary" id="act-burst">Burst</button>
+      <button class="primary" id="act-launch">Launch</button>
+      <button id="act-burst">Burst</button>
+      <button id="act-stamp">Stamp</button>
       <button id="act-clear">Clear</button>
       <button id="act-reset">Reset</button>
       <label><input type="checkbox" id="act-auto"> auto</label>
@@ -221,140 +245,303 @@
   var SCHEMA = [
     {
       title: 'Size',
-      note: 'overall scale · multiplies burst spread and shard size together',
+      note: 'how big the whole firework is — spreads the sparks wider and makes each spark bigger',
       fields: [
         { path: 'scale', label: 'Firework size', min: 0.3, max: 5, step: 0.05, value: 1 }
       ]
     },
     {
-      title: 'Shape',
-      note: 'what the sparkles are arranged into at the moment of the break',
+      title: 'Pattern',
+      note: 'the shape the sparks are arranged into at the moment it explodes · each pattern has its own settings below, but random twinkle applies to all of them',
       fields: [
-        { path: 'shape.type', label: 'Shape', type: 'select', value: 'normal',
-          options: ['normal', 'star burst', 'concentric', 'squiggle', 'dbs sparks'] },
+        // Two entries are the odd ones out. Every other pattern only decides
+        // the launch angle and speed of each spark; these two also say
+        // something about how the firework is drawn or what follows it.
+        //
+        //   'sphere without trails' — the plain even sphere, drawn with no
+        //     streak behind each spark, so the colour stays crisp instead of
+        //     smearing. The whole "Spark streaks" section is hidden while it
+        //     is selected, since none of it applies.
+        //   'dbs sparks' — an even sphere, then the DBS spark assembling on
+        //     the emptied sky. Picking it turns the stamp on by itself; its
+        //     settings live in "The DBS spark" section below.
+        { path: 'shape.type', label: 'Pattern', type: 'select', value: 'normal',
+          options: ['normal', 'ring', 'star burst', 'concentric', 'squiggle',
+                    'sphere without trails', 'dbs sparks'] },
 
-        { sub: 'Star burst' },
-        { path: 'shape.starPoints', label: 'Points', min: 3, max: 12, step: 1, value: 5 },
-        { path: 'shape.starInner', label: 'Valley radius', min: 0.05, max: 0.9, step: 0.05, value: 0.3 },
+        // Applies to every pattern, so it sits above the per-pattern groups
+        // and is never hidden by the pattern switch below.
+        { path: 'shape.sparkFlicker', label: 'Random twinkle', min: 0, max: 1, step: 0.05, value: 0 },
 
-        { sub: 'Concentric' },
-        { path: 'shape.rings', label: 'Rings', min: 2, max: 6, step: 1, value: 3 },
-        { path: 'shape.ringWidth', label: 'Ring width', min: 0, max: 0.3, step: 0.01, value: 0.04 },
+        // Each `shapeGroup` below is only shown while its own pattern is
+        // selected — see the visibility wiring near the schema render loop.
+        { sub: 'Ring', shapeGroup: 'ring' },
+        { path: 'shape.ringThickness', label: 'How thick the ring is', min: 0.01, max: 1, step: 0.01, value: 0.08 },
 
-        { sub: 'Squiggle' },
+        { sub: 'Star burst', shapeGroup: 'star burst' },
+        { path: 'shape.starPoints', label: 'Number of points', min: 3, max: 12, step: 1, value: 5 },
+        { path: 'shape.starInner', label: 'How deep the dips are', min: 0.05, max: 0.9, step: 0.05, value: 0.3 },
+
+        { sub: 'Concentric', shapeGroup: 'concentric' },
+        { path: 'shape.rings', label: 'Number of rings', min: 2, max: 6, step: 1, value: 3 },
+        { path: 'shape.ringWidth', label: 'Ring thickness', min: 0, max: 0.3, step: 0.01, value: 0.04 },
+
+        { sub: 'Squiggle', shapeGroup: 'squiggle' },
         // Half-swing width in px is waveAmp / (2 * waveFreq) — 500 / 6 = ~83px.
-        { path: 'shape.waveAmp', label: 'Weave speed px/s', min: 0, max: 1500, step: 25, value: 500 },
-        { path: 'shape.waveFreq', label: 'Zig-zags / s', min: 0.5, max: 12, step: 0.5, value: 3 },
+        { path: 'shape.waveAmp', label: 'Zig-zag width', min: 0, max: 1500, step: 25, value: 500 },
+        { path: 'shape.waveFreq', label: 'Zig-zags per second', min: 0.5, max: 12, step: 0.5, value: 3 }
+      ]
+    },
+    {
+      title: 'Second explosions',
+      note: 'some sparks fly out, then explode again a moment later',
+      fields: [
+        { path: 'sub.enabled', label: 'Turn on', type: 'check', value: false },
+        { path: 'sub.count', label: 'How many explode again', min: 1, max: 24, step: 1, value: 6 },
+        { path: 'sub.delay', label: 'Wait before they pop (s)', min: 0.1, max: 2.5, step: 0.05, value: 0.7 },
+        { path: 'sub.particles', label: 'Sparks from each', min: 5, max: 120, step: 5, value: 30 },
+        { path: 'sub.scale', label: 'Size of each', min: 0.05, max: 1, step: 0.05, value: 0.3 },
+        { path: 'sub.glow', label: 'Flash when they pop', type: 'check', value: true }
+      ]
+    },
+    {
+      title: 'The DBS spark',
+      note: 'the four-pointed shape that follows the explosion · press Stamp to see it on its own · picking the "dbs sparks" pattern above turns it on automatically',
+      // 24 fields is most of the panel's height for a section usually left
+      // off — collapsed by default, click the title to open it. Independent
+      // of `stamp.enabled` below: that turns the effect on, this just
+      // controls whether its sliders take up space while you're not using
+      // them.
+      collapsible: true,
+      collapsed: true,
+      fields: [
+        { path: 'stamp.enabled', label: 'Turn on', type: 'check', value: false },
+        // 'instant' places every ball already in position. 'bursts' throws
+        // them out of a few mini explosions and lets drag land them there —
+        // same exact shape, arrived at instead of stamped.
+        { path: 'stamp.mode', label: 'How it arrives', type: 'select', value: 'bursts',
+          options: ['bursts', 'instant'] },
+        // Wants to be longer than the burst's sparks live, or the shape lands
+        // on a sky that has not emptied. The sparks run to 8.3s at the default
+        // spread, not the 3.3s the base life suggests — pull "How long sparks
+        // last (longest)" in rather than stretching this.
+        { path: 'stamp.delay', label: 'Wait after the explosion (s)', min: 0, max: 8, step: 0.1, value: 3.7 },
+        // The outline is |x|^n + |y|^n <= r^n. Below 1 the sides bow inward
+        // and the corners come to points; the waist sits at 50% of the point
+        // at n = 0.67, 35% at 0.5, 23% at 0.38.
+        { path: 'stamp.n', label: 'Pointiness', min: 0.15, max: 1.4, step: 0.01, value: 0.38 },
+        // 0 leaves the formula untransformed, which puts the points on the
+        // axes and reads as a "+". 45 turns them onto the diagonals — an X.
+        { path: 'stamp.rotation', label: 'Rotation', min: 0, max: 90, step: 1, value: 45 },
+        { path: 'stamp.size', label: 'Size vs the explosion', min: 0.2, max: 3, step: 0.05, value: 1 },
+        { path: 'stamp.count', label: 'How many sparks', min: 100, max: 3000, step: 25, value: 2500 },
+        // 2 is neutral, not 0 — a spoke's area grows as edge^2, so weighting
+        // by exactly that draws the shape as it really is. Above 2 buys
+        // fuller arms by emptying the middle, and 8 leaves four hairlines
+        // with no shape between them. Use "How many sparks" to fill the arms;
+        // use this only for a nudge.
+        { path: 'stamp.fillPoints', label: 'Arms vs middle', min: 0, max: 20, step: 0.25, value: 2 },
+        { path: 'stamp.softness', label: 'Edge softness', min: 0, max: 0.2, step: 0.01, value: 0.01 },
+        { path: 'stamp.dotSize', label: 'Spark size', min: 0.5, max: 4, step: 0.1, value: 1.4 },
+        { path: 'stamp.life', label: 'How long it hangs (s)', min: 0.5, max: 12, step: 0.5, value: 5 },
+        // Holds full brightness until the last slice of its life, then ramps
+        // out. A spark that dims from the moment it lights reads as already
+        // dying, and this one is meant to hang there.
+        { path: 'stamp.fade', label: 'How much of that is fading out', min: 0, max: 1, step: 0.05, value: 0.35 },
 
-        { sub: 'DBS sparks' },
-        { path: 'shape.hexRays', label: 'Corner rays', min: 0, max: 1, step: 0.05, value: 0.55 },
-        { path: 'shape.hexJitter', label: 'Edge jitter', min: 0, max: 0.3, step: 0.01, value: 0.06 }
+        { sub: 'The mini bursts that build it' },
+        { path: 'stamp.bursts', label: 'How many mini bursts', min: 1, max: 40, step: 1, value: 8 },
+        { path: 'stamp.burstSpread', label: 'Spread them over (s)', min: 0, max: 1.5, step: 0.05, value: 0.35 },
+        // Drag never mathematically arrives, so after this the balls are
+        // pinned to their targets — a shape that keeps creeping never settles.
+        { path: 'stamp.settle', label: 'Time to fly into place (s)', min: 0.2, max: 3, step: 0.1, value: 1.2 },
+        { path: 'stamp.burstGlow', label: 'Flash at each mini burst', type: 'check', value: true },
+
+        { sub: 'Each ball pops as it lights' },
+        { path: 'stamp.flash', label: 'How hard it pops', min: 0, max: 1, step: 0.05, value: 0.7 },
+        { path: 'stamp.flashTime', label: 'How long one pop lasts (s)', min: 0.05, max: 1, step: 0.01, value: 0.18 },
+        // Without this every ball peaks on the same frame and the whole stamp
+        // clips to solid white — 77% of it, measured. Spreading the pops out
+        // keeps the grain.
+        { path: 'stamp.flashStagger', label: 'Spread the pops over (s)', min: 0, max: 1.5, step: 0.05, value: 0.35 },
+
+        { sub: 'Twinkle while it hangs' },
+        // A slow per-ball cycle, not per-frame randomness — on 2500 dots
+        // nailed to the sky, random dimming reads as television static.
+        { path: 'stamp.flicker', label: 'How deep the twinkle', min: 0, max: 1, step: 0.05, value: 0.45 },
+        { path: 'stamp.flickerRate', label: 'Twinkle speed (per second)', min: 0.5, max: 20, step: 0.5, value: 6 }
       ]
     },
     {
-      title: 'Sub-blasts',
-      note: 'shells carried out by the burst that break again a moment later',
+      title: 'Spark streaks',
+      note: 'every spark leaves a glowing streak behind it · the streak and the bright dot at the front of the spark are set separately. All start at 0 = off',
+      // 'sphere without trails' draws no streak at all, so every control in
+      // here would do nothing while it is selected.
+      hideFor: ['sphere without trails'],
       fields: [
-        { path: 'sub.enabled', label: 'Enabled', type: 'check', value: false },
-        { path: 'sub.count', label: 'Shells / burst', min: 1, max: 24, step: 1, value: 6 },
-        { path: 'sub.delay', label: 'Delay (s)', min: 0.1, max: 2.5, step: 0.05, value: 0.7 },
-        { path: 'sub.particles', label: 'Particles / shell', min: 5, max: 120, step: 5, value: 30 },
-        { path: 'sub.scale', label: 'Size x', min: 0.05, max: 1, step: 0.05, value: 0.3 },
-        { path: 'sub.glow', label: 'Flash', type: 'check', value: true }
+        { path: 'trail.width', label: 'Streak thickness', min: 0.1, max: 3, step: 0.05, value: 1 },
+        // A fixed px length behind every spark's head, straight opposite its
+        // direction of travel — independent of the spark's own size or speed.
+        { path: 'trail.length', label: 'How far it stretches back (px)', min: 0, max: 40, step: 1, value: 8 },
+        { path: 'trail.headSize', label: 'Bright dot size', min: 0, max: 3, step: 0.05, value: 0 },
+        // Blends the head toward "Brightness at the start" below (shared with
+        // the cooling curve's flash) — a bigger, brighter, rounder head is
+        // what turns the existing cheap glow blur into a bloom around a point
+        // of light rather than a fatter sliver of the same colour.
+        { path: 'trail.headBoost', label: 'How white-hot the dot', min: 0, max: 1, step: 0.05, value: 0 },
+        // Bidirectional on purpose — the surviving-window geometry makes the
+        // "natural" sign non-obvious, so it's a slider either way, not a
+        // signed magnitude. + stamps wide near spawn, narrowing to zero by
+        // death; - the reverse; 0 is the old constant width.
+        { path: 'trail.taper', label: 'Thick-to-thin (+ or -)', min: -1, max: 1, step: 0.05, value: 0 },
+        // Per-particle deposit-strength variance, fixed at spawn — some
+        // embers run as long streamers, others barely leave a mark, at the
+        // same global erase rate. 0 = every particle deposits uniformly.
+        { path: 'trail.spread', label: 'Streak length variety', min: 0, max: 1, step: 0.05, value: 0 },
+        // Independent random jitter on the deposit's alpha every frame — a
+        // faster, grainier effect than the wink above, which is a slow
+        // rotation-driven width oscillation. No shared phase between
+        // particles, so it never reads as a rhythm.
+        { path: 'trail.flicker', label: 'Flicker', min: 0, max: 1, step: 0.05, value: 0 },
+
+        { sub: 'Streak colour as it cools' },
+        { path: 'trail.cool', label: 'How much it cools', min: 0, max: 1, step: 0.05, value: 0 },
+        { path: 'trail.hotLight', label: 'Brightness at the start', min: 50, max: 100, step: 1, value: 95 },
+        { path: 'trail.emberHue', label: 'Colour it fades to', min: 0, max: 359, step: 1, value: 15 },
+        { path: 'trail.emberLight', label: 'Brightness at the end', min: 0, max: 60, step: 1, value: 25 }
       ]
     },
     {
-      title: 'Hanabi',
-      note: 'per-frame values · reference runs at 30fps',
+      title: 'Explosion & sparks',
+      // Section renamed for readability. The config paths are still hanabi.*
+      // — a copied config is unchanged, and the engine header's notes on
+      // these being per-frame values at 30fps still apply.
+      note: 'how the sparks burst out, fly, and burn out',
       fields: [
-        { path: 'hanabi.layer', label: 'View layer', type: 'select', value: 'composite',
+        { path: 'hanabi.layer', label: 'Show only one layer', type: 'select', value: 'composite',
           options: ['composite', 'particles', 'trail', 'glow', 'smoke'] },
-        { path: 'hanabi.palette', label: 'Palette', type: 'select', value: 'fire',
+        { path: 'hanabi.palette', label: 'Colour set', type: 'select', value: 'fire',
           options: ['fire', 'blue', 'purple', 'random'] },
-        { path: 'hanabi.fps', label: 'Target fps', min: 1, max: 60, step: 1, value: 30 },
+        { path: 'hanabi.fps', label: 'Speed reference (fps)', min: 1, max: 60, step: 1, value: 30 },
 
-        { sub: 'Burst' },
-        { path: 'hanabi.count', label: 'Particles / burst', min: 10, max: 500, step: 10, value: 200 },
-        { path: 'hanabi.explosionSize', label: 'Explosion size', min: 1, max: 40, step: 0.5, value: 10 },
-        { path: 'hanabi.poolMax', label: 'Pool max', min: 200, max: 4000, step: 100, value: 2000 },
+        { sub: 'The burst' },
+        { path: 'hanabi.count', label: 'Number of sparks', min: 10, max: 500, step: 10, value: 200 },
+        { path: 'hanabi.explosionSize', label: 'How far sparks fly', min: 1, max: 40, step: 0.5, value: 10 },
+        { path: 'hanabi.poolMax', label: 'Max sparks on screen', min: 200, max: 4000, step: 100, value: 2000 },
 
-        { sub: 'Physics' },
-        { path: 'hanabi.gravity', label: 'Gravity', min: 0, max: 1, step: 0.01, value: 0.2 },
-        { path: 'hanabi.drag', label: 'Drag', min: 0.8, max: 1, step: 0.005, value: 0.9 },
-        { path: 'hanabi.lifeDecay', label: 'Life decay', min: 0.002, max: 0.05, step: 0.001, value: 0.01 },
+        { sub: 'Movement' },
+        { path: 'hanabi.gravity', label: 'Gravity (falling speed)', min: 0, max: 1, step: 0.01, value: 0.2 },
+        { path: 'hanabi.drag', label: 'Air resistance', min: 0.8, max: 1, step: 0.005, value: 0.9 },
+        { path: 'hanabi.lifeDecay', label: 'How fast sparks die', min: 0.002, max: 0.05, step: 0.001, value: 0.01 },
 
-        { sub: 'Trail & glow' },
-        { path: 'hanabi.trailFade', label: 'Trail fade', min: 0.01, max: 0.3, step: 0.005, value: 0.05 },
-        { path: 'hanabi.trailAlpha', label: 'Trail alpha', min: 0, max: 1, step: 0.05, value: 0.6 },
-        { path: 'hanabi.glowDownscale', label: 'Glow downscale', min: 1, max: 8, step: 1, value: 4 },
+        { sub: 'Streaks & glow' },
+        { path: 'hanabi.trailFade', label: 'How fast streaks fade', min: 0.01, max: 0.3, step: 0.005, value: 0.05 },
+        { path: 'hanabi.trailAlpha', label: 'Streak brightness', min: 0, max: 1, step: 0.05, value: 0.6 },
+        { path: 'hanabi.glowDownscale', label: 'Glow blurriness', min: 1, max: 8, step: 1, value: 4 },
 
-        { sub: 'Colour jitter' },
-        { path: 'hanabi.jitterHue', label: 'Hue ±°', min: 0, max: 30, step: 1, value: 5 },
-        { path: 'hanabi.jitterSat', label: 'Saturation ±', min: 0, max: 30, step: 1, value: 10 },
-        { path: 'hanabi.jitterLight', label: 'Lightness ±', min: 0, max: 30, step: 1, value: 10 },
+        { sub: 'Colour variety' },
+        { path: 'hanabi.jitterHue', label: 'Colour variation', min: 0, max: 30, step: 1, value: 5 },
+        { path: 'hanabi.jitterSat', label: 'Richness variation', min: 0, max: 30, step: 1, value: 10 },
+        { path: 'hanabi.jitterLight', label: 'Brightness variation', min: 0, max: 30, step: 1, value: 10 },
 
         { sub: 'Smoke' },
-        { path: 'hanabi.smoke.enabled', label: 'Enabled', type: 'check', value: true },
-        { path: 'hanabi.smoke.countMin', label: 'Count min', min: 0, max: 40, step: 1, value: 12 },
-        { path: 'hanabi.smoke.countMax', label: 'Count max', min: 0, max: 40, step: 1, value: 20 },
-        { path: 'hanabi.smoke.sizeMin', label: 'Size min', min: 1, max: 20, step: 0.5, value: 3 },
-        { path: 'hanabi.smoke.sizeMax', label: 'Size max', min: 1, max: 20, step: 0.5, value: 8 },
-        { path: 'hanabi.smoke.rise', label: 'Rise', min: 0, max: 0.05, step: 0.001, value: 0.015 },
-        { path: 'hanabi.smoke.dragX', label: 'Drag X', min: 0.8, max: 1, step: 0.005, value: 0.95 },
-        { path: 'hanabi.smoke.dragY', label: 'Drag Y', min: 0.8, max: 1, step: 0.005, value: 0.92 },
-        { path: 'hanabi.smoke.growth', label: 'Growth', min: 0, max: 0.3, step: 0.01, value: 0.08 },
-        { path: 'hanabi.smoke.lifeDecay', label: 'Life decay', min: 0.002, max: 0.05, step: 0.001, value: 0.012 },
-        { path: 'hanabi.smoke.maxAlpha', label: 'Max alpha', min: 0, max: 1, step: 0.05, value: 0.25 }
+        { path: 'hanabi.smoke.enabled', label: 'Show smoke', type: 'check', value: true },
+        { path: 'hanabi.smoke.countMin', label: 'Fewest puffs', min: 0, max: 40, step: 1, value: 12 },
+        { path: 'hanabi.smoke.countMax', label: 'Most puffs', min: 0, max: 40, step: 1, value: 20 },
+        { path: 'hanabi.smoke.sizeMin', label: 'Smallest puff', min: 1, max: 20, step: 0.5, value: 3 },
+        { path: 'hanabi.smoke.sizeMax', label: 'Biggest puff', min: 1, max: 20, step: 0.5, value: 8 },
+        { path: 'hanabi.smoke.rise', label: 'How fast it rises', min: 0, max: 0.05, step: 0.001, value: 0.015 },
+        { path: 'hanabi.smoke.dragX', label: 'Sideways slowdown', min: 0.8, max: 1, step: 0.005, value: 0.95 },
+        { path: 'hanabi.smoke.dragY', label: 'Up/down slowdown', min: 0.8, max: 1, step: 0.005, value: 0.92 },
+        { path: 'hanabi.smoke.growth', label: 'How fast puffs spread', min: 0, max: 0.3, step: 0.01, value: 0.08 },
+        { path: 'hanabi.smoke.lifeDecay', label: 'How fast smoke clears', min: 0.002, max: 0.05, step: 0.001, value: 0.012 },
+        { path: 'hanabi.smoke.maxAlpha', label: 'Smoke thickness', min: 0, max: 1, step: 0.05, value: 0.25 }
       ]
     },
     {
-      title: 'confetti.js',
-      note: 'per-second values · what Hanabi has no equivalent for',
+      title: 'Each spark',
+      // Section renamed for readability; paths are still confetti.* and these
+      // are still the per-second values, as the engine header describes.
+      note: 'the look and wobble of one individual spark',
       fields: [
         // Only what confetti actually contributes to the mix. Its count,
         // velocity, drag and gravity all duplicated a Hanabi control that
         // already drives the engine, so they were removed rather than left
         // sitting in the panel doing nothing.
-        { path: 'confetti.size', label: 'Shard size', min: 0.2, max: 5, step: 0.1, value: 1 },
-        { path: 'confetti.spin', label: 'Spin ±°/s', min: 0, max: 720, step: 10, value: 250 },
+        { path: 'confetti.size', label: 'Spark size', min: 0.2, max: 5, step: 0.1, value: 1 },
+        { path: 'confetti.spin', label: 'How fast they tumble', min: 0, max: 720, step: 10, value: 250 },
 
-        { sub: 'Physics' },
-        { path: 'confetti.massSpread', label: 'Mass spread', min: 0, max: 1, step: 0.01, value: 0.33 },
-        { path: 'confetti.flutter', label: 'Flutter ±', min: 0, max: 1000, step: 10, value: 350 },
-        { path: 'confetti.deltaCap', label: 'Delta cap (s)', min: 0.016, max: 0.2, step: 0.004, value: 0.064 },
+        { sub: 'Movement' },
+        { path: 'confetti.massSpread', label: 'How much weights vary', min: 0, max: 1, step: 0.01, value: 0.33 },
+        { path: 'confetti.flutter', label: 'Sideways wobble', min: 0, max: 1000, step: 10, value: 350 },
+        { path: 'confetti.deltaCap', label: 'Slow-frame limit (s)', min: 0.016, max: 0.2, step: 0.004, value: 0.064 },
 
-        { sub: 'Lifetime spread' },
-        { path: 'confetti.fadeMin', label: 'Life ×min', min: 0.1, max: 5, step: 0.1, value: 0.5 },
-        { path: 'confetti.fadeMax', label: 'Life ×max', min: 0.1, max: 5, step: 0.1, value: 2.5 }
+        { sub: 'How long sparks last' },
+        // Pulled in from 0.5/2.5 so the sky can empty before the stamp lands.
+        // At 2.5 the longest-lived sparks run 8.3s, and no stamp delay short
+        // enough to be watchable can outlast them. Put them back to 0.5/2.5
+        // for the old long-tailed burst — the stamp then overlaps it.
+        { path: 'confetti.fadeMin', label: 'Shortest life', min: 0.1, max: 5, step: 0.1, value: 0.3 },
+        { path: 'confetti.fadeMax', label: 'Longest life', min: 0.1, max: 5, step: 0.1, value: 0.8 }
       ]
     },
     {
-      title: 'Blast glow',
-      note: 'the shell detonating · neither library has this',
+      title: 'Big coloured flash',
+      note: 'the wide burst of coloured light when the shell explodes',
       fields: [
-        { path: 'blast.enabled', label: 'Enabled', type: 'check', value: true },
-        { path: 'blast.lead', label: 'Lead (ms)', min: 0, max: 300, step: 10, value: 60 },
-        { path: 'blast.radius', label: 'Radius', min: 20, max: 400, step: 10, value: 140 },
-        { path: 'blast.peak', label: 'Peak alpha', min: 0, max: 1, step: 0.05, value: 0.55 },
-        { path: 'blast.rise', label: 'Rise (s)', min: 0.01, max: 0.5, step: 0.01, value: 0.06 },
-        { path: 'blast.hold', label: 'Hold (s)', min: 0, max: 2, step: 0.05, value: 0.15 },
-        { path: 'blast.decay', label: 'Decay (s)', min: 0.05, max: 6, step: 0.05, value: 1.8 }
+        { path: 'blast.enabled', label: 'Show coloured flash', type: 'check', value: true },
+        { path: 'blast.lead', label: 'Starts before sparks (ms)', min: 0, max: 300, step: 10, value: 60 },
+        { path: 'blast.radius', label: 'Size', min: 20, max: 400, step: 10, value: 140 },
+        { path: 'blast.peak', label: 'Brightness', min: 0, max: 1, step: 0.05, value: 0.55 },
+        { path: 'blast.rise', label: 'Time to light up (s)', min: 0.01, max: 0.5, step: 0.01, value: 0.06 },
+        { path: 'blast.hold', label: 'Time at full bright (s)', min: 0, max: 2, step: 0.05, value: 0.15 },
+        { path: 'blast.decay', label: 'Time to fade out (s)', min: 0.05, max: 6, step: 0.05, value: 1.8 },
+        // Without this the flash held one fixed size while fading, which
+        // reads as collapsing inward — see the note on blast.growth in the
+        // engine. 1 restores that old behaviour.
+        { path: 'blast.growth', label: 'Spreads out while fading', min: 1, max: 4, step: 0.05, value: 1.6 },
+
+        // Only shown — and only read by the engine — for this one pattern.
+        { sub: 'Sphere without trails only', shapeGroup: 'sphere without trails' },
+        // "Brightness" above cannot produce this: the flash is a gradient
+        // whose every stop clamps at alpha 1, so raising brightness
+        // saturates and then stops changing anything. Drawing the flash
+        // again does get past that, because each draw adds to the last —
+        // it is the blown-out white core you get by clicking one spot over
+        // and over.
+        { path: 'blast.stack', label: 'Stack the flash (x)', min: 1, max: 10, step: 1, value: 1 }
       ]
     },
     {
-      title: 'Centre glow',
-      note: 'the white core at the middle of the break · lights instantly, grows as it dies',
+      title: 'White hot centre',
+      note: 'the small blown-out ball of light at the middle · lights instantly, spreads as it dies',
       fields: [
-        { path: 'core.enabled', label: 'Enabled', type: 'check', value: true },
-        { path: 'core.radius', label: 'Radius', min: 2, max: 120, step: 1, value: 22 },
-        { path: 'core.life', label: 'Life (s)', min: 0.05, max: 2, step: 0.05, value: 0.45 },
-        { path: 'core.peak', label: 'Peak alpha', min: 0, max: 1, step: 0.05, value: 1 },
-        { path: 'core.growth', label: 'Growth x', min: 1, max: 5, step: 0.1, value: 2.2 },
-        { path: 'core.falloff', label: 'Falloff', min: 0.5, max: 5, step: 0.1, value: 2 },
+        { path: 'core.enabled', label: 'Show white hot centre', type: 'check', value: false },
+        { path: 'core.radius', label: 'Starting size', min: 2, max: 120, step: 1, value: 22 },
+        { path: 'core.life', label: 'How long it lasts (s)', min: 0.05, max: 2, step: 0.05, value: 0.45 },
+        { path: 'core.peak', label: 'Brightness', min: 0, max: 1, step: 0.05, value: 1 },
+        { path: 'core.growth', label: 'How much it spreads', min: 1, max: 5, step: 0.1, value: 2.2 },
+        // Higher = stays bright longer then drops off at the end; lower =
+        // fades evenly the whole way. See the fade-curve note in drawCores.
+        { path: 'core.falloff', label: 'How fast it fades', min: 0.5, max: 5, step: 0.1, value: 1.6 },
         // How much of the disc stays at full alpha before the rim fades. Low
         // values are a soft smudge that vanishes into the blast; high values
         // are a hard-edged ball.
-        { path: 'core.edge', label: 'Hard edge', min: 0, max: 0.95, step: 0.05, value: 0.62 }
+        { path: 'core.edge', label: 'How sharp the edge', min: 0, max: 0.95, step: 0.05, value: 0.62 },
+
+        { sub: 'Morph it into a star' },
+        // Opt-in. Off, the centre is the round disc the controls above
+        // describe. On, "How sharp the edge" and "How fast it fades" stop
+        // applying — they shape the round gradient, and the star is built
+        // from stacked outlines instead.
+        { path: 'core.morph', label: 'Morph into a star', type: 'check', value: false },
+        // Its own value, not the DBS spark's — the two are tuned separately.
+        // The waist sits at 50% of the point at 0.67, 23% at 0.38.
+        { path: 'core.morphN', label: 'Pointiness', min: 0.15, max: 1.4, step: 0.01, value: 0.38 },
+        // Where growing-and-morphing hands over to shrinking-and-fading. If
+        // the morph reads as too quick, raise "How long it lasts" above —
+        // this only moves the join.
+        { path: 'core.morphSplit', label: 'Grow vs shrink balance', min: 0.05, max: 0.95, step: 0.05, value: 0.55 }
       ]
     }
   ];
@@ -380,6 +567,8 @@
 
   var panel = document.getElementById('panel');
   var controls = []; // every rendered control, so Reset can restore all of them
+  var shapeGroups = []; // per-pattern field wrappers, shown only for their own shape.type
+  var hideForSections = []; // whole sections a pattern makes irrelevant — the inverse of above
 
   function field(f) {
     setPath(cfg, f.path, f.value);
@@ -436,6 +625,27 @@
     return row;
   }
 
+  // Only the settings for the currently selected pattern are worth looking
+  // at — the rest describe a shape that is not firing, and just clutter the
+  // panel with sliders that do nothing. Each `{ sub, shapeGroup }` marker in
+  // the schema starts a wrapper that holds its own sub-header and every field
+  // under it, up to the next `sub`; this function shows only the wrapper
+  // whose `shapeGroup` matches `shape.type` and hides the rest.
+  function syncShapeGroups() {
+    var current = cfg.shape.type;
+    shapeGroups.forEach(function (g) {
+      // A group can claim more than one pattern. Stored newline-separated
+      // because dataset values are strings.
+      g.style.display = (g.dataset.shapeGroup.split('\n').indexOf(current) !== -1) ? '' : 'none';
+    });
+    // The inverse: a section listed here is hidden for the patterns it names,
+    // and shown for every other one — for settings a pattern makes inert
+    // rather than settings that belong to a pattern.
+    hideForSections.forEach(function (s) {
+      s.style.display = (s.dataset.hideFor.split('\n').indexOf(current) !== -1) ? 'none' : '';
+    });
+  }
+
   // f.value is never mutated — cfg is — so the schema stays the defaults.
   function resetAll() {
     controls.forEach(function (c) {
@@ -444,6 +654,7 @@
       else c.input.value = c.f.value;
       if (c.readout) c.readout.textContent = c.f.value;
     });
+    syncShapeGroups(); // reset can put shape.type back to 'normal', which hides every group
   }
 
   SCHEMA.forEach(function (section) {
@@ -454,23 +665,65 @@
     h.textContent = section.title;
     el.appendChild(h);
 
+    // Note and fields go in .lab-body rather than straight into the section,
+    // so a collapsible section has exactly one thing to hide — the h2 always
+    // stays put as the disclosure control.
+    var body = document.createElement('div');
+    body.className = 'lab-body';
+    el.appendChild(body);
+
     var note = document.createElement('p');
     note.textContent = section.note;
-    el.appendChild(note);
+    body.appendChild(note);
 
+    // Only a `sub` tagged with `shapeGroup` starts a hideable wrapper — an
+    // untagged `sub` (every other section's) appends straight into the
+    // section exactly as before, so nothing there changes.
+    var group = null;
     section.fields.forEach(function (f) {
       if (f.sub) {
+        group = null;
+        if (f.shapeGroup) {
+          group = document.createElement('div');
+          // Accepts one pattern or a list of them; joined with newlines so the
+          // separator can never collide with a pattern name containing a space.
+          group.dataset.shapeGroup = [].concat(f.shapeGroup).join('\n');
+          shapeGroups.push(group);
+          body.appendChild(group);
+        }
         var sub = document.createElement('div');
         sub.className = 'lab-sub';
         sub.textContent = f.sub;
-        el.appendChild(sub);
+        (group || body).appendChild(sub);
       } else {
-        el.appendChild(field(f));
+        (group || body).appendChild(field(f));
       }
     });
 
+    if (section.collapsible) {
+      el.classList.add('collapsible');
+      if (section.collapsed) el.classList.add('collapsed');
+      h.addEventListener('click', function () {
+        el.classList.toggle('collapsed');
+      });
+    }
+
+    if (section.hideFor) {
+      // Newline-separated for the same reason as shapeGroup above — a pattern
+      // name can contain a space, so it cannot be the separator.
+      el.dataset.hideFor = section.hideFor.join('\n');
+      hideForSections.push(el);
+    }
+
     panel.appendChild(el);
   });
+
+  // The pattern <select> was just built by the loop above, as the first
+  // control on the 'shape.type' path — wire it to resync the groups on every
+  // change, and run once now so only 'normal' (i.e. nothing) shows at load.
+  controls.filter(function (c) { return c.f.path === 'shape.type'; })[0]
+    .input.addEventListener('change', syncShapeGroups);
+  syncShapeGroups();
 
   /* ---- Stage ------------------------------------------------------------
      Everything the fireworks themselves do lives in fireworks-engine.js. The
@@ -493,6 +746,21 @@
   document.getElementById('act-burst').addEventListener('click', function () {
     var s = fw.size();
     fw.burst(s.w / 2, s.h / 2);
+  });
+
+  // The whole thing from the ground up: rocket rises, bursts at apex, and —
+  // if the stamp is turned on — the shape follows onto the emptied sky. Burst
+  // skips the ascent; this is the only control that plays every beat.
+  document.getElementById('act-launch').addEventListener('click', function () {
+    var s = fw.size();
+    fw.launch(s.w / 2, s.h * 0.32);
+  });
+
+  // The stamp on its own, with no firework in front of it — the only way to
+  // judge the shape without a burst's sparks sitting on top of it.
+  document.getElementById('act-stamp').addEventListener('click', function () {
+    var s = fw.size();
+    fw.stamp(s.w / 2, s.h / 2);
   });
 
   document.getElementById('act-clear').addEventListener('click', fw.clear);
@@ -584,6 +852,7 @@
     // The trail is persistent, so whatever the old settings drew would hang
     // around underneath the new ones.
     fw.clear();
+    syncShapeGroups(); // a pasted config can carry a different shape.type
     flash(pasteBtn, applied + ' applied', 'Apply pasted');
   });
 

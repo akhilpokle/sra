@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lsa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        ".claude/serve.js",
+        "C:\\Users\\akhil\\Desktop\\SRA",
+        "8126"
+      ],
+      "port": 8126
+    }
+  ]
+}

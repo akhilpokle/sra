@@ -6,12 +6,31 @@
   the asset tags, loaded here rather than via the theme (project decision).
 
   Replace the three REPLACE_WITH_ASSET_PATH placeholders below with the actual
-  hosted URLs for lsa-experience.css / fireworks-engine.js / lsa-experience.js
+  hosted URLs for lsa-experience.css / fireworks-engine-2.js / lsa-experience.js
   (e.g. Documents & Media URLs, or a static resource path) once that's decided
   — see handoff.md.
 
   THREE assets, not two: the fireworks engine is its own file, shared with the
   tuning lab so there is only ever one copy of it. All three have to be hosted.
+
+  The engine is fireworks-engine-2.js, NOT fireworks-engine.js. Both exist in
+  the repo; the overlay runs the second. Hosting the wrong one leaves the page
+  with a script that defines a global nothing calls, and an overlay that throws
+  on load.
+
+  THREE FILES ARE TAGGED HERE, BUT FOUR IMAGES ALSO HAVE TO BE HOSTED —
+  assets/medal.svg, assets/medal-edge.svg and assets/shimmer.png for the
+  medallion (back.png is in the folder but currently unused: there is no
+  click-to-flip). They are not tagged below because nothing loads them from
+  markup; they are found two different ways, and BOTH have to be right:
+
+    medal.svg, medal-edge.svg   img.src, built in lsa-experience.js against
+                                its ASSET_PATH constant, which resolves
+                                against THE PAGE. Set that constant to match
+                                wherever the folder ends up.
+    shimmer.png                 a mask-image url() in lsa-experience.css,
+                                which resolves against THE STYLESHEET. So the
+                                CSS file and assets/ must stay siblings.
 
   Load order matters twice over: the stylesheet must load before the script
   runs, so the overlay never renders unstyled for a frame; and the engine must
@@ -24,5 +43,5 @@
 
 <div id="lsa-mount"></div>
 
-<script src="REPLACE_WITH_ASSET_PATH/fireworks-engine.js" defer></script>
+<script src="REPLACE_WITH_ASSET_PATH/fireworks-engine-2.js" defer></script>
 <script src="REPLACE_WITH_ASSET_PATH/lsa-experience.js" defer></script>

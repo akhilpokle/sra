@@ -48,9 +48,14 @@
     appends it to <body>. Press GO for the five-firework sequence, or click
     anywhere on the stage to send up a single rocket.
   -->
-  <!-- The engine first: lsa-experience.js calls into it on load. Same file the
-       fireworks lab runs, so there is only one copy of it anywhere. -->
-  <script src="fireworks-engine.js"></script>
+  <!-- The engine first: lsa-experience.js calls into it on load. Same file
+       lab/fireworks-lab-2.html runs, so there is only one copy of it anywhere.
+
+       This is ENGINE 2, the light one. The overlay used to run
+       fireworks-engine.js; that file and its own lab are untouched on disk, so
+       swapping this one line back (plus the `cfg` literal in lsa-experience.js)
+       returns the overlay to engine 1. -->
+  <script src="fireworks-engine-2.js"></script>
   <script src="lsa-experience.js"></script>
 
 </body>

@@ -21,8 +21,8 @@
   z-index: 999999;
 }
 
-/* Stacking order inside .lsa-root:
-     0 backdrop  <  2 canvas  <  4 close button                              */
+/* Stacking order inside .lsa-root, back to front:
+     0 backdrop (blue)  <  1 card  <  2 black  <  3 canvas  <  4 buttons     */
 
 .lsa-backdrop {
   position: absolute;
@@ -33,6 +33,11 @@
   backdrop-filter: blur(8px);
   pointer-events: auto;
 }
+
+/* This veil used to pull back to 60% at the first burst, fading its own blur
+   along with the gradient. That is GONE: the black layer above is now the one
+   thing that changes during the show, and two veils moving at once was one too
+   many. The blue is constant from mount to teardown. */
 
 /* Starts the sequence. Sits bottom-centre, clear of the fireworks above. */
 .lsa-go {
@@ -62,17 +67,256 @@
   cursor: default;
 }
 
+/* Puts the stage back to how it opened. Secondary to GO by design — outlined
+   rather than filled, so the gold pill stays the one obvious thing to press.
+
+   Positioned from the centre, past GO's right edge: that pill is about 144px
+   wide (56px of padding either side plus the label), so half of it is 72px and
+   this clears it by 24px. Change GO's padding or its label and this gap moves
+   with it. Its vertical padding is set so both pills come out the same 52px
+   height, since they share a bottom edge. */
+.lsa-reset {
+  position: absolute;
+  bottom: 64px;
+  left: calc(50% + 96px);
+  z-index: 4;
+  padding: 18px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.lsa-reset:hover {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+/* Layer 2 — the black veil the card is revealed from behind.
+
+   ABOVE the card and BELOW the canvas, which is the whole point: the fireworks
+   are in front of it and burn at full brightness against it, while the card
+   behind it is hidden completely until it clears.
+
+   Opaque, not translucent. At full strength the stage is genuinely black and
+   the fireworks are the only thing on screen.
+
+   No backdrop-filter here on purpose. The blue veil below already blurs the
+   page, and a second filtered layer would cost real frame time to change
+   nothing that can be seen through solid black anyway.
+
+   It clears by FADING, over the whole stage at once. A circular version was
+   tried — a masked disc collapsing toward the centre so the medallion was
+   uncovered last, softened by a blur on a wrapper element — and rejected on
+   sight. Do not rebuild it without being asked. */
+.lsa-black {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #000000;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.9s ease;
+}
+
+/* One step per BURST MOMENT — three of them, not five: goSequence launches in
+   pairs (1+5, then 2+4, then 3 alone) and every rocket rises the same height,
+   so each pair breaks on the same frame.
+
+   Each burst clears a third of the veil, and the third takes it to nothing.
+   Bursts are ~0.5s apart and the transition is 0.9s, so the three overlap into
+   something closer to a continuous fade than to three visible jumps.
+
+   Cumulative — each class is added on top of the last, and within a run none
+   is ever removed. All three are single-class selectors, so SOURCE ORDER is
+   what decides which opacity wins. Do not reorder them.
+
+   RESET takes all three off at once, which fades the veil back to opaque over
+   the same 0.9s transition. */
+.lsa-black--r1 {
+  opacity: 0.66;
+}
+
+.lsa-black--r2 {
+  opacity: 0.33;
+}
+
+.lsa-black--r3 {
+  opacity: 0;
+}
+
 /* The fireworks stage. Takes pointer events so a click can set off a burst,
    as it does in the lab. */
 .lsa-canvas {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   display: block;
   width: 100%;
   height: 100%;
   cursor: crosshair;
   pointer-events: auto;
+}
+
+/* ---- The congratulation card --------------------------------------------
+
+   Layer 3 of five. Under the black veil, which is what hides it until the
+   fireworks clear that away; under the canvas, so the fireworks burst OVER it
+   rather than behind it; and above the blue backdrop.
+
+   THE CARD HAS NO SURFACE OF ITS OWN — no background, no shadow. It is a
+   transparent box that positions the medallion and the message, so what shows
+   through behind them is the black veil, and then the blue backdrop as that
+   clears.
+
+   Two layers sit between this and the cursor, so the card receives no pointer
+   events at all — which is why the medallion's tilt is driven from the
+   cursor's POSITION rather than from hovering the element. See onStageMove()
+   in lsa-experience.js. Nothing here is clickable, so nothing is lost.
+
+   THE CARD ITSELF NEVER FADES. It is fully opaque from the moment it is
+   built, and the reveal is done entirely by the black veil above it clearing.
+   Fading both would compound — a third-opacity card behind a two-thirds-black
+   veil is far darker than either number suggests, and the medallion never
+   lands clean. If a fade is ever wanted here again, put it on this element and not
+   on .lsa-medal-scene: that one carries preserve-3d, and fading it flattens
+   its 3D context and collapses the medallion into a flat image mid-fade. */
+.lsa-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  box-sizing: border-box;
+  padding: 56px 72px;
+
+  /* Inert for good: the card sits under the canvas, which takes the pointer
+     events, so this only makes explicit what the stacking already decides. */
+  pointer-events: none;
+}
+
+/* The perspective root, and the rigid body the tilt rotates. Turning THIS
+   element is what makes the stack read as a physical object under a fixed
+   perspective rather than as a rotating picture.
+
+   ** NEVER add a transform to this rule. ** lsa-experience.js writes
+   style.transform here on every mousemove; a transform in the stylesheet would
+   fight it. One writer per element. */
+.lsa-medal-scene {
+  width: 320px;
+  height: 321px;          /* the artwork's 563x565 viewBox, to scale */
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform 0.15s ease-out;   /* the tilt's lag and weight */
+}
+
+.lsa-medal-coin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.lsa-medal-face {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Placeholder only. The edge builder in lsa-experience.js overwrites this with
+   an offset DERIVED from the layer count and spacing, so the face always caps
+   the stack no matter what those constants are set to. */
+.lsa-coin-front {
+  transform: translateZ(1px);
+}
+
+/* Thickness is faked by stacking copies of the textless silhouette along Z.
+
+   NO backface-visibility here, deliberately: the rim has to stay visible from
+   every angle, and hiding the away-facing half would make it disappear as the
+   coin tilts. The asymmetry with .lsa-medal-face above is intentional — it is
+   not an oversight, and it should not be "fixed". */
+.lsa-coin-edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Fully opaque: the stacked copies have to read as one solid mass, and the
+   SVG's own transparent background is what preserves the silhouette. */
+.lsa-coin-edge img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+
+.lsa-medal-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* A warm gradient masked by shimmer.png, the mask following the cursor through
+   the --lsa-sx / --lsa-sy custom properties the JS sets.
+
+   OVERLAY, not screen. The medallion spec calls for mix-blend-mode: screen,
+   which needs a DARK backdrop to read at all; this card is white, and on white
+   screen washes out to nothing. Overlay is the fallback that same spec names
+   for light backgrounds.
+
+   The url() below resolves against THIS STYLESHEET, not against the page — so
+   wherever these files are hosted, this file and assets/ must stay siblings.
+   That is different from how the JS finds the other three images; see
+   ASSET_PATH in lsa-experience.js. */
+.lsa-medal-shimmer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle at center,
+    rgba(255, 248, 220, 0.95) 0%,
+    rgba(255, 230, 170, 0.60) 35%,
+    rgba(255, 210, 130, 0) 70%);
+  -webkit-mask-image: url(assets/shimmer.png);
+          mask-image: url(assets/shimmer.png);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-size: 180% 180%;
+          mask-size: 180% 180%;
+  -webkit-mask-position: var(--lsa-sx, 50%) var(--lsa-sy, 50%);
+          mask-position: var(--lsa-sx, 50%) var(--lsa-sy, 50%);
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transition: opacity 0.25s ease-out;
+}
+
+.lsa-card-text {
+  max-width: 420px;
+  margin: 0;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
 }
 
 /* ---- Dev control panel --------------------------------------------------
@@ -110,12 +354,101 @@
   text-transform: uppercase;
 }
 
+/* One tab per firework, numbered left to right across the stage. */
+.lsa-panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.lsa-panel-tab {
+  padding: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lsa-panel-tab--on {
+  border-color: #D4AF37;
+  background: rgba(212, 175, 55, 0.22);
+  color: #ffffff;
+}
+
+/* Section heading inside the panel body. */
+.lsa-panel-head {
+  margin: 16px 0 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(212, 175, 55, 0.9);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lsa-panel-note {
+  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .lsa-panel-row {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 4px 8px;
   margin-bottom: 12px;
+}
+
+.lsa-panel-select {
+  width: 100%;
+  grid-column: 1 / -1;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  background: rgba(11, 26, 48, 0.9);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lsa-panel-check {
+  justify-self: end;
+  margin: 0;
+  accent-color: #D4AF37;
+  cursor: pointer;
+}
+
+/* Unused since the move to engine 2, which has no burst patterns and so no
+   rows that stop applying. Kept because the panel's row-hiding is one class
+   away if anything ever needs it again.
+
+   Declared AFTER .lsa-panel-row on purpose: both are single-class selectors, so
+   source order is what decides, and above the row rule this would lose to its
+   `display: grid`. */
+.lsa-panel-off {
+  display: none;
+}
+
+/* The scratch textarea Copy config falls back to when navigator.clipboard is
+   unavailable. It has to be in the document and selectable for execCommand to
+   see it, so it cannot be display:none — parked off-screen instead. Lives here
+   rather than as an inline style only to keep to the project's no-inline-style
+   rule; this panel never ships. */
+.lsa-panel-clip {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  opacity: 0;
 }
 
 .lsa-panel-label {

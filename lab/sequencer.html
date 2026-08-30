@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<!-- Fireworks sequencer — experimentation only, not part of the Liferay deliverable.
+
+     A third consumer of fireworks-engine.js, alongside lab/fireworks-lab.html.
+     The lab tunes VALUES; this tunes WHEN THINGS HAPPEN. Nothing about the show
+     lives here — every bar on the timeline reads and writes cfg, so a sequence
+     tuned here is a config the lab and the overlay can both run.
+
+     Rows that can be dragged map onto a cfg value. Rows drawn hatched are
+     CONSEQUENCES — they are computed from other values and there is nothing to
+     drag them by. That distinction is the whole point of the view: it shows at a
+     glance which beats are authored and which ones just fall where they fall. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fireworks Sequencer</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #fff;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #1a1a1a;
+  }
+
+  .seq {
+    display: grid;
+    grid-template-rows: 1fr auto;
+    height: 100%;
+  }
+
+  .seq-stage { position: relative; min-height: 0; }
+
+  .seq-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #0b1a30; /* night sky — also painted per frame, see draw() */
+  }
+
+  /* ---- Transport --------------------------------------------------------- */
+
+  .seq-timeline {
+    border-top: 1px solid #e2e2e2;
+    background: #fff;
+    max-height: 58vh;
+    overflow-y: auto;
+  }
+
+  .seq-transport {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #ededed;
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 3;
+  }
+
+  .seq-transport button {
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 11px;
+    border: 1px solid #d5d5d5;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .seq-transport button:hover { border-color: #999; }
+
+  .seq-transport button.primary {
+    background: #1a1a1a;
+    border-color: #1a1a1a;
+    color: #fff;
+  }
+
+  .seq-transport .seq-step {
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: 6px 8px;
+  }
+
+  .seq-transport select {
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 5px;
+    border: 1px solid #d5d5d5;
+    border-radius: 3px;
+    background: #fff;
+  }
+
+  .seq-transport label {
+    font-size: 11px;
+    color: #8a8a8a;
+  }
+
+  .seq-clock {
+    font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #1a1a1a;
+    min-width: 96px;
+  }
+
+  .seq-clock b { font-weight: 600; }
+  .seq-spacer { flex: 1; }
+
+  .seq-note {
+    padding: 8px 16px 0;
+    font-size: 11px;
+    color: #8a8a8a;
+  }
+
+  /* ---- Rows -------------------------------------------------------------- */
+
+  .seq-rows {
+    position: relative;
+    padding: 8px 16px 18px;
+  }
+
+  .seq-row {
+    display: grid;
+    grid-template-columns: 210px 1fr;
+    align-items: center;
+    gap: 12px;
+    height: 34px;
+  }
+
+  .seq-row + .seq-row { border-top: 1px solid #f4f4f4; }
+
+  .seq-name {
+    overflow: hidden;
+    line-height: 1.25;
+  }
+
+  .seq-name > span {
+    display: block;
+    font-size: 12px;
+    color: #444;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .seq-name > em {
+    display: block;
+    font: 10px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #a0a0a0;
+    font-style: normal;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .seq-track {
+    position: relative;
+    height: 100%;
+    border-left: 1px solid #ededed;
+  }
+
+  .seq-bar {
+    position: absolute;
+    top: 7px;
+    height: 20px;
+    border-radius: 3px;
+    box-sizing: border-box;
+    font: 10px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #fff;
+    padding-left: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .seq-bar.movable { cursor: grab; }
+  .seq-bar.dragging { cursor: grabbing; }
+
+  /* A consequence of other values — nothing to drag it by. */
+  .seq-bar.derived {
+    background-image: repeating-linear-gradient(
+      45deg, rgba(255,255,255,.35) 0 4px, rgba(255,255,255,0) 4px 8px);
+    cursor: default;
+    color: #555;
+  }
+
+  .seq-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    border-right: 2px solid rgba(255,255,255,.55);
+    box-sizing: border-box;
+  }
+
+  /* The shortest-lived sparks, inside the spray bar. */
+  .seq-mark {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: rgba(255,255,255,.75);
+  }
+
+  /* ---- Ruler and playhead ------------------------------------------------ */
+
+  .seq-ruler {
+    position: relative;
+    height: 22px;
+    border-left: 1px solid #ededed;
+  }
+
+  .seq-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid #ececec;
+    font: 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #a0a0a0;
+    padding-left: 3px;
+  }
+
+  .seq-playhead {
+    position: absolute;
+    top: 8px;
+    bottom: 12px;
+    width: 1px;
+    background: #d62b2b;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .seq-playhead::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -4px;
+    border: 4px solid transparent;
+    border-top-color: #d62b2b;
+  }
+</style>
+</head>
+<body>
+
+<div class="seq">
+  <div class="seq-stage">
+    <canvas class="seq-canvas" id="stage"></canvas>
+  </div>
+
+  <div class="seq-timeline">
+    <div class="seq-transport">
+      <button class="primary" id="act-restart">Restart</button>
+      <button id="act-play">Play</button>
+      <button class="seq-step" id="act-b10">&#171; 10f</button>
+      <button class="seq-step" id="act-b1">&#8249; 1f</button>
+      <button class="seq-step" id="act-f1">1f &#8250;</button>
+      <button class="seq-step" id="act-f10">10f &#187;</button>
+      <div class="seq-clock" id="clock"></div>
+      <div class="seq-spacer"></div>
+      <label for="act-mode">stamp.mode</label>
+      <select id="act-mode">
+        <option value="bursts">bursts</option>
+        <option value="instant">instant</option>
+      </select>
+      <button id="act-copy">Copy config</button>
+    </div>
+
+    <p class="seq-note" id="note"></p>
+    <div class="seq-rows" id="rows"></div>
+  </div>
+</div>
+
+<script src="../fireworks-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var FPS = Fireworks.FPS_REF;
+
+  // The engine does not export this one, so it is mirrored here. If
+  // TRAIL_FADEOUT changes in fireworks-engine.js, change it here too — the
+  // "Trail erasing" and "Dark sky" bars are wrong otherwise.
+  var TRAIL_FADEOUT = 0.6;
+
+  // The same apex the lab's Launch button aims at, so both pages play the
+  // same firework.
+  var LAUNCH_H = 0.32;
+
+  // One simulation frame. Fixed rather than the real frame delta, because a
+  // sequencer that steps has to step by a knowable amount — "one frame" means
+  // nothing if a frame is however long the last rAF happened to take.
+  var DT = 1 / 60;
+
+  // A backward seek re-runs the sim from zero, so this caps how much work one
+  // click can ask for.
+  var MAX_SEEK = 2400; // frames · 40s at DT
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  /* ---- Stage -------------------------------------------------------------
+     'dbs sparks' is the whole reason this page exists, so it is what loads.
+     Everything else comes from the engine's own defaults — the sequencer
+     deliberately restates no values of its own, so what plays here is what
+     the engine ships. */
+
+  var cfg = Fireworks.defaults();
+  cfg.shape.type = 'dbs sparks';
+
+  var fw = Fireworks(document.getElementById('stage'), cfg);
+
+  /* ---- Derived times -----------------------------------------------------
+     Beats are measured from LAUNCH, t = 0. Several of them are consequences
+     rather than settings, and these are the formulas behind them. */
+
+  // Under gravity alone a rocket thrown at v rises for v/g, and launch() solves
+  // v = sqrt(2*g*rise) from the height wanted — so the ascent lasts
+  // sqrt(2*rise/g) and there is no knob on it beyond gravity and the height.
+  function apexTime() {
+    var g = cfg.hanabi.gravity * FPS * FPS;
+    var y0 = fw.canvas.clientHeight * cfg.rocket.launchY;
+    var rise = Math.max(1, y0 - fw.size().h * LAUNCH_H);
+    return Math.sqrt(2 * rise / g);
+  }
+
+  // A sparkle's life is this times confetti.fadeMin..fadeMax.
+  function sparkBase() { return 1 / (cfg.hanabi.lifeDecay * FPS); }
+
+  function sprayStart() {
+    return apexTime() + (cfg.blast.enabled ? cfg.blast.lead / 1000 : 0);
+  }
+
+  function sprayEnd() { return sprayStart() + sparkBase() * cfg.confetti.fadeMax; }
+
+  // When the sky is ACTUALLY black. Not when the last spark dies — the trail
+  // keeps erasing for TRAIL_FADEOUT after that, and a stamp timed off the
+  // particle count alone lands on a sky that still has lit samples in it.
+  function skyClear() { return sprayEnd() + TRAIL_FADEOUT; }
+
+  function stampStart() { return apexTime() + cfg.stamp.delay; }
+
+  // In 'instant' mode nothing is thrown and nothing flies, so those two bars
+  // collapse to nothing rather than lying about a flight that never happens.
+  function isBursts() { return cfg.stamp.mode === 'bursts'; }
+
+  // Where the hold-and-fade lifecycle actually begins: after the scatter has
+  // had its `settle` seconds to run, not at the mini bursts' own ignition.
+  // Zero extra in 'instant' mode, which never scatters.
+  function holdStart() { return stampStart() + (isBursts() ? cfg.stamp.settle : 0); }
+
+  /* ---- The beats ---------------------------------------------------------
+     Each row reads its start and length from cfg, so the bars always show the
+     live config rather than a copy of it. A row with a setter can be dragged
+     and writes straight back; a row without one is a consequence and is drawn
+     hatched.
+
+     Mini-burst wave and Balls fly into place still begin together at the
+     ball's own launch — that part is real (the throw and the scatter are the
+     same event). Pops, hold and fade now begin at holdStart(), once the
+     scatter has had its `settle` seconds to run — they no longer share a
+     start with the throw. */
+
+  var BEATS = [
+    {
+      label: 'Rocket ascent',
+      detail: function () { return 'derived · gravity ' + cfg.hanabi.gravity; },
+      color: '#8a8a8a',
+      start: function () { return 0; },
+      len: function () { return apexTime(); }
+    },
+    {
+      label: 'Blast flash',
+      detail: function () { return 'blast.decay ' + cfg.blast.decay.toFixed(2) + 's'; },
+      color: '#d99a2b',
+      start: apexTime,
+      len: function () { return cfg.blast.rise + cfg.blast.hold + cfg.blast.decay; },
+      setLen: function (v) {
+        cfg.blast.decay = clamp(v - cfg.blast.rise - cfg.blast.hold, 0.05, 6);
+      }
+    },
+    {
+      label: 'Spark spray',
+      detail: function () {
+        return 'blast.lead ' + Math.round(cfg.blast.lead) + 'ms · fadeMax ' +
+               cfg.confetti.fadeMax.toFixed(2);
+      },
+      color: '#d95f33',
+      start: sprayStart,
+      len: function () { return sparkBase() * cfg.confetti.fadeMax; },
+      // Where the SHORTEST-lived sparks are already gone. The bar's own end is
+      // the longest-lived ones, so the sky is thinning across this whole span.
+      mark: function () { return sparkBase() * cfg.confetti.fadeMin; },
+      setStart: function (v) {
+        cfg.blast.lead = clamp((v - apexTime()) * 1000, 0, 2000);
+      },
+      setLen: function (v) {
+        cfg.confetti.fadeMax = clamp(v / sparkBase(), cfg.confetti.fadeMin + 0.05, 3);
+      }
+    },
+    {
+      label: 'Trail erasing',
+      detail: function () { return 'derived · TRAIL_FADEOUT 0.60s'; },
+      color: '#9aa4b0',
+      start: sprayEnd,
+      len: function () { return TRAIL_FADEOUT; }
+    },
+    {
+      label: 'Dark sky',
+      detail: function () {
+        var g = stampStart() - skyClear();
+        return g < 0 ? 'derived · OVERLAP ' + g.toFixed(2) + 's'
+                     : 'derived · ' + g.toFixed(2) + 's of empty';
+      },
+      color: '#c9cdd2',
+      start: skyClear,
+      len: function () { return Math.max(0, stampStart() - skyClear()); }
+    },
+    {
+      label: 'Mini-burst wave',
+      detail: function () {
+        return 'stamp.delay ' + cfg.stamp.delay.toFixed(2) + 's · burstSpread ' +
+               cfg.stamp.burstSpread.toFixed(2) + 's';
+      },
+      color: '#2f6fd0',
+      start: stampStart,
+      len: function () { return isBursts() ? cfg.stamp.burstSpread : 0; },
+      setStart: function (v) { cfg.stamp.delay = clamp(v - apexTime(), 0, 14); },
+      setLen: function (v) { cfg.stamp.burstSpread = clamp(v, 0, 1.5); }
+    },
+    {
+      label: 'Balls fly into place',
+      detail: function () {
+        return isBursts() ? 'stamp.settle ' + cfg.stamp.settle.toFixed(2) + 's'
+                          : 'instant mode · nothing flies';
+      },
+      color: '#5a95e0',
+      start: stampStart,
+      len: function () {
+        return isBursts() ? cfg.stamp.burstSpread + cfg.stamp.settle : 0;
+      },
+      setLen: function (v) {
+        cfg.stamp.settle = clamp(v - cfg.stamp.burstSpread, 0.2, 3);
+      }
+    },
+    {
+      label: 'Balls pop alight',
+      detail: function () {
+        return 'flashStagger ' + cfg.stamp.flashStagger.toFixed(2) +
+               's · starts once each ball is done scattering';
+      },
+      color: '#9a52c8',
+      start: holdStart,
+      // Each ball pops somewhere in flashStagger, and its own pop runs up to
+      // flashTime * 1.4 (the +/-40% per-ball variation).
+      len: function () { return cfg.stamp.flashStagger + cfg.stamp.flashTime * 1.4; },
+      setLen: function (v) {
+        cfg.stamp.flashStagger = clamp(v - cfg.stamp.flashTime * 1.4, 0, 1.5);
+      }
+    },
+    {
+      label: 'Shape held lit',
+      detail: function () { return 'stamp.life ' + cfg.stamp.life.toFixed(2) + 's'; },
+      color: '#2b9367',
+      start: holdStart,
+      len: function () { return cfg.stamp.life * (1 - cfg.stamp.fade); },
+      setLen: function (v) {
+        cfg.stamp.life = clamp(v / Math.max(0.05, 1 - cfg.stamp.fade), 0.5, 12);
+      }
+    },
+    {
+      label: 'Shape fades out',
+      detail: function () { return 'stamp.fade ' + cfg.stamp.fade.toFixed(2); },
+      color: '#6fb99a',
+      start: function () { return holdStart() + cfg.stamp.life * (1 - cfg.stamp.fade); },
+      len: function () { return cfg.stamp.life * cfg.stamp.fade; },
+      setLen: function (v) {
+        cfg.stamp.fade = clamp(v / Math.max(0.05, cfg.stamp.life), 0, 0.95);
+      }
+    }
+  ];
+
+  // Rounded up so the last bar is not flush against the right edge, and floored
+  // so an empty-ish config still gives a usable ruler.
+  function total() {
+    var end = 6;
+    BEATS.forEach(function (b) { end = Math.max(end, b.start() + b.len()); });
+    return Math.ceil((end + 0.4) * 2) / 2;
+  }
+
+  /* ---- Rows -------------------------------------------------------------- */
+
+  var rowsEl = document.getElementById('rows');
+  var rulerEl, playheadEl;
+  var rows = [];
+
+  (function build() {
+    var ruler = document.createElement('div');
+    ruler.className = 'seq-row';
+    ruler.innerHTML = '<div class="seq-name"></div>';
+    rulerEl = document.createElement('div');
+    rulerEl.className = 'seq-ruler';
+    ruler.appendChild(rulerEl);
+    rowsEl.appendChild(ruler);
+
+    BEATS.forEach(function (beat) {
+      var row = document.createElement('div');
+      row.className = 'seq-row';
+
+      var name = document.createElement('div');
+      name.className = 'seq-name';
+      var title = document.createElement('span');
+      title.textContent = beat.label;
+      var detail = document.createElement('em');
+      name.appendChild(title);
+      name.appendChild(detail);
+
+      var track = document.createElement('div');
+      track.className = 'seq-track';
+
+      var bar = document.createElement('div');
+      bar.className = 'seq-bar' + (beat.setStart ? ' movable' : '') +
+                      (beat.setStart || beat.setLen ? '' : ' derived');
+      bar.style.background = beat.color;
+
+      if (beat.setLen) {
+        var handle = document.createElement('div');
+        handle.className = 'seq-handle';
+        bar.appendChild(handle);
+      }
+      if (beat.mark) {
+        var mark = document.createElement('div');
+        mark.className = 'seq-mark';
+        bar.appendChild(mark);
+      }
+
+      track.appendChild(bar);
+      row.appendChild(name);
+      row.appendChild(track);
+      rowsEl.appendChild(row);
+
+      rows.push({ beat: beat, bar: bar, detail: detail, track: track });
+      wireDrag(beat, bar);
+    });
+
+    playheadEl = document.createElement('div');
+    playheadEl.className = 'seq-playhead';
+    rowsEl.appendChild(playheadEl);
+  })();
+
+  // Pixels per second, measured off a real track so it stays right through a
+  // window resize without anything having to listen for one.
+  function scale() {
+    return rulerEl.getBoundingClientRect().width / total();
+  }
+
+  function layout() {
+    var pps = scale();
+    var dur = total();
+
+    rulerEl.innerHTML = '';
+    // A tick per second while that stays readable, every 2s once it does not.
+    var stepS = pps < 26 ? 2 : 1;
+    for (var s = 0; s <= dur; s += stepS) {
+      var tick = document.createElement('div');
+      tick.className = 'seq-tick';
+      tick.style.left = (s * pps) + 'px';
+      tick.textContent = s + 's';
+      rulerEl.appendChild(tick);
+    }
+
+    rows.forEach(function (r) {
+      var start = r.beat.start();
+      var len = r.beat.len();
+      r.bar.style.left = (start * pps) + 'px';
+      r.bar.style.width = Math.max(2, len * pps) + 'px';
+      r.bar.textContent = len >= 0.4 ? len.toFixed(2) + 's' : '';
+      // textContent wipes the children, so they go back afterwards.
+      if (r.beat.setLen) {
+        var h = document.createElement('div');
+        h.className = 'seq-handle';
+        r.bar.appendChild(h);
+      }
+      if (r.beat.mark) {
+        var m = document.createElement('div');
+        m.className = 'seq-mark';
+        m.style.left = (r.beat.mark() * pps) + 'px';
+        r.bar.appendChild(m);
+      }
+      r.detail.textContent = r.beat.detail();
+    });
+  }
+
+  /* ---- Dragging ----------------------------------------------------------
+     Move the bar to change when the beat starts, drag its right edge to change
+     how long it lasts. Both write into cfg immediately, so the next Restart
+     plays the edit. */
+
+  var SNAP = 0.05; // s
+
+  function wireDrag(beat, bar) {
+    if (!beat.setStart && !beat.setLen) return;
+
+    bar.addEventListener('pointerdown', function (e) {
+      var rect = bar.getBoundingClientRect();
+      var resizing = beat.setLen && (rect.right - e.clientX) <= 8;
+      if (!resizing && !beat.setStart) return;
+
+      var pps = scale();
+      var originX = e.clientX;
+      var start0 = beat.start();
+      var len0 = beat.len();
+
+      bar.setPointerCapture(e.pointerId);
+      bar.classList.add('dragging');
+      e.preventDefault();
+
+      function move(ev) {
+        var d = Math.round(((ev.clientX - originX) / pps) / SNAP) * SNAP;
+        if (resizing) beat.setLen(Math.max(SNAP, len0 + d));
+        else beat.setStart(Math.max(0, start0 + d));
+        layout();
+      }
+
+      function up(ev) {
+        bar.releasePointerCapture(ev.pointerId);
+        bar.classList.remove('dragging');
+        bar.removeEventListener('pointermove', move);
+        bar.removeEventListener('pointerup', up);
+      }
+
+      bar.addEventListener('pointermove', move);
+      bar.addEventListener('pointerup', up);
+    });
+  }
+
+  /* ---- Transport ---------------------------------------------------------
+     The sim only runs forward, so time only runs forward: a seek that goes
+     backwards restarts and fast-forwards. The beats land in the same places,
+     but the firework is re-randomised — the individual sparks will not be the
+     ones that were on screen a moment ago. */
+
+  var t = 0;
+  var playing = false;
+
+  var playBtn = document.getElementById('act-play');
+  var clockEl = document.getElementById('clock');
+
+  function restart() {
+    fw.clear();
+    t = 0;
+    var s = fw.size();
+    fw.launch(s.w / 2, s.h * LAUNCH_H);
+    fw.draw(0); // paint the empty sky now rather than on the next stepped frame
+  }
+
+  function step(frames) {
+    if (frames > 0) {
+      fw.debug.step(DT, frames);
+      t += frames * DT;
+      return;
+    }
+    seek(t + frames * DT);
+  }
+
+  function seek(target) {
+    target = Math.max(0, target);
+    if (target < t - 1e-9) restart();
+    var frames = Math.min(MAX_SEEK, Math.round((target - t) / DT));
+    if (frames > 0) { fw.debug.step(DT, frames); t += frames * DT; }
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    playBtn.textContent = on ? 'Pause' : 'Play';
+  }
+
+  document.getElementById('act-restart').addEventListener('click', function () {
+    restart();
+    layout();
+  });
+
+  playBtn.addEventListener('click', function () {
+    // Pressing play on a finished sequence starts it again rather than doing
+    // nothing, which is what it looks like otherwise.
+    if (!playing && t >= total() - DT) restart();
+    setPlaying(!playing);
+  });
+
+  document.getElementById('act-b10').addEventListener('click', function () { setPlaying(false); step(-10); });
+  document.getElementById('act-b1').addEventListener('click', function () { setPlaying(false); step(-1); });
+  document.getElementById('act-f1').addEventListener('click', function () { setPlaying(false); step(1); });
+  document.getElementById('act-f10').addEventListener('click', function () { setPlaying(false); step(10); });
+
+  // Clicking the ruler jumps there — forward by stepping, backward by
+  // restarting first. Same mechanism as the frame buttons, just a bigger jump.
+  rulerEl.addEventListener('click', function (e) {
+    setPlaying(false);
+    seek((e.clientX - rulerEl.getBoundingClientRect().left) / scale());
+  });
+
+  var modeSel = document.getElementById('act-mode');
+  modeSel.value = cfg.stamp.mode;
+  modeSel.addEventListener('change', function () {
+    cfg.stamp.mode = this.value;
+    layout();
+  });
+
+  var copyBtn = document.getElementById('act-copy');
+  copyBtn.addEventListener('click', function () {
+    Fireworks.copyText(Fireworks.exportConfig(cfg, 'sequencer'), function (ok) {
+      copyBtn.textContent = ok ? 'Copied' : 'Copy failed';
+      setTimeout(function () { copyBtn.textContent = 'Copy config'; }, 1600);
+    });
+  });
+
+  document.getElementById('note').textContent =
+    'Drag a bar to move the beat, drag its right edge to change how long it lasts — ' +
+    'both write straight into cfg. Hatched bars are consequences of other values and ' +
+    'cannot be dragged. Click the ruler to jump; going backwards re-runs from the start, ' +
+    'so the sparks are re-randomised.';
+
+  /* ---- Loop --------------------------------------------------------------
+     Play advances the sim in whole DT frames, so a played second and ten
+     stepped 6-frame nudges cover exactly the same ground. */
+
+  var last = performance.now();
+  var acc = 0;
+
+  function tick(now) {
+    var elapsed = Math.min((now - last) / 1000, 0.25);
+    last = now;
+
+    if (playing) {
+      acc += elapsed;
+      var n = 0;
+      while (acc >= DT && n < 8) { acc -= DT; n++; }
+      if (n) { fw.debug.step(DT, n); t += n * DT; }
+      if (t >= total()) setPlaying(false);
+    }
+
+    var pps = scale();
+    var offset = rulerEl.getBoundingClientRect().left - rowsEl.getBoundingClientRect().left;
+    playheadEl.style.left = (offset + t * pps) + 'px';
+
+    var s = fw.stats();
+    clockEl.innerHTML = '<b>' + t.toFixed(2) + 's</b> &middot; ' +
+                        s.particles + 'p &middot; ' + s.stamps + 'st';
+
+    requestAnimationFrame(tick);
+  }
+
+  // The engine's ResizeObserver sizes the canvas, but it fires asynchronously —
+  // and the apex, and therefore every derived beat, is unknowable until it has.
+  // Calling resize() directly sizes it now instead of waiting a frame, so the
+  // page is fully set up by the time this script ends rather than one rAF later.
+  fw.resize();
+  layout();
+  restart();
+  setPlaying(true);
+  requestAnimationFrame(tick);
+
+  window.seq = {
+    fw: fw, cfg: cfg, beats: BEATS,
+    time: function () { return t; },
+    seek: seek,
+    step: step,
+    layout: layout,
+    restart: restart,
+    setPlaying: setPlaying
+  };
+})();
+</script>
+
+</body>
+</html>

@@ -390,8 +390,8 @@ per-step change log entries.
     ITS WORKING PERFECTLY."* Superseded by #32 — the freeze was lifted on
     request.
 32. **Burst shapes and sub-blasts added to the lab** (lab only; production
-    still fires the plain radial burst). Five shapes — `normal`, `star burst`,
-    `concentric`, `squiggle`, `dbs sparks` — plus a sub-blast section for
+    still fires the plain radial burst). Five shapes — `normal`, `ring`,
+    `star burst`, `concentric`, `squiggle` — plus a sub-blast section for
     secondary breaks. Built so that a shape decides **only** the launch angle
     and speed fraction of each particle, in one function; physics, colour, life
     and rendering are untouched, so the shapes cannot disturb anything already
@@ -405,10 +405,8 @@ per-step change log entries.
     it and the width collapses as 1/freq², whereas as a velocity the swing width
     is exactly `waveAmp/(2·waveFreq)` px and drag-independent — measured 83px
     and 167px against predictions of 83 and 167.
-    `dbs sparks` is **an assumption** — the brand hex with rays off the six
-    corners, not matched against a supplied reference. Flagged, not confirmed.
     Verified headlessly against the real engine: star burst shows exact 5-fold
-    symmetry, dbs sparks exact 6-fold with peaks on the hex corners, concentric
+    symmetry, concentric
     produces separated launch-speed bands, and 10 shells × 5 children spawns
     exactly 50 particles with no shell breaking twice. **Not verified visually**,
     like everything else in this project.
