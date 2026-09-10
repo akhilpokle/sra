@@ -1,626 +1,902 @@
-# Long Service Award — 5 Year Milestone Overlay · Handoff
+# Long Service Award Overlay · Handoff
 
-A modal overlay that plays on top of the live Liferay intranet. A **GO** button
-sets off a five-firework sequence over a blurred veil of the page underneath.
+An overlay that plays on top of the live Liferay intranet to celebrate a
+service milestone. The user holds their cursor on a button to charge it, that
+sets off a firework show, and the show clears a black veil to reveal a 3D
+medallion and a congratulation line.
 
-**Current status: the overlay runs.** `lsa-experience.js` was emptied and
-rebuilt on the fireworks lab's engine; the fireworks work end to end. **There is
-no congratulation card in the overlay at present** — see "What was removed".
+**Status: it runs.** Little of it has been judged by eye — see "Known issues".
 
-> **Read this before trusting anything below the archive line.** Everything from
-> "## Change log — ARCHIVE" onward describes a *previous* design (a proximity-lit
-> fuse, cursor sparks, a three-generation cascade, a card reveal, a 58-control
-> tuning panel). **None of that code exists any more.** It is kept as the
-> decision record, not as documentation. This section, above the archive, is the
-> only part that describes the current code.
+✅ **The lab charge was ported into production on 2026-09-04.** The counter, the
+step list, the 800ms pace, the blur swap, the star and the galaxy are all in
+`lsa-experience.js` now. `lab/charge-test.html` is no longer ahead of
+production — it is a reference copy. Two pieces of the port are still open; see
+"Still to do on the charge port".
 
----
-
-## File list
-
-| File | Purpose | State |
-| --- | --- | --- |
-| `fireworks-engine-2.js` | The fireworks themselves — buffers, physics, rendering. **Engine 2, the light one.** Shared verbatim with `lab/fireworks-lab-2.html`; there is no second copy. Exposes one global, `Fireworks2`. | Working, ~480 lines |
-| `lsa-experience.js` | Overlay behaviour in one IIFE — viewport gate, mount, tuned `cfg`, GO sequence, teardown. Drives the engine; contains none of it. | Working, ~430 lines |
-| `lsa-experience.css` | All overlay styles. Every selector prefixed `lsa-`, scoped under `.lsa-root`. | Working, 4 rules |
-| `lsa-mount.html` | Markup to paste into a Liferay Web Content fragment. | Working — `<link>`/`<script>` tags carry `REPLACE_WITH_ASSET_PATH` placeholders |
-
-> **Three assets ship, not two.** `fireworks-engine-2.js` has to be hosted
-> alongside `lsa-experience.js`, and has to load first — `lsa-mount.html`
-> already writes them in that order, with both `defer`red.
->
-> **The overlay moved from engine 1 to engine 2.** `fireworks-engine.js` is
-> still in the repo and still drives `lab/fireworks-lab.html`, but **nothing in
-> the deliverable loads it any more**. Hosting the wrong engine gives a page
-> with a script defining a global nothing calls, and an overlay that throws on
-> load. What went with the swap — smoke, the centre glow, burst shapes,
-> sub-blasts — is listed under "Engine 2" below.
-| `handoff.md` | This document. | Live |
-| `progress.md` | Narrative status: what this is, constraints, decision log. | Live |
-
-### Not part of the Liferay deliverable
-
-| File | Purpose |
-| --- | --- |
-| `lsa-demo.html` | Local/hosted harness. 27 lines: loads the **real** CSS+JS over `bg.png`, sets `data-lsa-dev` on `<html>`. Zero inline scripts, so it cannot drift from the shipped code. Never deploy. |
-| `index.html` | GitHub Pages entry point. A redirect to `lsa-demo.html`, deliberately **not** a second copy of the harness. |
-| `bg.png` | **Placeholder** screenshot of the intranet homepage, standing in for the live page. |
-| `fireworks-engine.js` | **Engine 1.** The overlay's engine until the swap, and still the one `lab/fireworks-lab.html` drives. Kept so the swap is reversible and so its lab keeps working. Nothing shipped loads it. |
-| `lab/fireworks-lab.html` | Engine 1's lab — the tuning harness the overlay's look was originally developed in. See "The lab" below. |
-| `lab/fireworks-lab-2.html` | Engine 2's lab. Same panel idiom as the main lab, 32 controls, one per key engine 2 reads. **This is the one that matches production now.** |
-
-> **`bg.png` will be replaced by the actual intranet.** In production there is no
-> background image: the real Liferay page is the backdrop, live in the DOM behind
-> the overlay. On deployment `bg.png`, `index.html` and `lsa-demo.html` are all
-> dropped and nothing about the CSS/JS changes.
+> **This file is the current picture only.** The old 1500-line version carried
+> an 850-line archive of designs that no longer exist (a fuse, a generation
+> cascade, a GO button). That is gone from here. Recover it with
+> `git show 890ffc7:handoff.md`; `progress.md` still holds the narrative log.
 
 ---
 
-## What the overlay does now
+## What ships
 
-1. Script returns immediately unless viewport width is `>= 1024px`.
-2. Builds `.lsa-root` and appends it to `document.body`; locks page scroll.
-3. Shows a blurred gradient backdrop, a gold **GO** button (bottom-centre) and a
-   circular close button (top-right).
-   - **The backdrop starts at full strength and pulls back to 60% at the first
-     break**, over 0.8 s — `.lsa-backdrop--dim`, added from `frame()`. It fires
-     on the first burst, *not* on the GO press: the rocket climbs for over two
-     seconds first, and dimming during the ascent reads as the overlay closing
-     rather than as the sky lighting up. A canvas click counts too. **One-way
-     for the life of the overlay** — a second GO starts from 60%.
-   - `opacity` groups the element, so this fades the `backdrop-filter` blur
-     along with the gradient: the page behind comes back both lighter and
-     sharper.
-4. **GO** runs a five-firework sequence. Each row launches a rocket that rises
-   and bursts at apex.
-5. **Clicking the canvas** launches a single rocket that bursts where you
-   clicked — useful for judging one firework in isolation.
-6. Close tears everything down: every listener removed, rAF cancelled, root
-   removed, `body.style.overflow` restored to its exact prior value.
+Six files, **1.37 MB**. Everything is vanilla, classic scripts, no build step,
+no CDN.
 
-The GO button disables during a run and re-enables once the schedule is empty
-**and** the last rocket has burst — not when the last one launches.
+| File | What it is |
+|---|---|
+| `lsa-experience.css` | Every style. All selectors prefixed `lsa-`, scoped under `.lsa-root`. **It loads nothing** — see "One path rule". 37 KB. |
+| `fireworks-engine-2.js` | The fireworks — buffers, physics, rendering. One global, `Fireworks2`. **Loads first.** 45 KB. |
+| `lsa-experience.js` | The show — chrome, the tuned `cfg`, the charge, the sequence, the medallion, the sparkle on the number, teardown. Drives the engine, contains none of it. 154 KB. |
+| `assets/medal-face-blank.png` | Medallion front face, **with no number on it**, since 2026-09-07. **605 KB, the heaviest thing loaded.** 2250×2260, exactly 4× the old 563×565 viewBox, so it drops into the same coordinate space and the edge stack still lines up. The milestone is drawn over it as DOM text — see "The number on the medal". `assets/medal-face-blank.svg` is the same artwork as vector at **64 KB** and is not yet used; see Known issues. |
+| `assets/medal-edge.svg` | Textless silhouette, stacked 34× along Z to fake the coin's thickness — **81.6px of depth since 2026-09-07**, doubled from 40.8 because nobody could see the rim. 1.3 KB. |
+| `assets/gal4.jpg` | The galaxy the counter ignites through. **565 KB.** Moved here from the repo root 2026-09-04 so there is one `ASSET_PATH` rule and not a third path convention. |
 
-### The sequence
+**It was 3.9 MB on the morning of 2026-09-07.** Two changes that day took 65%
+off it: the face and the galaxy were recompressed, from 2.28 MB and 1.05 MB; and
+the medallion's cursor-tracking shimmer was removed, taking a 542 KB mask with
+it. Both are written up under Known issues.
 
-`cfg.goSequence`, one row per firework — `x` as a fraction of canvas width, `at`
-in ms from the button press, a colour set, and a scale:
+⚠ **The face is now an INDEXED PNG** — 227 palette colours, 22 alpha levels.
+It was compared against the original side by side at the shipped 320px and again
+at 2×: no visible banding in the centre glow, no stepping on the edge. The
+artwork is a narrow brown-and-cream range, which is why a palette survives it.
+**Re-check it by eye if the medallion is ever made screen-relative** and drawn
+much larger — that is the condition this was not tested under.
 
-| # | x | at | colour | scale |
-|---|---|---|---|---|
-| 1 | 0.10 | 0 ms | red | 1× |
-| 2 | 0.90 | 0 ms | red | 1× |
-| 3 | 0.30 | 500 ms | gold | 1.5× |
-| 4 | 0.70 | 500 ms | gold | 1.5× |
-| 5 | 0.50 | 1000 ms | mix | 2× |
+`lsa-mount.html` is the snippet you paste into Liferay, not a file you host.
 
-Three waves, outside-in, growing. `at` is the **launch** time; every rocket
-rises the same height (`cfg.goHeight`, 0.38 of canvas height), so burst spacing
-matches launch spacing. Ascent is ~2.25 s.
+**One more thing has to load, and it is not a file you host: Aleo, from Google
+Fonts.** Three `<link>` tags at the top of `lsa-mount.html`. It is the only CDN
+in this project and the one deliberate exception to the no-CDN rule — see
+"Integrating with Liferay" for the two CSP entries it needs and what happens if
+they are refused.
+
+**Does NOT ship:** `assets/back.png` (no click-to-flip, nothing loads it),
+`assets/Path.svg` (its path data is inlined as `SPARK_PATH` in
+`lsa-experience.js`, so the file itself is never fetched — one string now feeds
+both the charge star's three SVG copies and the cursor's `Path2D`),
+`assets/medal.svg` (the original numberless front face, replaced 2026-09-07),
+`assets/medal-face.png` (the face **with a 5 baked into it**, replaced later the
+same day; kept because subtracting it from the blank one is how the number's
+position was measured, and it is the only way to re-derive that), 
+`assets/medal-face-blank.svg` (the vector face, not wired up yet),
+`assets/shimmer.png` (the shimmer mask — the effect was removed 2026-09-07 and
+nothing reads the file now; still on disk),
+`fireworks-engine.js` and `lab/fireworks-lab.html` (engine 1, superseded, still
+on disk), `lsa-demo.html`, `index.html`, `bg.png` (local harness — `bg.png` is a
+**reference screenshot** of the intranet, standing in for the live page, and no
+CSS or JS refers to it).
 
 ---
 
-## Architecture
+## What happens, in order
 
-The engine — **Hanabi**'s rendering model over **confetti.js**'s physics — lives
-in `fireworks-engine.js`, and the lab and the overlay both load that one file.
-It used to be copied into each, which is how the lab ended up with burst shapes
-and sub-blasts that production never got. There is now nothing to keep in step:
-a change to the engine reaches both the moment it is saved.
+1. Overlay mounts over a blurred blue veil of the page. Everything sits behind
+   an opaque black layer. **The screen is black and empty — no number.**
+2. The cursor becomes a spark — sparkles launch from it and spread out.
+3. A four-pointed **star** sits at the bottom, dormant: a gold outline with no
+   light in it. Under it, **HOLD YOUR SPARK HERE**.
+4. Holding on it fills the star **from its core outward** while the year count
+   climbs, sitting **exactly where the number on the medallion is about to
+   appear** — about 61px above screen centre, not on it. The star grows
+   0.65× → 1.65× and the number 0.30× → 1.04×, both tied to the fill rather
+   than to the step. At a full charge the counter is the same typeface, weight
+   and size as the medal's number and lands on top of it to within a quarter of
+   a pixel. See "The number on the medal".
+5. Each number blurs and dims out, is swapped at the peak where it cannot be
+   read, then blurs back in. A galaxy photo on `color-dodge` makes the letters
+   come up in patches, so they read as igniting rather than appearing.
+6. At full it flashes white, pauses **0.25s**, then releases. The galaxy fades
+   off over 0.5s during that pause.
+7. Five rockets launch **inside-out** — centre first, then the pair either side,
+   then the outer pair. They all break **on the medal's number**, the same spot
+   the counter just finished on. Three burst moments, ~0.5s apart. **The centre one
+   breaks a second time**: six of its sparkles are shells that re-burst 0.7s
+   later. On since 2026-09-07, and on that firework only.
+8. The first burst takes the counter and the star away over 0.7s. Each burst
+   moment clears a third of the black veil; after the third, the medallion and
+   message are fully out.
+9. **1.4s after the centre firework breaks** — long enough for its sparkles and
+   its second break to settle — **the milestone sparkles on the medal's face**.
+   Dots in the shape of its own digits come up over 0.6s, twinkle for 2.8s and
+   fade out over 2.0s, so the whole beat is 6.8s from that break. The engraved
+   number stays visible underneath the entire time. See "The sparkle on the
+   number".
+10. Background fireworks start behind the blue veil and run until close.
 
-What the overlay still owns is the *show* — the chrome, the tuned `cfg`, the GO
-sequence, teardown. What the lab still owns is its slider panel and its FPS
-readout. The seam between them is `cfg`, and moving a tuning session across it
-is a copy-paste of values, never of code — see "The lab" below.
+**The hold is as long as the milestone.** One interval per number, 800ms each,
+so every milestone runs at the same pace and differs only in how many numbers
+it walks. Leave the star early and it drains at half that rate, so a wobble
+costs a little progress rather than all of it.
 
-The engine does not start a `requestAnimationFrame` loop of its own. Each
-consumer drives `update(dt)` / `draw(dt)` from its own loop, which is what lets
-the overlay cancel cleanly on teardown.
+All ten, measured in a running page on 2026-09-07 by driving one charge per
+milestone and counting the numbers that actually reached the screen:
 
-**Four offscreen buffers**, composited each frame onto the one visible canvas:
+| Milestone | Steps | Charge | Drain |
+|---|---|---|---|
+| 5 | 5 | 4.0s | 8.0s |
+| 10 | 10 | 8.0s | 16.0s |
+| 15 | 11 | 8.8s | 17.6s |
+| 20 | 12 | 9.6s | 19.2s |
+| 25 | 13 | 10.4s | 20.8s |
+| 30 | 14 | 11.2s | 22.4s |
+| 35 | 15 | 12.0s | 24.0s |
+| 40 | 16 | 12.8s | 25.6s |
+| 45 | 17 | 13.6s | 27.2s |
+| 50 | 18 | 14.4s | 28.8s |
 
-| Buffer | Resolution | Notes |
-|---|---|---|
-| `particleBuf` | full | Cleared each frame. Feeds *both* the trail and the glow, so sparkles are drawn once. |
-| `trailBuf` | full | **Persistent** — never cleared per frame, only faded. |
-| `glowBuf` | 1/`glowDownscale` | Smoothing **off**. The twinkle comes from pixels being *lost* in the downscale — nothing is animated to twinkle. |
-| `smokeBuf` | half | Smoke is soft; half res is invisible in the result and saves a lot of fill. |
+**The ladder is lopsided, and that is a consequence of the step list rather
+than a choice.** 5 to 10 doubles the hold, because those are the only two
+milestones inside the every-number stretch; from 10 up each milestone adds one
+number and 0.8s. So a 10-year award already costs more than half of what 50
+does, and the ten milestones occupy 4.0s to 14.4s with two thirds of them
+crowded into the last four seconds.
 
-**The FPS_REF conversion is the load-bearing idea.** Hanabi's constants are
-per-frame at 30 fps; this loop is delta-time integrated in seconds. Every Hanabi
-value is converted *at read time* against `FPS_REF = 30`:
+**There is no click-to-skip.** Holding the spark on the button is the only route
+through. That was an explicit decision, not an omission.
+
+---
+
+## The eight layers, front to back
 
 ```
-gravity  0.2  /frame²  →  × FPS_REF²  →  180 px/s²
-drag     0.9  /frame   →  pow(drag, dt * FPS_REF)
-life     0.01 /frame   →  1/(0.01 * FPS_REF) = 3.33 s
-speed    10   /frame   →  × FPS_REF   →  300 px/s
+1  galaxy     .lsa-galaxy    z  6   color-dodge, over everything. Charge only.
+2  spark      .lsa-spark     z  5   the cursor
+3  chrome     —              z  4   star, counter, RESET, close, dev panel
+4  fireworks  .lsa-canvas    z  3   transparent composite
+5  black      .lsa-black     z  2   opaque; the show clears it in thirds
+6  card       .lsa-card      z  1   medallion + message + sparkle, never fades
+7  blue       .lsa-backdrop  z  0   blurred veil, constant throughout
+8  ambient    .lsa-ambient   z -1   background fireworks, seen THROUGH the blue
+   intranet   —                     the live page, behind .lsa-root
 ```
 
-Using them raw in a 60 fps loop is exactly why the previous overlay fell twice
-too fast and its sparkles died three times too early. Sanity check: terminal
-fall lands at ~55 px/s and must not change with framerate.
+**The order is the design.** The fireworks sit in *front* of the black, so they
+burn at full brightness while the card behind it is still hidden. Layer 8 is the
+only thing behind the blue veil — that blur is what makes it read as distance.
+The card is a transparent positioning box; it has no white surface of its own.
 
-**The one deliberate difference from the lab.** The lab composites onto an
-opaque navy fill, because additive blending needs real pixels underneath to add
-to. As an overlay that fill would hide the page, so the composite `clearRect`s
-to transparent and the browser layers the result over the backdrop. Commented in
-place and in the file header.
+**The sparkle field is not a stage layer.** `.lsa-medal-sparkle` is a canvas
+*inside* the medallion's front face, alongside `.lsa-medal-number`, which is
+what makes it ride the 3D tilt. A layer of its own at stage level would slide
+off the digits the moment the cursor moved the coin.
 
-### The rocket
+**`.lsa-root` carries `isolation: isolate`, and it is load-bearing.** Without
+it the galaxy's `color-dodge` would blend all the way through to the live
+Liferay page. A blend mode is the one way a namespaced stylesheet can still
+change how the host page looks, so this is part of the safety contract, not
+just the effect.
 
-One node, drawn the *same* way a sparkle is — a stroked segment from last
-frame's position to this one, into the same `particleBuf` — so it picks up the
-trail and glow for free. Two deliberate differences:
+### The galaxy, and the three things that kill it silently
 
-- **No wink.** The `cos(rot)` flicker reads as a glint on a shard but as a fault
-  on a single climbing ember.
-- **No drag.** The sparkles' 0.9/frame damping is what makes a burst snap and
-  hang, but on the ascent it would eat the launch velocity. Gravity alone means
-  launch speed solves exactly: `v = sqrt(2·g·rise)`. It bursts at apex — the
-  frame `vy` turns positive — so it can never stall short or sail past.
+`gal4.jpg` is laid over the whole stage on `mix-blend-mode: color-dodge`.
+Dodge cannot lift black at all, so on a black stage the image is invisible
+*except* where something bright is already painted — during the charge that is
+the counter, the star and the cursor. **Nothing is masked and nothing is
+clipped to the text.** Bright patches of the photograph dodge harder than dark
+ones, so a letter comes up unevenly; the image is standing still and acting as
+a timing map for the brightness the swap is already writing.
 
-### Colour
+1. **A transform, a filter, `will-change`, or an opacity below 1 on any element
+   BETWEEN the image and `.lsa-black`.** That seals the blend inside that
+   wrapper and it stops reaching the black.
+2. **Fading a container holding both the text and the image.** The browser
+   flattens them together first. Fade the image itself — which is what
+   `.lsa-root--released` does.
+3. **Fading the number with `opacity` rather than `brightness`.** Opacity fades
+   the letter against its background *after* it is drawn, which collapses the
+   whole effect into an ordinary crossfade.
 
-`cfg.goColors` are hue lists in the same form as `PALETTES`. **White cannot be a
-hue** — every sparkle otherwise takes `BASE_SAT` (90) — so `white` is the
-*fraction* of a burst drawn desaturated and lifted instead. Only the centre
-`mix` burst uses it (0.33), which is what keeps white exclusive to the finale.
+The text must also stay **white**, and the counter must have **no
+`text-shadow`**. Pure white sits at the top of the dodge, so the image ignites
+the letter on the way in and then gets out of the way. A *mid-tone* dodges
+hardest — the 45%-alpha gold glow that used to be on `.lsa-count` would have
+made the galaxy brightest in the ring *around* the number instead of in it.
+Same failure as setting the text mid-grey, which was built and rejected.
 
-A `spec` object (`{hues, white, scale}`) is threaded
-`burst → spawnSparkles → spawn` and `burst → spawnBlast`. It is **optional**
-throughout, so a plain canvas click still falls back to `cfg.hanabi.palette` —
-the lab's behaviour, unchanged.
+**It leaves at the release, not at the first burst.** From the first burst on,
+the fireworks are the brightest thing on the stage and dodging them would blow
+them out, and then the medallion behind them. The release hook buys the whole
+ascent, measured 2026-09-05 at **2.52s on 1440×900 and 2.33s on 1024×768**.
 
-### Three fixes carried over from the lab
+**How long it takes is now tunable**, `chargeTune.galaxyFade`, default **2.3s**,
+slider in the dev panel. It was a flat 0.5s until 2026-09-05, which made the
+image snap off almost the instant the spark filled; at 2.3s it fades across the
+rockets' whole climb instead. The duration is read **once**, at the release, and
+written to `--lsa-galaxy-fade`.
 
-1. **Dithered trail erase.** A proportional erase can never reach zero on an
-   8-bit canvas — once `alpha*fade < 0.5` it rounds back, stranding every touched
-   pixel at ~`0.5/fade` and leaving a ghost of the burst. Fixed by partitioning
-   pixels into `DITHER_PHASES` (12) masks cycled one per frame, each pixel erased
-   fully once per cycle. Same average decay, no flicker, floor down to ~1/255.
-2. **Gap-free trail segments.** Each particle tracks `px`/`py` and is *stroked*
-   from last frame's position rather than stamped as a dot — a fast particle
-   travels several px between frames and a dot leaves a gap.
-3. **Gradual trail fade-out.** `idleTime` ramps the erase to full over
-   `TRAIL_FADEOUT` (0.6 s) once nothing is alive, instead of a one-frame
-   `clearRect` that made the trace vanish abruptly. **Rockets count as alive**
-   here — during an ascent there are no particles yet, and without that the
-   fade-out would erase the rocket's own trail out from under it.
+**`cutGalaxyShort()` is what makes that safe.** The slider goes to 4s and the
+climb is only ~2.4s and drifts with window height, so the first burst freezes
+the image at whatever opacity it has reached and takes it the rest of the way in
+0.25s. It cannot simply shorten the transition — changing `transition-duration`
+mid-flight does nothing, the browser committed to the original timing when it
+started — so it freezes, forces a reflow, and starts a new one. `resetScene()`
+clears the two inline styles it leaves, or the second run would have no galaxy
+at all.
 
 ---
 
-## Tweak points — the `cfg` object
+## The number on the medal, and the count-up that lands on it
 
-Everything tunable is in one object at the top of `lsa-experience.js`, read
-**live** (per frame / per spawn), so changing a value at runtime changes the
-show while it is running.
+**The face carries no number.** `medal-face.png` had a **5** and the word
+**Years** baked into the artwork, which meant a 20-year award showed a medal
+reading 5, and ten milestones would have needed ten 2.3 MB faces.
+`medal-face-blank.png` is the same artwork with the digit removed — "Years"
+stays, since that word does not change — and the milestone is drawn over it as
+DOM text, `.lsa-medal-number`. **One face covers all ten milestones**, and
+`setYears()` writes the digit, so the dev panel's picker changes the medal.
 
-**`cfg` is engine 2's shape now, and it is flat** — the old `hanabi.*` /
-`confetti.*` nesting is gone, along with `core.*`, `shape.*` and `sub.*`.
+**The fill was levelled to the artwork, and the design spec was wrong.** The
+supplied gradient, `#A18D7E → #998474`, rendered visibly darker than the digit
+it replaced. Sampling the old face against the blank one at the shipped 320px
+size: the printed digit's body averages **#A69384**, and **#AB9A8A** once its
+antialiased edges are counted, while the spec's two stops average **#9D8879** —
+about **ten levels per channel too dark**. The stops now sit on the **soft**
+mean, `#AE9C8D → #A69384` — chosen by eye against the old face, and it is the
+right target: what reads as the digit's colour is the average the eye takes over
+the whole glyph, antialiased edges included, not the colour of its solid
+interior. The straight body match, `#AA9889` / `#A28F7F`, still looked heavy.
+The angle, stop positions and spread are the spec's, untouched; only the level
+moved.
 
-| Path | Default | What it does |
+⚠ **`background-image`, never the `background` shorthand, on this rule.** The
+shorthand resets `background-clip` to `border-box`, so a `background:` written
+after the clip silently un-clips the gradient and paints a **filled rectangle**
+behind the digit. The longhand makes the order irrelevant.
+
+The number is **Aleo 700 italic**, filled with a gradient clipped to the text.
+That is not a match by eye: the old face and the blank one are the same artwork
+at the same size, so subtracting one from the other gives the printed digit's
+exact box — **x 948–1296, y 774–1256 in a 2250×2260 export**. As fractions of
+the medal that is centre **0.4989 / 0.4493** and an ink height of **0.2137**.
+Aleo 700 italic digits are 0.74em of ink, and 161 × 0.74 = 119 against 117–121
+measured off the pixels, so the typeface and the size are confirmed rather than
+guessed.
+
+**Every value is a fraction of the medal, never a pixel.** `.lsa-medal-scene`
+carries `--lsa-medal-w`, and both the number's `font-size` (161/563 of it) and
+the count-up's aim are derived from that. Resize the medallion — which is a
+flagged open item — and the number and the counter both follow. Change it in
+one place.
+
+### The 0.055em nudge is not a fudge
+
+Centring puts an element's **box** on a point. What has to land there is its
+**ink**. Aleo sits its digits' ink centre **0.055em above the box centre**, so
+`.lsa-medal-number` moves its box down by that much to bring the ink up to the
+mark, and `aimCounterAtMedal()` adds the same correction back at the size the
+counter ends at. It is independent of `line-height`. **Re-measure it if the
+typeface ever changes; do not carry the number over.**
+
+### How the counter is aimed
+
+`aimCounterAtMedal()` reads `.lsa-medal-number`'s own **computed `font-size` and
+`top`** straight back out of the stylesheet, so no fraction is written twice. It
+then sets two things:
+
+- **`chargeTune.scale1`**, the size at a full charge — 1.04 today. **Derived,
+  not tuned.** Editing the literal does nothing.
+- **`--lsa-count-y`** on `.lsa-count`, −60.83px today, which lifts the counter
+  off screen centre onto the medal's digit.
+
+**It does not use the medal's `getBoundingClientRect()`, on purpose.**
+`lsa-experience.js` writes a tilt transform onto `.lsa-medal-scene` on every
+mousemove, and a rotated element's rect is the box *around* the rotation, which
+grows and shrinks as the cursor moves. `offsetTop` / `offsetWidth` are layout
+values and ignore transforms, so they are stable mid-tilt.
+
+**Nothing recomputes it on resize, and that is correct rather than an
+omission.** `.lsa-count` and `.lsa-card` are both centred on the same point, and
+the medal's offset inside the card is set by the card's own layout, so the
+offset is viewport-independent. The one thing that *can* move it is the card's
+sentence reflowing, which is why `setYears()` re-aims.
+
+Measured at a full charge, at 5 years and again at 50: **ΔX 0.00px, ΔY 0.23px,
+height ratio 1.0000.**
+
+### The fireworks burst on it too
+
+`runSequence()` takes its burst height from `burstY()`, which reads the same
+`medalNumberY()` the counter is aimed with. So the counter finishes on the
+number, the rockets break on the number, and the veil then clears to show the
+number — three things on one anchor, with nothing to keep in step by hand.
+
+**`cfg.goHeight` is now a fallback only**, used if the number cannot be
+measured. **A fraction of the height cannot express this**, which is why it
+stopped being the answer: the number sits a fixed ~66px above the viewport
+centre, so the fraction that hits it is 0.418 at 800px tall and 0.439 at 1080.
+Any single value is wrong on most screens. The old 0.5 was the same intent one
+step coarser — "the vertical middle, which is roughly where the medallion is".
+
+Read at press time, not cached, which is also why this needs no resize listener.
+
+Measured at 1280×800: all five bursts land at **y 337.6** against the number's
+ink at **334.1**. The 3.5px is the engine's own apex quantisation — a rocket
+breaks on the frame its `vy` turns positive — not an aiming error, and it is
+4% of the digit's height.
+
+⚠ **Side effect: the first burst arrives later.** Aiming ~66px higher is about
+8% more climb, roughly 0.19s on a 2.4s ascent. `cutGalaxyShort()` already
+covers the galaxy fade for it.
+
+### Two type settings that had to give way
+
+- **`letter-spacing` on `.lsa-count` is now `normal`.** It was −0.02em, tuned
+  against the system sans the counter no longer uses. The medal's number has
+  none, and at these sizes it cost "50" 3.5px of width, which is a 1.8px
+  sideways slip once both boxes are centred.
+- **`font-variant-numeric: tabular-nums` stays, and is inert.** Aleo's figures
+  are the same width either way — measured, not assumed — so it costs nothing
+  and still guards a future typeface change.
+
+### The counter is still white, and the gradient cannot come across
+
+The medal's digit is a brown gradient. The counter is pure white and must stay
+that way: `.lsa-galaxy`'s `color-dodge` needs white to ignite the letters, and a
+mid-tone brown is exactly what dodges hardest, which inverts the effect. The two
+numbers match in face, weight, slant and size — **not in colour**, deliberately.
+See "The galaxy, and the three things that kill it silently".
+
+---
+
+## The sparkle on the number
+
+Added 2026-09-07. When the centre firework breaks and its sparkles have
+settled, the milestone twinkles on the medal's face: a field of dots sitting in
+the shape of its own digits, holding for a few seconds and fading out.
+
+**The engraved number stays visible under it the whole time.** The dots are a
+flare over a digit that is already there, not the thing that puts it on the
+medal. Hiding the number and handing off to the sparkles was built as an option
+and rejected.
+
+**The dots never fly in.** They are in place from the first frame and the field
+fades up as a whole. That was an explicit call — an assembling effect was
+proposed and dropped — and it is why the twinkle sits on a floor rather than
+going to zero: a dot that goes fully dark makes the digits come apart and
+reassemble, which is the effect that was not wanted.
+
+### The shape comes from the font
+
+The digits are drawn to an offscreen canvas in `.lsa-medal-number`'s own
+computed font, and every grid square with ink under it becomes a dot. **One
+code path covers all ten milestones**, there is no eleventh asset to keep in
+step, and a change to the typeface or the medal's size carries through on its
+own. 88 dots at 5 years, 185 at 50, at the default 4px spacing.
+
+A hand-authored point list was the alternative. It would have been ten lists,
+each of them wrong the day the artwork moved.
+
+**Aimed by one read of the stylesheet.** `top` on `.lsa-medal-number` IS the ink
+line — the 0.055em nudge in the CSS is what makes that true — and the canvas
+shares `coinFront`'s box, so that value is the target with nothing to convert.
+Same single source `medalNumberY()` and `burstY()` already use.
+
+⚠ **Then re-centred on measured ink, not on where `fillText` was told to put
+it.** `textBaseline: middle` centres the EM BOX, which is not the ink centre and
+is off by a different amount for every typeface — the same distinction the
+0.055em nudge exists for. So the ink's real bounding box is read back out of the
+pixels and the whole field is shifted onto the target. **That shift is why "50"
+centres as well as "5"**, and it is what makes the `fillText` placement above it
+merely need to be close enough to keep the glyphs on the canvas.
+
+The bounding box is taken from **every** pixel while the dots are taken on the
+grid, in one pass. A box measured off the grid samples alone is coarse by up to
+a whole step, which would throw the centring by half of one.
+
+### Why the dots are sprites and not arcs
+
+The first build drew hard-edged cream discs. On a cream medal face they read as
+the digit being **eroded**, not lit — texture, not light. What separates a point
+of light from a coloured dot is the falloff around it.
+
+Every dot is now one soft radial blob — white core, warm gold edge, transparent
+at the rim — built once into a 64px canvas and stamped with `drawImage`. A
+gradient per dot per frame would be ~185 gradient objects every frame for the
+same picture. Drawn with `globalCompositeOperation: 'lighter'` so overlapping
+dots **add**, which is what makes the denser parts of a glyph read as hotter.
+
+Alongside it the resting level dropped from 0.32 to 0.16, so the flashes have
+something to stand out from.
+
+### Every dot on its own clock
+
+One shared curve, a random phase and a random rate multiplier per dot, both
+rolled once at sample time. That costs nothing and is what stops the field
+pulsing as a single object.
+
+**Sharpness is what makes it sparkle rather than breathe.** A raw sine spends
+half its time near the top, so every dot looks lit at once. Raising it to a
+power squashes the curve down and leaves short bright peaks with long dim gaps.
+`SPARKLE_SHARP` is 3; below about 2 it goes back to breathing.
+
+**Size moves with brightness too.** A point of light that grows as it brightens
+reads as a spark catching; one that only changes alpha reads as a pixel being
+faded, which is what it actually is.
+
+**The twinkle keeps running through the fade out**, which is what stops the exit
+reading as one object being turned down. Dots that happen to be flashing as the
+level drops hang on a moment longer than dots that happen to be dim, so the
+field thins unevenly and the last few wink out on their own. Free here; it would
+have cost a per-dot exit time to fake.
+
+### It hangs off the centre firework, not off a clock
+
+`fw.onBurst` again, the same hook the veil steps on, testing `spec.n === 3`.
+
+**The centre is number 3 and it goes FIRST.** `goSequence` is inside-out — 3 at
+`at: 0`, then 2+4, then 1+5 — so this is the show's opening break, not its last.
+It is also the only firework carrying sub-bursts, which re-break 0.7s after the
+main one, so "its sparkles have settled" is a good deal later than the burst
+itself. That is what `settle` is buying.
+
+⚠ **Armed ABOVE the one-burst-per-frame guard, deliberately.** That guard exists
+so two rockets breaking on the same frame only move the veil once; this wants
+the opposite — it asks "did *this* firework break", and the answer must not
+depend on whether something else broke first on the same frame. Today firework 3
+breaks alone and the two agree, but that is a fact about the current
+`goSequence`, not a thing to rely on.
+
+⚠ **The end of the field is tested on elapsed time, not on the level.**
+`env <= 0` was the obvious test and it was **wrong**: the envelope is zero at
+*both* ends, so on the very first frame — age 0, still climbing — it read as
+finished and wiped the field before a single dot was ever drawn. The effect
+silently did nothing, with no error. Caught by driving a full run through
+`step()` and logging the canvas's total alpha per frame, not by reading.
+
+### Its values
+
+`sparkleTune` holds everything an eye has to judge, and **all seven have sliders
+in the dev panel** under **The sparkle on the number**.
+
+| Key | Default | What it does |
 |---|---|---|
-| `scale` | 1 | Global size — what a click gets; each firework overrides it with `fireworkSize` |
-| `background` | `null` | Transparent composite. The one value that makes this an overlay, not a stage |
-| `palette` | `fire` | Fallback palette for click-bursts: `fire` / `blue` / `purple` / `random` |
-| `count` | 200 | Sparkles per burst |
-| `explosionSize` | 10 | Burst spread |
-| `poolMax` | 2000 | Hard particle cap |
-| `gravity` | 0.2 | Per-frame² — also drives rocket ascent |
-| `drag` | 0.9 | Per-frame; sparkles only, not the rocket |
-| `lifeDecay` | 0.01 | Per-frame → 3.33 s base life |
-| `lifeSpread` | 0.35 | ± fraction of life, per sparkle |
-| `size` | 1.6 | px stroke width of a sparkle |
-| `sizeSpread` | 0.5 | ± fraction of it, per sparkle |
-| `trailFade` | 0.05 | Erase rate |
-| `trailAlpha` | 0.6 | How strongly particles stamp into the trail |
-| `glowDownscale` | 4 | Bigger = coarser, brighter twinkle. **Read at allocation** — changing it needs `fw.resize()` |
-| `glowAlpha` | 1 | How hard the glow is added back on top |
-| `jitterHue/Sat/Light` | 5 / 10 / 10 | Per-sparkle colour spread |
-| `deltaCap` | 0.064 | rAF delta clamp, so a stalled tab resumes rather than teleports |
-| `blast.*` | — | The flash: `lead` 60 ms, `radius` 200, `peak` 0.6, rise/hold/decay 0.06/0.15/1.8 s, `growth` 1.1, `stack` 2. Radius/peak/growth/stack are a lab 2 tuning **both** sessions agreed on |
-| `sub.*` | `enabled: false` | Secondary bursts: `count` 6, `delay` 0.7 s, `particles` 30, `scale` 0.3, `glow` true. **Off by default**, so nothing in the show uses it until switched on |
-| `rocket.size` | 5 | px — a sparkle is ~1–2 |
-| `rocket.launchY` | 1.0 | Launch height as a fraction of canvas height |
-| `rocket.light` | 88 | Hotter than a sparkle's `BASE_LIGHT` (62) |
-| `goHeight` | 0.38 | Burst height as a fraction of canvas height |
-| `goColors` | red / gold / mix | Hue lists + white fraction |
-| `fireworkSize` | 4.4 / 4.4 / 3.9 / 4.4 / 4.4 | Per-firework size, left to right, all from lab 2 tunings. **It was 1 / 1.5 / 2 / 1.5 / 1**, growing outside-in — the show is now near-flat and no longer builds toward the centre |
-| `fireworkCfg` | 5 rows | Per-firework overrides. 1, 2, 4 and 5 share one tuning (`size` 0.5, `lifeDecay` 0.024, `blast.lead` 45); **3 has its own** (`size` 0.2, `sizeSpread` 0.15, `explosionSize` 14.5, `lifeDecay` 0.024, `blast.lead` 45). A row holds only what differs from the show — an absent key falls through |
-| `goSequence` | 5 rows | The running order |
+| `settle` | 1.4 | seconds from the centre break to the dots arriving |
+| `fadeIn` | 0.6 | seconds for the field to come up — **no slider** |
+| `hold` | 2.8 | seconds at full |
+| `fadeOut` | 2.0 | seconds to go |
+| `grid` | 4 | CSS px between dots — the density |
+| `floor` | 0.16 | the level an unlit dot rests at |
+| `rate` | 1.1 | flashes per second |
+| `halo` | 3.4 | glow width, against the dot's own radius |
 
-> **`cfg` is not the literal in the file — it is `fw.cfg`.** Engine 2 deep-copies
-> whatever it is handed at construction, so `lsa-experience.js` reassigns
-> `cfg = fw.cfg` immediately after. Drop that line and every slider in the dev
-> panel writes to an object nothing reads.
+Everything lands **live** except `grid`, which is read while sampling rather
+than while drawing — it is in the cache key instead, so moving it re-samples on
+the next frame. The practical result is that the whole section can be judged
+during one press of `Play show` rather than a run per value.
 
----
+The rest are constants in the file and were not given controls: `SPARKLE_INK`
+0.55 (the alpha a pixel must clear to count), `SPARKLE_JITTER` 0.85,
+`SPARKLE_R` 1.15 and `SPARKLE_R_VARY` 0.55 (dot size), `SPARKLE_SHARP` 3, and
+`SPARKLE_R_LIT` 0.45.
 
-## What was removed in the clean-slate rebuild
+**Jitter is not decoration.** Dots on an exact grid read as a dot-matrix display
+— the eye finds the rows instantly. Just under half a step of scatter in each
+axis breaks the rows while every dot stays inside the glyph it came from. Rolled
+once, at sample time, so the field does not crawl.
 
-Deleted deliberately, and **not coming back unless asked**. Listed because the
-archive below still describes all of it as built and working:
+### What it costs, and what it does not
 
-the fuse (`computeFusePoints`, `drawFuse`, `checkFuseIgnition`,
-`pointOnFuseCurve`, `updateFuseBurn`) · the `.lsa-prompt` element · the
-congratulation **card** and its reveal/bloom/glow timing · cursor sparks ·
-the LUT colour system (`makeLut`, `hexToRgb`, `PALETTES.open|build|climax`) ·
-generations and the cascade (`GENERATIONS`, `breakGen`) · flashes ·
-`MAX_PARTICLES` · `restartShow` · `EMPLOYEE_NAME` · `YEARS` and
-`MAX_SUPPORTED_YEARS` · the 58-control tuning panel.
+185 stamps on a 320px canvas per frame at the largest milestone, on a canvas
+that is only painted for 6.8 seconds of the run. The sprite is built once. The
+sample is cached on milestone, canvas size, font and spacing, so a second run
+re-uses it.
 
-**Consequences worth stating plainly:**
-
-- **There is no card**, so nothing displays the employee's name or the
-  milestone. The medallion has nowhere to go until a card exists again.
-- **The milestone no longer drives anything.** The show is hard-wired to five
-  fireworks. `YEARS` is gone; scaling the show to 5/10/15/20/25 years is an open
-  question again, not a solved one.
+**Teardown needs nothing.** The canvas is a child of `.lsa-root` and goes with
+`root.remove()`; no listener is added and no timer is set. `resetScene()`
+disarms the clock and wipes the canvas — it deliberately does **not** drop the
+sampled dots, which are still correct. Verified: RESET wipes it, a second run
+reproduces it exactly, and close leaves zero `.lsa-medal-sparkle` nodes.
 
 ---
 
-## The lab — `lab/fireworks-lab.html`
+## Architecture in one page
 
-Standalone harness with a 400 px control panel and click-to-burst. It loads
-`../fireworks-engine.js` — **the same file the overlay loads**, not a copy — and
-adds the slider panel, the FPS readout, auto-fire, and the config export.
+- **One IIFE**, no globals, full teardown. Every listener has a matching remove
+  and the rAF loop is cancelled.
+- **Desktop only**, `MIN_WIDTH = 1024`. Below that the script does nothing at all.
+- **`cfg` IS the engine's config**, not a copy. Engine 2 deep-copies what it is
+  handed, so `cfg = fw.cfg` right after the constructor is load-bearing. Skip it
+  and every dev-panel slider writes to a dead object.
+- **`cfg.background: null`** is what makes the engine an overlay instead of a
+  standalone stage. Give it a colour and it paints over the intranet.
+- **Anything about how the fireworks behave goes in the engine**, never in
+  `lsa-experience.js`. That duplication has already cost this project its burst
+  shapes and sub-blasts once.
 
-> It was treated as frozen for a while ("DO NOT TOUCH THE FIREWORKS LABS, ITS
-> WORKING PERFECTLY"). **That freeze has been lifted** — burst shapes and
-> sub-blasts were added on request, and the engine has since been extracted out
-> of it into its own file.
+### Two engine instances
 
-### Moving a tuning session between the two — `Copy config`
+The main show and the ambient layer are separate `Fireworks2` instances, because
+the engine draws to the one canvas it is handed. They share nothing — no
+buffers, no pool, no settings. Both get their `dt` from the one rAF loop.
 
-Slider state used to die with the tab, and the only route between the lab and
-the overlay was reading a number off a panel and retyping it. Both directions
-now go through the clipboard, and **both ends call the same serialiser in the
-engine** — `Fireworks.exportConfig` / `Fireworks.parseConfig` / `Fireworks.copyText`.
+### Per-firework settings
 
-| Direction | How |
-| --- | --- |
-| **lab → overlay** | `Copy config` in the lab panel, then paste over `cfg` in `lsa-experience.js` |
-| **overlay → lab** | `Copy config` in the overlay's dev panel, then paste into the lab's box and press **Apply pasted** |
-| **overlay → overlay** | Same button — paste back over `cfg` to keep what the dev panel just tuned, which otherwise dies on reload |
+A firework's settings ride on its own `spec`. `runSequence()` attaches the live
+`cfg.fireworkCfg[n]` row as `spec.settings`; the engine's `withSettings()` swaps
+those keys into `cfg`, runs the work, swaps them back under `try/finally`.
 
-**It moves values, not code.** The engine is one shared file that both already
-load, so values are the only thing a tuning session has to carry.
+Applied at two moments, and it has to be both: the whole body of `burst()`, and
+the `spawnSparkles()` call inside `updatePending()` — which happens
+`blast.lead` ms later, in a different `update()` call.
 
-Coming *into* the lab, only paths the panel has a control for are applied; the
-other 17 keys in an overlay config are dropped. That filter is deliberate — an
-overlay config carries `background: null` for its transparent composite, and
-applying that to the lab would leave the stage with no night sky to draw on.
-The show-only keys (`goColors`, `fireworkSize`, `goSequence`, `goHeight`) are
-dropped by the same rule, since the lab has nothing to do with them.
+`fw.onBurst(x, y, spec)` is how the engine tells the overlay a rocket broke.
+That drives the veil steps and clears the charge button. It lives on the
+instance, **not on `cfg`** — `Copy config` runs `JSON.stringify` and a function
+there would vanish silently.
 
-The parser is tolerant of what people actually paste — comments, a leading
-`var cfg =`, a trailing semicolon — and it normalises to JSON rather than
-evaluating, so no pasted text is ever executed.
+### Screen scaling — `cfg.scaleToScreen`
 
-`window.lab.exportConfig()` and `window.__lsaDev.cfg` reach the same data, if
-the clipboard is being awkward.
+Off by default in the engine, **on** in the overlay, `reference: 900`. The
+factor is `min(w, h) / 900`, measured on the smaller side.
 
-### Burst shapes and sub-blasts
+It scales **how far sparks fly** and **flash radius**. It deliberately does
+**not** scale **spark thickness** or **rocket head**. A firework on a big display
+should be wider, not chunkier. Do not fold this into one multiply.
 
-These live in the engine, so production *can* run them — it just does not.
-`lsa-experience.js` sets neither `shape` nor `sub`, so both fall back to the
-engine's defaults (`normal`, sub-blasts off), which is exactly what the overlay
-rendered before the extraction. Turning either on in production is now a config
-change, not a port.
+The medallion, charge button and counter are all still fixed pixel sizes.
 
-The panel has a **Shape** section — `normal` / `ring` / `star burst` /
-`concentric` / `squiggle` — and a **Sub-blasts** section for secondary breaks.
+---
 
-Every shape answers one question, in `shapePoint()`: for particle *i*, at what
-**angle** and what **fraction of maximum speed** does it leave the burst? That
-is all a shape controls. Physics, colour, life and rendering are identical
-afterwards, so shapes cost nothing beyond that function and stay independent of
-everything already tuned. **With shape on `normal` and sub-blasts off, the lab
-is visually identical to before.**
+## Personalising it
 
-| Shape | Controls | Notes |
-|---|---|---|
-| normal | — | The original area-uniform disc |
-| star burst | Points (3–12), Valley radius | Valley radius dials from spiky spokes to a fat star |
-| concentric | Rings (2–6), Ring width | **Turn `flutter` and `massSpread` down** or the rings smear together within about a second |
-| squiggle | Weave speed, Zig-zags/s | Half-swing width is exactly `waveAmp / (2 × waveFreq)` px |
+`#lsa-mount` carries two attributes, both optional:
 
-**Sub-blasts** work by marking some of a burst's particles as shells whose
-*life is the fuse* — they break when they die, so the countdown needs no extra
-field and the shard visibly dims on its way to the second break. Children
-inherit the parent's hue and cannot cascade to a third generation. Shell fuses
-carry ±15% jitter; without it every shell breaks on the same frame and reads as
-one mechanical pop rather than a scatter.
+```html
+<div id="lsa-mount" data-name="Akhil" data-years="5"></div>
+```
 
-The squiggle applies its weave as a **sideways velocity at integration time**,
-not as an acceleration. Accelerating was measured at only ±9 px of ripple —
-drag eats it, and the width collapses as 1/freq². As a velocity the swing width
-is exact and drag-independent, and the square wave draws straight diagonal runs
-with hard corners instead of sine ripples.
+They fall back to constants at the top of `lsa-experience.js` if absent, so the
+demo page still works with no mount element.
 
-### Two copies, kept in sync by hand
+`data-years` is not just the sentence on the card. It is the number the charge
+button counts up to, so it is on screen for three seconds before the card
+appears. It is parsed and rejected unless positive — otherwise a bad template
+puts `NaN` on screen two inches tall. It is **not** clamped to multiples of five;
+a seven-year award should count to seven.
 
-The canonical copy is the `fireworks-lab` branch (local only, never pushed), and
-a byte-identical copy sits on `master` so GitHub Pages can serve it — Pages
-reads one branch, and that branch is `master`.
+---
 
-**If the lab is ever edited, edit it on the branch and re-copy, or the hosted
-version silently falls behind.** Verify by comparing git blob hashes, not by
-eye:
+## Integrating with Liferay
+
+1. Host `lsa-experience.css`, `fireworks-engine-2.js`, `lsa-experience.js` and
+   the `assets/` folder.
+2. Paste `lsa-mount.html` into a Web Content fragment and replace its three
+   `REPLACE_WITH_ASSET_PATH` placeholders.
+3. Set `ASSET_PATH` at the top of `lsa-experience.js` to wherever `assets/` ended up.
+
+**Load order matters three times over.** The Google Fonts stylesheet must load
+before `lsa-experience.css`, so the `@font-face` is known by the time
+`.lsa-count` is styled; the stylesheet must load before the script runs, so the
+overlay never renders unstyled for a frame; and the engine must load before
+`lsa-experience.js`, which calls into it. Both scripts are deferred, and
+deferred scripts run in document order — do not reorder them.
+
+### Aleo, and the one CDN in this project
+
+The count-up and the medal's number are both **Aleo 700 italic**, loaded from
+Google Fonts by three `<link>` tags at the top of `lsa-mount.html`. This is the
+only external dependency the overlay has and the only exception to the no-CDN
+rule. **It was a deliberate choice over self-hosting a woff2 in `assets/`.**
+
+Two things to confirm with whoever owns the page's Content Security Policy:
+
+- `https://fonts.googleapis.com` allowed as a **style-src**
+- `https://fonts.gstatic.com` allowed as a **font-src**
+
+**If either is refused, nothing breaks and nothing warns you.** The counter
+silently falls back to the system sans in `.lsa-count`'s stack and stops
+matching the medal, while the medal's own number falls back to Georgia. The fix
+is to delete the three tags and self-host the woff2 with an `@font-face`; the
+CSS needs no other change. Check it by eye on the real page rather than
+assuming, because a fallback font renders perfectly happily.
+
+### One path rule, since 2026-09-07
+
+All three images — `medal-face-blank.png`, `medal-edge.svg`, `gal4.jpg` — are
+`img.src`, built from `ASSET_PATH`, which resolves **against the page**. Set
+that one constant and every image is found.
+
+**This used to be two rules and it was the easiest thing here to get wrong.**
+`shimmer.png` was a `mask-image` url() in the stylesheet, which resolves against
+the *stylesheet* rather than the page, so the CSS file and `assets/` were forced
+to stay siblings wherever they were hosted. The shimmer was removed and that
+constraint went with it. **`lsa-experience.css` now loads nothing at all**, so it
+can sit anywhere.
+
+**Serve SVG as `image/svg+xml`.** Served as `application/octet-stream` an SVG in
+an `<img>` renders as nothing, which would silently blank all 34 of the
+medallion's edge layers and leave the face floating with no rim.
+
+**Keep asset filenames free of spaces.** The face arrived as `Medal face.png`
+and was renamed on the way in. A space has to be percent-encoded in a URL, and
+this path is assembled by string concatenation in JS and then re-rooted by hand
+at `ASSET_PATH` on Liferay, which is two chances to lose the encoding and one
+silent blank medallion.
+
+No inline `<script>` and no inline `style` carrying logic — the page enforces a CSP.
+
+### The once-only flag — backend, not built here
+
+"Show once" gating is deliberately **not** implemented. No `localStorage` check.
+As shipped it runs on every page load at ≥1024px.
+
+It needs a per-user flag persisted **server-side** — a browser-local one resets
+per device and does not survive a cleared cache. The integration point is the
+top of the IIFE, right after the `MIN_WIDTH` check: an early `return` driven by
+whatever the backend exposes. One line, once the contract exists.
+
+For local testing there is nothing to reset. It always shows.
+
+---
+
+## Running it locally
 
 ```bash
-git rev-parse master:lab/fireworks-lab.html fireworks-lab:lab/fireworks-lab.html
+node .claude/serve.js . 8126
 ```
 
-To read the canonical copy while on `master`:
-`git show fireworks-lab:lab/fireworks-lab.html`.
+Then open `http://localhost:8126/lsa-demo.html`.
+
+- **`file://` will not work.** It reports `innerWidth === 0`, which trips the
+  `MIN_WIDTH` guard, so the overlay never mounts.
+- The bundled server exists because the previous one had **no `.svg` MIME type**,
+  which blanks the medallion. It also sends `Cache-Control: no-store`, so tuning
+  reloads never serve a stale stylesheet.
+- `data-lsa-dev` on `<html>` exposes `window.__lsaDev` —
+  `{cfg, fw, amb, burst, launch, stats, go, step, sparkle}` — and the tuning
+  panel. `sparkle` is `{show(env, age), hide(), dots(), tune}`, which paints one
+  frame of the medal's dot field at any point in its life with no run and no
+  waiting — the only way to look at it standing still.
+  `lsa-demo.html` sets it; `lsa-mount.html` deliberately does not, so no panel
+  and no global ever exist on the intranet.
+- **A milestone picker and a `Play show` button**, added 2026-09-07, at the
+  bottom of the panel under **The milestone**. The picker walks 5 to 50 and is
+  the only thing in the file that moves `YEARS` after mount — it calls
+  `setYears()`, which rebuilds the counter's step list and rewrites the card
+  line, then resets the stage. `Play show` resets and runs the sequence with no
+  hold, because judging fireworks at 50 years through a 14.4-second hold every
+  time makes the comparison useless. It resets first on purpose: `onGo()`
+  returns early while anything is still scheduled, so without that it would do
+  nothing mid-show and read as a broken button.
+  **Neither exists on Liferay.** `YEARS` there comes from `data-years` and
+  cannot move.
+- **`step(n, dt)` drives the whole show synchronously**, no real-time waiting.
+  Argument order is `(n, dt)` here but `(dt, n)` in the engine-1 lab.
 
 ---
 
-## Engine 2 — `fireworks-engine-2.js`
+## Tuning
 
-A **second, standalone engine**, exposing one global `Fireworks2`. It shares no
-code with `fireworks-engine.js`; both can load on the same page, though nothing
-loads both. **This is what the overlay runs.** Its two consumers are
-`lsa-experience.js` and `lab/fireworks-lab-2.html`.
+`lab/fireworks-lab-2.html` is the tuning lab for engine 2. Debug hook is
+`window.lab2`.
 
-### What the swap cost
+Config moves through the clipboard in both directions, and neither is a
+whole-object paste:
 
-Four things left the overlay when it moved off engine 1, because engine 2 does
-not have them. None were being tuned in the show, and two were switched off:
+- **lab → overlay**: `Copy for overlay` emits only engine-owned keys, with
+  `background` forced to null. That stops two accidents at once — carrying the
+  lab's opaque sky into the overlay, and wiping the show-only keys
+  (`goColors`, `fireworkSize`, `goHeight`, `goSequence`, `fireworkCfg`).
+- **overlay → file**: `Copy config` in the dev panel dumps the whole `cfg`.
+  Paste it over the literal. It is the only way tuning survives a reload.
 
-| Gone | Was production using it? |
+**Gotcha:** a `fireworkCfg` already in the literal wins over fresh base values at
+load. Pasting new lab values leaves the per-firework rows stale unless you delete
+`fireworkCfg` from the literal first.
+
+**Neither route carries `chargeTune` or `sparkleTune`.** Both belong to the
+show's chrome rather than to the engine, and `Copy config` dumps `cfg` for the
+engine's benefit. Values dialled in on those two sections of the dev panel have
+to be written into the file by hand or they are gone on reload.
+
+**`cfg.scale` does not reach the show.** `scaleOf(spec)` is
+`(spec && spec.scale) || cfg.scale` — it *replaces*, never multiplies — and every
+sequence firework passes its own from `fireworkSize`. `cfg.scale` only affects
+plain canvas clicks.
+
+---
+
+## The charge, and where its values live
+
+All of it is in `lsa-experience.js` now. **`chargeTune` is the one object that
+holds every tuned value**, and every one of them was dialled in by eye on
+2026-09-04 rather than guessed. Do not round them off.
+
+| Key | What it does |
 |---|---|
-| Smoke | Yes — `smoke.enabled: true` |
-| The centre glow (`core`) | Yes — `core.enabled: true`. **Not** the flash; the flash came across |
-| Burst shapes | Only `normal`, which is engine 2's only mode |
-| ~~Sub-blasts~~ | No — switched off. **Since ported back into engine 2** as `cfg.sub`; see "Secondary bursts" below |
+| `stepMs` 800 | how long one number is on screen. **Sets the whole charge length.** |
+| `scale0` 0.30 | the size the number starts at, against the stylesheet's 88px. Taste; has a slider |
+| `scale1` 1.04 | the size it finishes at. **DERIVED — overwritten by `aimCounterAtMedal()` so it matches the medal's number. Editing it does nothing** |
+| `spark0/1` 0.65 → 1.65 | the star's size, against its 140px box |
+| `glow` 1, `glowBlur` 0.6 | the bloom behind the star, and its radius |
+| `hot` 0.5 | extra brightness on the star's fill at full |
+| `blur` 0.1em, `floor` 0.45 | the number swap's depth. **A cap, not a taste — see below** |
+| `maxMs` 250, `frac` 0.85 | the swap's length: `min(maxMs, stepMs × frac)` |
+| `peak` 0.65, `power` 1 | where in the swap the text changes, and the curve |
+| `pop` **false** | the charged flash. **Off** — it renders as a black disc, see Known issues |
+| `galaxyFade` 2.3 | seconds for the galaxy to leave, against a ~2.4s climb |
 
-**Reversible:** engine 1 and its lab are untouched on disk. Swap the script tag
-in `lsa-demo.html` / `lsa-mount.html` back, and restore the previous `cfg`
-literal from git.
+`blur` has a control under **The number swap**, `scale0` under **The counter
+grows**, and the last two under **The release**. `scale1` does not need one and
+should not get one. The other eleven still do not — see below.
 
-It is a minimal port of **Hanabi** (`github.com/avanderw/hanabi`, itself a
-conversion of a Flash/AS3 effect). Engine 1 grew burst shapes, sub-blasts,
-stamps, smoke, layer isolation and a config serialiser; this one keeps only what
-makes a firework look like a firework.
+**`blur` has a ceiling, and 0.34em was over it.** It was 0.34 until 2026-09-05,
+which is ~30px of blur on an 88px digit whose bold strokes are only ~11px wide.
+Past the stroke width a Gaussian blur does not soften a letter, it dissolves
+it: the strokes bleed into each other and average out, and the number becomes a
+round grey cloud the size of its own box. That was the "radial blur spot" — it
+was the blur, not the galaxy. Confirmed by hiding `.lsa-galaxy` and blurring
+anyway; the blob was still there, the dodge only made it glow. **Keep it under
+about 0.12em.** At 0.18 the digit is already a smear; at 0.1 it reads as out of
+focus, which is what the effect wants.
 
-| Kept | Dropped |
-|---|---|
-| Three buffers: particles → trail → glow at 1/4 res, smoothing off, additive upscale | Smoke — a fourth buffer plus a radial gradient per puff, the biggest per-frame cost |
-| The FPS_REF conversion, unchanged and non-negotiable | Burst shapes and sub-blasts |
-| `sqrt(random) * explosionSize` area-uniform disc, 200 sparkles | The DBS stamp |
-| Hue palettes and per-sparkle jitter | Mass variance and flutter |
-| The dithered trail erase and the idle fade-out | Layer isolation, the centre glow (`core`) |
-| The rocket, bursting exactly at apex | `exportConfig` / `parseConfig` — engine 2 has no serialiser |
-| **The flash** (`cfg.blast`) — see below | |
-| **Secondary bursts** (`cfg.sub`) — see below | |
+Alongside it: `SOFT_BAND` 0.18 is the gap between the star gradient's two
+stops, which **is** the soft edge of the growing light, and `DRAIN_RATIO` 2.
 
-Same contract as engine 1: the caller owns the rAF loop, and
-`update(dt)` / `draw(dt)` / `burst` / `launch` / `clear` / `resize` / `stats` /
-`destroy` all behave as they do there, including the optional
-`spec = {hues, white, scale}`.
+**Three rules the charge is built on, all of which have already been got wrong
+once:**
 
-### The flash
+- **The art grows, the target never does.** The star's `<svg>` is scaled;
+  `.lsa-charge` is a fixed 140px circle. It is what a held cursor has to stay
+  inside, for up to 14 seconds at 50 years, and a target that moves mid-gesture
+  is a bug wearing a feature's clothes. This is why `CHARGE_SWELL` was removed.
+- **One writer per property.** `swapTick()` owns `filter` on the number;
+  `drawCharge()` owns `transform`. No CSS transition on either — the loop
+  already writes them every frame.
+- **`swapTick()` is called from `frame()`, not from `chargeTick()`.** That one
+  returns early the moment the button is charged, and the last number's swap is
+  still playing then. Running it from there freezes the milestone half-blurred
+  at the moment it matters most.
 
-Carried over from engine 1's `sphere without trails` pattern, which is where it
-was tuned. A hue-tinted radial bloom at the burst point that leads the sparkles
-by `lead` (60 ms), rises, holds, then decays **while expanding** — a gradient
-fading at a fixed radius appears to collapse inward, because the faint rim drops
-below the visible threshold before the bright middle does.
+⚠ **The top end has still not been watched.** 800ms was tuned at 5 years, where
+it is a 4-second hold. At 50 it is 14.4 seconds of holding a cursor motionless
+and 28.8s to drain, which makes slipping off near the top close to
+unrecoverable. This is the single value most likely to need moving.
 
-Two things about it are worth knowing before touching it:
+### Still to do on the charge port
 
-1. **It is drawn at composite level only, never into `particleBuf`.** That
-   buffer is stamped wholesale into the trail, and a soft gradient this large
-   smeared into the trail leaves a blob sitting over the burst long after the
-   flash is gone. Measured: an 8×-stacked 300 px flash leaves 1558 lit pixels
-   behind against 1490 for no flash at all — i.e. nothing.
-2. **`peak` has a hard ceiling and `stack` is how you get past it.** Every
-   gradient stop's alpha clamps at 1, so raising `peak` saturates the stops one
-   after another and then does nothing: 2.75 and 5.0 light the *identical* 1654
-   blown-out pixels. `stack` re-fills the same gradient N times, and each fill
-   adds under the additive composite — 1 draw lights 0, 3 lights 2917, 8 lights
-   12406, still climbing. That is the big blown-out white core.
+- [ ] **11 of the 16 sliders are still not in the dev panel.** `scale0` went in
+  on 2026-09-07 under **The counter grows**, and like `blur` it lands mid-hold.
+  `scale1` was struck off the list rather than built: it is derived from the
+  medal now, so a control would be overwritten on the next milestone change and
+  would read as broken. `pop` and
+  `galaxyFade` went in on 2026-09-05, under a **The release** heading, on a new
+  `kind: 'charge'` that writes to `chargeTune` rather than to `cfg` — the charge
+  belongs to the show's chrome, and `Copy config` dumps `cfg` for the engine's
+  benefit. `blur` followed the same day, under **The number swap**, and unlike
+  the release pair it lands mid-hold: `swapTick()` reads it every frame, so the
+  next number to change uses whatever the slider says. The other eleven can
+  still only be changed by editing the file, so `lab/charge-test.html` remains
+  the only place to tune those live — and it is now behind production on the
+  counter's type and size, since the Aleo swap and the medal match never went
+  into it.
+- [ ] **Teardown and `resetScene()` have not been re-audited** against the new
+  nodes. `resetScene()` does clear the swap state, the stale filter and the
+  galaxy; the star's SVG and the galaxy `<img>` are both children of `.lsa-root`
+  and go with it, but nobody has walked the whole teardown since.
+- [ ] **`--lsa-near` is written every frame and nothing reads it.** The
+  proximity glow was a `box-shadow` on the pill; removed on 2026-09-04, because
+  on a transparent circle it was a round gold blob behind a star-shaped object.
+  The approach signal is still worth having and the star's halo is where it
+  should live if it comes back.
+- [ ] **The dev panel and the close button sit UNDER the galaxy** at z 4. Both
+  are mid-tones, which is what dodges hardest, so both wash out during the
+  charge. The panel never ships to Liferay, but it is the workbench for the
+  slider work above. Lifting both to z 7 was proposed and not yet answered.
 
-   Unlike engine 1, `stack` is **not** scoped to a pattern here — engine 2 has no
-   patterns. It is always available and defaults to `1`, which is one draw and
-   the plain flash.
+### `lab/charge-test.html` — now a reference, not a frontier
 
-**Testing gotcha:** with a `lead` set, `burst()` spawns **no particles on the
-frame it is called**. A hand-stepped check that steps one or two frames and reads
-the count sees zero and looks like a broken burst. Step past the lead, or set
-`blast.lead = 0` for the test.
+**Production is no longer behind it.** The file keeps its 14-slider panel, its
+milestone picker and its own copy of the spark cursor, which makes it the fast
+way to judge a value before editing `chargeTune`. **Do not delete it**, and do
+not tune the cursor there — the overlay owns that.
 
-### Secondary bursts
+⚠ **It is now behind production on the counter's type and size**, as of
+2026-09-07: it still runs the system sans at the old 0.55 → 1.2 ramp, and it has
+no medallion to aim at, so anything judged there about the number's size or
+position will not match what ships. The blur, the pace and the star are still
+worth judging in it.
 
-Ported back from engine 1, where the mechanism was built and tuned. **Off by
-default.**
-
-The whole trick is that a shell is an **ordinary sparkle whose life IS the
-fuse**. It breaks when it dies, so the countdown needs no extra field and the
-shard visibly dims on its way to its own break. Three properties follow from it
-and are worth not re-deriving:
-
-- **The fuse carries ±15%.** Without it every shell breaks on the same frame and
-  reads as one mechanical pop rather than a scatter. Measured at `delay: 0.7`,
-  breaks land between 0.60 s and 0.78 s.
-- **No third generation.** `spawn()` clears `p.shell`, so children can never be
-  shells themselves. Verified: zero still flagged after a full round.
-- **Children inherit the parent's hue**, so a red firework does not scatter into
-  gold. Measured across a break: hues 352–362 around a parent at 357.
-
-`p.shell` is cleared in `spawn()` because particles are **pooled** — without it
-a shell's flag leaks into whatever sparkle reuses the object. Any per-particle
-field added later needs the same treatment.
-
-> **One deliberate difference from engine 1.** Children take their *parent's*
-> scale, carried on `p.subScale`, where engine 1 used the global `cfg.scale`. In
-> this show a firework's size comes from its `spec`, not from `cfg.scale`, so
-> engine 1's version would give a 4.4× firework children sized as though it were
-> 1× — visible as almost nothing.
-
-### The overlay's dev panel, after the swap
-
-Still five tabs, one per firework, still driven by the swap-in/swap-out
-mechanism around each break's timing window. What changed is which rows a tab
-can legally hold, and that is decided by **when the engine reads the value**:
-
-- **Per-firework** (read at the break, in `burst()` / `spawnSparkles()`):
-  colour set, size, `count`, `explosionSize`, `size`, `sizeSpread`,
-  `lifeDecay`, `lifeSpread`, the three jitters, `blast.enabled`, `blast.lead`,
-  and `sub.enabled` / `sub.count` / `sub.delay`.
-- **Whole show** (read every frame while drawing, so they cannot be aimed at one
-  firework): `palette`, `scale`, the other seven `blast.*` values, `trailFade`,
-  `trailAlpha`, `glowDownscale`, `glowAlpha`, `gravity`, `drag`, `poolMax`,
-  `deltaCap`, all three `rocket.*` — read at **launch**, a different instant
-  from the break the windows are built around — and `sub.particles` /
-  `sub.scale` / `sub.glow`, read at the **second** break, one fuse after this
-  firework's window has closed.
-
-> **Making those last three per-firework needs an engine-side change, not a
-> panel one.** Engine 1 opened a *second* settings window per firework, around
-> `at + lead + delay` and widened by the fuse's own ±15%. That window was
-> dropped when the overlay moved to engine 2, which had no secondary bursts at
-> the time. Restoring it is a change to `buildBreaks()`.
-
-Between the two tables every value engine 2 reads has a control. Engine 1's
-second settings window per firework is gone with sub-blasts, so a firework now
-owns exactly one, and the `showFor` row-hiding is gone with the patterns.
-
-**Copy config is now local to `lsa-experience.js`.** Engine 1 had
-`exportConfig` / `copyText` as statics and both consumers called them; engine 2
-deliberately has neither, so the overlay carries a plain JSON serialiser. If the
-clipboard refuses — no user gesture, or an insecure context — the whole config
-is dumped to `console.warn` instead, so a tuning session is never lost.
-
-### Moving a tuning session between lab 2 and the overlay
-
-Both directions go through the clipboard, but they are **not** symmetrical, and
-neither is a whole-object paste — engine 2 has no parser, so nothing validates
-what you paste and the shapes differ at both ends.
-
-| Direction | How |
-| --- | --- |
-| **lab 2 → overlay** | `Copy for overlay` in lab 2, then paste over the matching keys in the `cfg` literal in `lsa-experience.js` |
-| **overlay → file** | `Copy config` in the dev panel, then paste over the whole `cfg` literal — this is the only way per-firework settings survive a reload |
-
-`Copy for overlay` emits **only the 22 keys the engine owns**, taken from
-`Fireworks2.defaults()` so the list cannot drift, and it forces
-`background: null` on the way out. Both of those are deliberate, and both are
-there to stop the same two accidents:
-
-- **`background`.** Lab 2 composites onto an opaque sky; the overlay must
-  composite onto the live page. Carrying the lab's value across would paint over
-  the intranet.
-- **The show-only keys.** `goColors`, `fireworkSize`, `goHeight`, `goSequence`
-  and `fireworkCfg` are the overlay's own and lab 2 knows nothing about them.
-  Replacing the whole object would delete the GO sequence and every
-  per-firework setting.
-
-> **One gotcha when both directions are in play.** `fireworkCfg` is rebuilt from
-> `cfg`'s own values at load, but a `fireworkCfg` already in the file — pasted
-> back from the overlay's `Copy config` — **wins over them**. So if the literal
-> carries a pasted `fireworkCfg` and you then paste fresh base values from lab 2,
-> the per-firework rows keep the old ones. Delete `fireworkCfg` from the literal
-> to let the new base values through.
-
-### Its lab — `lab/fireworks-lab-2.html`
-
-Sibling of the main lab, same CSS and same schema-driven panel, but its own file
-and not a copy. **32 controls, one per key engine 2 reads, and no others** —
-there is no copy/paste config box, because engine 2 has no serialiser and one was
-not invented for it. Debug hook is `window.lab2`
-(`{fw, cfg, canvas, burst, launch, step(n, dt)}`) — note the argument order is
-`step(n, dt)`, like the overlay's, not the main lab's `step(dt, n)`.
-
-One engine change the lab forced out: `glowDownscale` is used when the glow
-buffer is *allocated*, not read per frame, so a slider for it was inert.
-`resize()` now tracks the downscale it built at and rebuilds when it changes.
-**Anything added later that sizes a buffer needs the same treatment.**
+Its `<img>` was repointed to `../assets/gal4.jpg` when the photo moved.
+`lab/charge-test.step4.html` is a checkpoint from before the galaxy went in.
 
 ---
 
-## Hosting
+## Known issues, flagged not fixed
 
-`master` → https://github.com/akhilpokle/sra. **Public**, so `handoff.md`,
-`progress.md` and the brand hexes are publicly readable. There is **no `main`
-branch** — it is `master`. The `fireworks-lab` branch is not pushed.
-
-| | |
-|---|---|
-| Overlay demo | https://akhilpokle.github.io/sra/ |
-| Fireworks lab | https://akhilpokle.github.io/sra/lab/fireworks-lab.html |
-
-Pushes work non-interactively via Git Credential Manager. No `gh` CLI, no SSH
-keys.
-
----
-
-## Verifying locally
-
-Serve the project root over HTTP and open **`lsa-demo.html`**. Notes that cost
-time to rediscover:
-
-1. **`file://` will not work.** It renders as a static snapshot with no JS, and
-   reports `innerWidth === 0`, which trips the `MIN_WIDTH = 1024` guard so the
-   overlay never mounts. Must be HTTP.
-2. `data-lsa-dev` on `<html>` is what exposes `window.__lsaDev` —
-   `{cfg, burst, launch, stats, step}`. `lsa-demo.html` sets it; `lsa-mount.html`
-   does not.
-3. **`step(n, dt)` drives the whole show synchronously.** The GO sequence counts
-   down on `dt`, not `performance.now()`, so frames can be stepped by hand with
-   no real-time waiting. Note the argument order is `(n, dt)` here but `(dt, n)`
-   in the lab — easy to get backwards.
-4. **`getImageData` works in device pixels; `clientWidth/Height` in CSS pixels.**
-   At `devicePixelRatio: 2` this silently doubles every measured coordinate.
-   Check dpr first — it looked like a 160–400 px physics error before dividing.
-5. **Measuring colour:** averaging RGB reads gold for everything, because
-   additive blending and the glow halo wash it out. Convert to hue, bucket
-   saturation < 0.18 as "white" separately, take a **circular** mean, and sample
-   vertical bands around each burst's x fraction.
-
----
-
-## Liferay integration
-
-Settled and unchanged by the rebuild:
-
-- One `.css` and (since the engine was extracted) **two** `.js`. No inline
-  `<script>`, no inline `style` carrying logic — the page enforces a CSP.
-- The CSS must load before the JS mounts, so the overlay never renders unstyled.
-- `fireworks-engine.js` must load before `lsa-experience.js`, which calls into
-  it. Both are `defer`red, and deferred scripts run in document order, so the
-  order they are written in the fragment is the order they execute.
-- The mount markup goes in a Web Content fragment.
-
-`lsa-mount.html` carries all three asset tags with `REPLACE_WITH_ASSET_PATH`
-placeholders, to be swapped for the real hosted URLs once hosting is decided.
-It correctly does **not** set `data-lsa-dev`.
-
----
-
-## The once-only flag — BACKEND RESPONSIBILITY, NOT IMPLEMENTED HERE
-
-**Decision (explicit, from the client):** "show once" gating is deliberately
-**not** implemented in `lsa-experience.js`. There is no `localStorage` check. As
-shipped, the experience runs on **every page load** where the viewport is
-`>= 1024px`. This is intentional, not an oversight.
-
-**What the backend developer needs to build:** a per-user flag persisted
-server-side against the user's account — not a browser-local flag, which resets
-per device and does not survive a cleared cache. The mechanism is the
-developer's call (Liferay user attribute, database row, session service) and is
-entirely outside this front-end deliverable.
-
-**The integration point** is the top of the IIFE, immediately after the
-`MIN_WIDTH` check — an early `return` driven by whatever the backend exposes
-(e.g. a data attribute on `#lsa-mount` rendered server-side only for users who
-have not seen it). This front end reads no such flag today; it is a one-line
-addition once the backend contract exists.
-
-**For local testing: nothing to reset. It always shows.**
+- **Nothing here has been judged by eye.** Not by the developer, not by anyone.
+  Every claim about engine 2 is a number. Still-unanswered: whether the show
+  reads right against solid black (it was tuned against the blue veil), whether
+  the counter at 50 years reads as impressive or as broken, whether the new
+  spark cursor lands.
+- **Everything tuned before 2026-09-01 is suspect.** Per-firework settings were
+  silently not applying, by an amount that flipped with viewport height — at
+  1024×768 all five fireworks ran the whole-show config. Fixed, but the values
+  chosen under the bug were never re-judged.
+- **The medallion does not scale with the screen.** Fixed 320×321 px, so it is a
+  comfortable centrepiece at 1024 and a small object at 2560. The fireworks were
+  made screen-relative and this deliberately was not.
+  **The groundwork is now in**: `--lsa-medal-w` on `.lsa-medal-scene` is the one
+  source for the size, and the medal's number and the count-up's aim are both
+  derived from it, so making the medallion screen-relative is a change to that
+  one value rather than to three. Its `height` is still a hardcoded 321px and
+  would have to follow.
+- ✅ **The medallion's shimmer was removed.** Resolved 2026-09-07, by deletion
+  rather than by fixing it. It was a warm gradient masked by `shimmer.png` and
+  swept across the face by the cursor, and it carried a standing open question:
+  the blend mode was `overlay`, chosen back when the card had a white surface,
+  and the card has been transparent over black since 08-30, which is what
+  `screen` wants. Rather than answer that, the client's call was that the effect
+  was not earning its place — and it cost **542 KB** for a mask whose three
+  colour channels the browser threw away, the heaviest asset in the project.
+  Gone from the JS (the div, the two `--lsa-sx`/`--lsa-sy` writes on mousemove,
+  the opacity reset on leave), gone from the CSS, gone from `lsa-mount.html`'s
+  hosting list. **The medal's 3D tilt is untouched** — verified it still writes
+  `rotateX(10.11deg) rotateY(12.45deg)` over the medal and resets to zero off it.
+  `assets/shimmer.png` is still on disk and nothing reads it.
+- **The sparkle's density has not been settled.** At the default 4px spacing it
+  reads as "the 5 is *built out of* lights" rather than "the 5 has lights on
+  it". That is what was asked for — dots that come together to make up the
+  number — but it is the value most likely to move, and it is one slider. It has
+  only been judged in still frames and at 2.4× magnification; it has not been
+  watched running at its real size on a real screen.
+- **The sparkle beat runs past the end of the reveal.** It starts 1.4s after the
+  centre break and lasts 6.8s, while the veil finishes about 1.9s after that
+  break. So it is still going for roughly five seconds after the medallion has
+  fully landed, over the top of the background fireworks. Nobody has judged
+  whether those two fight.
+- **The glow is nearly inert at `devicePixelRatio: 1`** — total composite energy
+  moves 7824 → 7832 turning it on. Correct engine behaviour, but the glow
+  sliders look broken on a non-retina display.
+- **Resize below 1024px does not tear down.** Decided, never implemented.
+- **`prefers-reduced-motion` is out of scope**, explicitly.
+- ✅ **The payload came down from 3.9 MB to 1.37 MB** on 2026-09-07 — a 65% cut,
+  from recompressing the face and the galaxy and from deleting the shimmer's
+  mask. The images are 1.14 MB of that and the code 237 KB. See "What ships",
+  and the indexed-PNG caveat there.
+- **`medal-face-blank.svg` is on disk, unused, and 64 KB against the PNG's
+  605 KB.** It is the same artwork as vector, so switching `medalImg.src` to it
+  would take another **40%** off the whole payload and make the medallion crisp
+  at any size — which matters more now that the medallion being fixed at 320px is
+  a flagged item. Not done, and not free: SVG in an `<img>` must be served as
+  `image/svg+xml`, the face's filters would be rasterised by the browser rather
+  than baked, and it has not been compared against the PNG by eye. **Worth
+  doing**, and it is now the only real win left on the payload.
+- **A CSS comment error hid `@keyframes lsa-charge-pop` entirely.** Found and
+  fixed 2026-09-04: a comment block closed, ran on for three more lines and
+  closed again, so the parser read the prose as a selector and swallowed the
+  whole keyframe as its body. `.lsa-charge--pop` had been applying an animation
+  that did not exist — **the snap had never once played.** Caught by listing
+  `document.styleSheets[…].cssRules` in a browser, not by reading. Worth
+  repeating on this stylesheet after any large comment edit; nothing warns you.
+- ✅ **The snap drew a black disc, and it is now off.** Resolved 2026-09-05.
+  Under the galaxy the `box-shadow` flash rendered as a hard-edged black circle
+  the size of the button, with a bright halo around it. **An outer box-shadow is
+  never painted inside the element's own border box** — ordinary CSS, invisible
+  on an opaque control because the control fills the gap. This button is
+  transparent, so the flash was a gold RING with a hole in it; `color-dodge`
+  multiplied the ring into bright nebula and left the hole pure black, and the
+  eye read the hole as an object sitting behind the star.
+  `chargeTune.pop` is now **false**. The keyframe and its switch stay.
+  **Do not turn it back on in this form.** A replacement has to come from the
+  star's own silhouette — the halo path — because a round shadow on a four-point
+  star is the same mismatch that deleted the proximity glow on 09-04, and it has
+  now caused two separate bugs.
+  ⚠ **Nothing in the DOM was painting anything dark.** Every computed style on
+  that element is transparent, there are no pseudo-elements, and both canvases
+  read fully transparent at every sampled pixel. Six mechanisms were ruled out
+  by inspection first — stacking contexts, `z-index`, both transforms,
+  `will-change`, the `<button>` tag, `appearance`, DOM order — and every one of
+  them was wrong. It was found by removing the shadow and taking two
+  screenshots. **On this stylesheet, look before you reason.** That is now the
+  second bug here that only a rendered frame could have caught; the missing
+  `@keyframes` below is the first.
+- One throwaway lab file to delete: `lab/milestone-test.html`.
+  **`lab/charge-test.html` is NOT a throwaway** — see above.
 
 ---
 
@@ -628,888 +904,113 @@ addition once the backend contract exists.
 
 | # | Question | State |
 |---|---|---|
-| A | Medallion component + image assets, and how images are served in Liferay. | **Open**, and now further blocked — the card that would hold the medallion no longer exists. Client deferred: "we will handle it later." |
-| K | POSB brand blue — exact hex? | **Open.** Placeholder `#1C6FD1` was used by the old palette; the current `goColors` are red/gold only, so nothing in the shipped code depends on it right now. |
-| L | Does the card come back, and what goes on it? | **Open.** Removed in the rebuild. Nothing currently shows the employee name or the milestone. |
-| M | How should the show scale to 10/15/20/25 years? | **Reopened.** The old one-rocket-per-year model is gone; the sequence is hard-wired to five fireworks. |
-| N | Should `index.html` be a landing page linking both demo and lab, instead of a redirect? | **Offered, unanswered.** |
-| O | Four whole-show values differ between the two lab 2 tuning sessions — `gravity` (0.2 vs 0.11), `drag` (0.9 vs 0.875), `trailFade` (0.12 vs 0.3), `trailAlpha` (0.85 vs 1). They cannot be per-firework, so one session has to win. | **Open.** Currently `gravity`/`drag` are on the 1/2/4/5 session's values and `trailFade`/`trailAlpha` are on neither — still the show's originals. Note `gravity` also drives rocket ascent: 0.2 → 0.11 stretches the climb from ~2.28 s to ~3.07 s and shifts every burst later by the same factor. |
+| A | How does Liferay actually serve the three images? | **Half open.** Assets are in hand; the serving mechanism is not decided. It was four until the shimmer went on 2026-09-07. |
+| K | POSB brand blue — exact hex? | **Open.** Placeholder `#1C6FD1`. Nothing shipped depends on it; `goColors` are red/gold. |
+| M | How should the show scale from 5 to 50 years? | **Counter answered and PORTED** 2026-09-04. **Fireworks: shape agreed 2026-09-07, ladder not built.** See below. |
+| N | Should `index.html` be a landing page linking demo and lab, instead of a redirect? | **Offered, unanswered.** |
+| O | Whole-show values conflict between two old tuning sessions — `trailFade`, `trailAlpha`. | **Open.** `gravity` 0.2 / `drag` 0.9 stand. Note `gravity` also drives the rocket climb. |
 
-Resolved and kept for record: **B** one close control (confirmed sufficient) ·
-**C** once-only moved to the backend · **D** n/a, the fuse is gone · **E** true
-modal, backdrop blocks clicks and scroll is locked · **F** `prefers-reduced-motion`
-explicitly out of scope · **G** resize below 1024px → tear down (decided, still
-not implemented) · **H** prefix/location/demo page · **I** mount snippet carries
-the asset tags · **J** root mounts on `document.body`, avoiding the
-transform-ancestor clipping trap.
+### M is the big one, and half of it is now built
+
+**Solved by the counter rather than by the fireworks, and in production since
+2026-09-04.** Every milestone runs at one pace and differs only in how many
+numbers it walks — 5 steps at 5 years, 18 at 50. Bigger milestones feel bigger
+because you watch the number climb longer, which was the original plan; fixing
+the charge at 3 seconds had removed the mechanism and nothing replaced it.
+
+Two designs were built and rejected on the way:
+
+- **A flat 3s for every milestone.** 50 years ran at 16.7 numbers a second.
+- **A 3s-to-5s curve.** Still too quick at the top: *"wayy too quick."*
+
+The reason both failed is the same. A number needs roughly **200ms to be read**,
+and 50 numbers at that pace is a 10-second hold. Showing fewer numbers was the
+only lever left, which is what the step list does.
+
+⚠ **The fireworks are still identical at every milestone.** Everything above
+changes the counter and the charge, nothing else.
+
+One finding that makes this cheaper than expected:
+
+- `YEARS` reaches the copy and the counter, and nothing else.
+
+✅ **The medallion art carries the milestone again, and it is one asset.**
+Briefly broken on 2026-09-07, when `medal-face.png` arrived with **5** and
+**Years** baked into it and a 20-year award showed a medal reading 5. Fixed the
+same day by the second of the three options that were on the table — a
+numberless face with the digits laid over it as DOM text. `setYears()` writes
+the digit, so the milestone reaches the artwork. See "The number on the medal".
+
+The other two are recorded because they were real choices, not strawmen. **Ten
+PNGs picked by `YEARS`** was rejected for multiplying an asset that is already
+the heaviest thing loaded, and for needing ten sets of measurements that all
+have to stay true when the artwork is revised. **Back to SVG with the number as
+a text node** is still the tidiest end state and is now cheaper than it was —
+`medal-face-blank.svg` exists — but it needs the SVG inlined into the DOM, since
+an SVG inside an `<img>` is a closed document JS cannot reach into.
+
+### The fireworks half — agreed 2026-09-07, not built
+
+**The rocket count stays at five at every milestone. The milestone rides on
+sub-bursts instead, on the centre firework only.**
+
+A ladder that changed the *rocket count* was proposed first and dropped, for
+two reasons that are worth keeping:
+
+- **It went backwards at half the milestones.** 5 rockets for years ending in
+  5 and 10 for years ending in 0 makes a 15-year award smaller than a 10-year
+  one, and 25 smaller than 20.
+- **Ten rockets does not fit.** 10 × 200 is exactly `poolMax`, with nothing
+  spare, and ~3800 with sub-bursts on. Past the cap `spawn()` returns null
+  silently, so the biggest milestones would render the *sparsest*.
+
+Sub-bursts were switched on for firework 3 on 2026-09-07 and looked at, which
+settled the thing the design was waiting on:
+
+- **The effect is loud, not subtle.** Six clear secondary pops spread wide off
+  the parent. At the same instant, 345 particles and 7 blasts alive against 164
+  and 1 with it off. An earlier guess in this file that 6 shells might be too
+  quiet to carry a milestone was **wrong**.
+- **It buys the centre firework a second beat**, 0.7s after the main break, and
+  a longer tail. Whether that fights the medallion as the veil clears has not
+  been judged.
+- **Cost is comfortable.** The whole show peaked at **1059 of 2000**. Nothing
+  was dropped.
+
+The shape still to build is `sub.count` on firework 3 as a function of `YEARS`
+— roughly `Math.floor(years / 10)`, which gives 5 → 0 shells (today's show
+unchanged), 10 and 15 → 1, up to 50 → 5. **The top end is not settled**: 6 is
+what was looked at and it is already strong, so whether 5 is the right ceiling
+and whether 1 against 5 reads across ten milestones are both open.
+
+Constraints any design has to respect:
+
+- **`poolMax` 2000, `count` 200.** Five fireworks = 1000 today, 1180 with the
+  centre one's shells. Past the cap, `spawn()` returns null and sparkles
+  silently thin out — no error.
+- **Sub-bursts cost more than they look** — 200 + shells × 30 per firework, so
+  ~380 at 6 shells. All five carrying them would be ~1900, already 95% of the
+  pool. On one firework there is room.
+- **`sub.count`, `sub.enabled` and `sub.delay` are per-firework; `sub.particles`,
+  `sub.scale` and `sub.glow` are NOT.** The first three are read in
+  `spawnSparkles()`, inside `withSettings()`. The others are read in
+  `spawnSub()`, which runs from the `subQueue` drain in `update()` a fuse
+  later, outside the swap — so a per-firework value there is silently ignored.
+- **Sub-bursts cannot move the veil.** `onBurst` fires only from the rocket
+  path, never from `spawnSub`, so a second break cannot eat a reveal step.
+- **Fixed stage width.** More fireworks and bigger fireworks fight each other on
+  one stage. Spending *time* — more waves, further apart — is the cheaper lever.
 
 ---
 
-## Known issues, flagged not fixed
+## Hosting
 
-- **Never confirmed visually.** Every check to date has been numeric via
-  `__lsaDev`; no one has reported back on how the show actually looks. Open
-  questions a numeric check cannot answer: whether 1×/1.5×/2× read as three
-  distinct sizes, whether the ~2.25 s ascent feels right, and whether the trail
-  dissolves rather than snaps.
-- **Ascent speed is coupled to sparkle gravity.** The rocket shares
-  `cfg.gravity`, so speeding up the climb without changing how sparkles fall
-  needs a separate gravity value for the rocket.
-- **The glow contributes very little at `devicePixelRatio: 1`.** Measured on the
-  demo: turning it off and on moves total composite energy 7824 → 7832. That is
-  the Hanabi mechanism behaving correctly — a 1.6 px stroke sampled every 4th
-  pixel mostly vanishes, and the sparkle is what survives — but it means the
-  "Glow squeeze" slider looks nearly inert on a non-retina display. Flagged, not
-  changed.
-- **The CSS stacking comment is incomplete** — it reads
-  `0 backdrop < 2 canvas < 4 close button` but `.lsa-go` is also at `z-index: 4`.
+`master` → https://github.com/akhilpokle/sra. **Public**, so this file and the
+brand hexes are publicly readable. There is no `main` branch.
 
----
+| | |
+|---|---|
+| Overlay demo | https://akhilpokle.github.io/sra/ |
+| Fireworks lab | https://akhilpokle.github.io/sra/lab/fireworks-lab.html |
 
-## Change log — ARCHIVE
-
-> ⚠️ **EVERYTHING BELOW THIS LINE IS SUPERSEDED.**
->
-> These entries describe the design as it was built between Step 1 and
-> "Step 8 (revised 6)". `lsa-experience.js` was then **emptied to 57 lines and
-> rebuilt from scratch** on the fireworks lab's engine, and almost none of the
-> code described below survived — no fuse, no cursor sparks, no card, no
-> generations, no LUT palettes, no tuning panel, no `YEARS`.
->
-> It is kept because it is the decision record: it explains *why* choices were
-> made and which approaches were tried and rejected, which is genuinely useful
-> and would be lost otherwise. It is **not** documentation of the current code.
->
-> **The current code is documented above this line, and only above it.**
->
-> Sections such as "Liferay integration steps", "How to change the employee name
-> and the milestone", "Medallion assets", "Planned follow-ups", "Assumptions"
-> and the old "Open questions" table appear again further down in their
-> pre-rebuild form. Those are archived too. Their live replacements are above.
-
-### Step 1 — Scaffold + handoff (complete)
-
-- Created `lsa-experience.css` with the namespacing contract documented in a
-  header comment. No rules yet.
-- Created `lsa-experience.js` with the safety contract documented, containing
-  a single empty IIFE in strict mode. No globals, no listeners.
-- Created `lsa-mount.html` with a single `<div id="lsa-mount"></div>` and a
-  note that the asset-loading tags are pending a decision (Q-I).
-- Created this handoff document with all required sections seeded.
-- **Defaults applied without confirmation** (all trivially reversible):
-  prefix `lsa-`, files in `C:\Users\akhil\Desktop\SRA\`, no demo page.
-
-### Step 1b — Stage setup (complete)
-
-Inserted step, not in the original 13-step plan. Requested directly.
-
-- Added `bg.png` (supplied, 2732x1536 screenshot of the intranet homepage) as
-  the stand-in backdrop for local demos. Flagged throughout as a placeholder
-  for the real intranet.
-- Created `lsa-demo.html`, a local-only test harness that renders `bg.png`
-  full-bleed and loads `lsa-experience.css` then `lsa-experience.js` in the
-  same order production will use. Header comment states clearly that it must
-  never be deployed to Liferay.
-- Demo-only styling lives in a `<style>` block inside `lsa-demo.html`, kept
-  out of `lsa-experience.css` so it can never reach production. The spec's
-  no-inline-styles rule exists to satisfy the Liferay CSP; this file ships
-  nowhere and has no CSP.
-- Q-H is now answered: a demo page was wanted after all.
-- No change to `lsa-experience.css` or `lsa-experience.js` — both remain
-  empty scaffolds. Nothing visible happens yet beyond the backdrop.
-
-**Verification note:** the demo page could not be rendered inside the agent's
-preview pane, which rewrites local files to a `data:` URL and therefore cannot
-resolve the relative `bg.png` / CSS / JS paths. This is a tooling limitation,
-not a defect. Open `lsa-demo.html` directly in Chrome or Edge to verify.
-
-### Step 2 (partial) — Backdrop, close button, modal behaviour
-
-- Added `.lsa-root` (fixed, full viewport, `z-index: 999999`) and `.lsa-backdrop`
-  (the specified gradient + `backdrop-filter: blur(8px)`), mounted by appending
-  `.lsa-root` to `document.body` (resolves Q-J — avoids the transform-ancestor
-  clipping trap noted at Step 1).
-- Added the close control: a single circular 40x40 button, 40px from the top
-  and 40px from the right, centred x icon. Confirmed sufficient — no second
-  close control needed (resolves Q-B).
-- `EMPLOYEE_NAME` constant and the `>= 1024px` gate added.
-- Local static server used for verification instead of the agent's preview
-  pane (which can't resolve relative paths) — user requested this directly.
-
-### Step 2 (continued) — Modal + scroll lock, once-only moved to backend
-
-- **Backdrop now blocks clicks** (`pointer-events: auto`). This is a real
-  modal: the intranet cannot be interacted with while the overlay is open.
-  Resolves Q-E — supersedes the spec's original "click-through where
-  appropriate" default.
-- **Scroll is locked** while the overlay is open: `document.body.style.overflow`
-  is saved before mount and restored to its exact prior value on teardown.
-  Resolves the rest of Q-E.
-- **Once-only flag moved out of the front end entirely.** Removed the
-  `localStorage` check/write that Step 2 had added. The experience now plays
-  on every page load. See "Once-only flag" section below — this is now a
-  backend responsibility, out of scope for this build.
-
-### Step 3 — Canvas, rAF loop, fade-trail, resize
-
-- Added `.lsa-canvas`: absolutely positioned, full size of `.lsa-root`,
-  `pointer-events: none` (per spec — proximity/spark detection uses the
-  global cursor position, not canvas pointer events).
-- Canvas sized to `window.innerWidth` / `innerHeight` (no `devicePixelRatio`
-  scaling — kept simple; flagged as an open assumption below).
-- One `requestAnimationFrame` loop. Each frame paints `rgba(0,0,0,0.2)` over
-  the canvas instead of clearing it — the spec's proven fade-trail pattern,
-  built exactly as specified, no variation.
-- Resize listener updates canvas size on window resize.
-- Teardown now also cancels the rAF loop and removes the resize listener.
-- **No particles yet.** Nothing is drawn except the fade fill itself.
-- **Reverted:** the fade fill made the canvas go near-solid black within
-  under a second with nothing yet to offset it, hiding the gradient
-  backdrop — not wanted for now. The `tick()` loop still runs (rAF,
-  resize, teardown all intact) but currently paints nothing, so the
-  gradient backdrop stays visible as-is. The fade fill will need to come
-  back once sparks/fireworks are built, since the spec's glowing-trail
-  effect depends on it — noted in the code comment at `tick()`.
-
-### Step 4 — Particle system core
-
-- Added `spawnParticle(x, y, vx, vy, life, size, color)`: pulls a reused
-  object from `particlePool` where possible instead of always allocating,
-  pushes it onto the active `particles` array.
-- Added `updateParticles()`: applies `GRAVITY` and `FRICTION` (both named
-  constants, top of file, easy to tune), advances position, decrements
-  life, derives `alpha` from remaining life, and recycles dead particles
-  back into `particlePool` instead of just dropping them.
-- **Not wired into the render loop yet.** No spawner calls `spawnParticle`
-  and `tick()` doesn't call `updateParticles()` or draw anything — per the
-  plan, this step is the model only; its first real consumer is the
-  cursor spark trail (next).
-
-### Step 5 — Cursor spark trail
-
-- Added one global `mousemove` listener (`onMouseMove`), tracking `cursorX`/
-  `cursorY`. This is the single shared cursor-position source — the fuse
-  proximity check in a later step reads the same two variables, so there is
-  only ever one `mousemove` listener for the whole experience.
-- Rate-limited by distance, not by event count: sparks only spawn once the
-  cursor has moved `SPARK_MIN_DISTANCE` (12px) since the last spawn, 2 per
-  qualifying move. Colours are gold `#D4AF37` / white `#FFFFFF`, matching the
-  confirmed palette.
-- `tick()` now calls `updateParticles()` and draws each live particle as a
-  filled circle at `p.alpha` opacity, then clears the canvas fresh next
-  frame (`clearRect`, not the fade fill — see Step 3's revert above).
-- Listener removed in teardown.
-
-**Known trade-off:** losing the fade fill means sparks fade individually
-(their own alpha shrinks over their ~30-frame life) but leave no glowing
-motion-blur tail behind the cursor — a straight `clearRect` can't produce
-that on its own. If the fade-trail look is wanted later, it needs a
-low-alpha fill kept short enough not to wash out the gradient over a full
-run, or a separate darker "stage" only during the fireworks segment.
-
-**Follow-up:** switched from move-triggered to continuous emission. Sparks
-now spawn every `SPARK_SPAWN_INTERVAL` (3) frames at the cursor's current
-position, whenever a position is known — including while the cursor is
-completely still. `onMouseMove` now only records `cursorX`/`cursorY`; the
-old distance-based throttle was removed since it no longer applies.
-
-### Step 6 — Prompt message + fuse + proximity ignition
-
-- Added `.lsa-prompt`: "Move your cursor to light the fuse ✨", centred near
-  the top, gold-glow white text, system font stack. Fades out (CSS
-  transition) once the fuse is lit — no re-appearance.
-- Fuse cord is drawn on the canvas (not DOM/CSS), procedurally: a curved
-  line from `fuseBase` (bottom-centre launch point) to `fuseTip` (the free
-  end the user lights), via `ctx.quadraticCurveTo`. Positions are recomputed
-  from `canvas.width`/`height` on load and on every resize, so the fuse
-  stays correctly placed at any viewport size (resolves the design note
-  from Q-2 in the prior round — "yes for now" on a procedural design).
-- Proximity ignition: `checkFuseIgnition()` runs every frame, comparing the
-  shared `cursorX`/`cursorY` (same variables the spark trail already uses —
-  still only one `mousemove` listener) against `fuseTip` within
-  `FUSE_IGNITE_RADIUS` (40px). No click involved.
-- **Waits indefinitely if never lit** — no timeout, per confirmed decision.
-  `fuseLit` is a one-way flag; once true, ignition can't retrigger.
-- Tip marker glows gold before ignition, turns white once lit (canvas-drawn,
-  `shadowBlur` glow) — a visible cue, though the actual burn-down animation
-  is the next step.
-
-### Step 7 — Fuse burn
-
-- Added `pointOnFuseCurve(t)`: reuses the same quadratic curve the fuse is
-  drawn with (`fuseBase`/`fuseControl`/`fuseTip`) to find any point along it,
-  `t=0` at the base, `t=1` at the tip.
-- Added `updateFuseBurn()`: once lit, computes elapsed time since ignition
-  against `FUSE_BURN_DURATION` (1500ms, one named constant), and draws a
-  glowing white spark travelling from the tip down to the base
-  (`pointOnFuseCurve(1 - progress)`).
-- Sets `fuseBurned = true` exactly once, when `progress >= 1`. Guarded so it
-  can't refire. Nothing consumes `fuseBurned` yet — that's the launch
-  scheduler, next step.
-
-### Step 8 — Rockets, bursts, and the launch scheduler
-
-- Added `rockets[]`: each rocket rises (`vy` + `ROCKET_GRAVITY`), spawns a
-  trailing spark every frame via the existing particle pool, and is drawn as
-  a small glowing head. On reaching `targetY` it explodes once (`spawnBurst`)
-  and is removed — no re-triggering.
-- `spawnBurst(x, y, count, speedMin, speedMax, colors, size, life)` radiates
-  particles outward at random angles/speeds, reusing `spawnParticle`/
-  `updateParticles` from Step 4 — no new particle-drawing code needed.
-- `spawnFlash` + `updateFlashes()` add the big centre burst's "bright flash /
-  shockwave": a quick fading white flash plus an expanding, fading ring.
-- **Timed launch scheduler**, exactly as specced: small LEFT rocket
-  (`LEFT_LAUNCH_DELAY` 0ms) → small RIGHT (`RIGHT_LAUNCH_DELAY` 700ms) →
-  oversized CENTER (`CENTER_LAUNCH_DELAY` 1500ms). Center burst gets more
-  particles (160 vs 40), a wider speed/radius range, the red accent added to
-  its colour set (`BURST_COLORS_CENTER`), and the flash/shockwave the small
-  bursts don't get.
-- Triggered from `updateFuseBurn()` — replaces the Step 7 placeholder
-  comment with a real call to `startFireworksSequence()`.
-- `setTimeout` IDs are tracked in `launchTimeouts` and cleared in teardown
-  (`launchTimeouts.forEach(clearTimeout)`), so closing mid-sequence can't
-  leave a rocket launching into a torn-down overlay.
-- **Not yet built:** the card reveal that's supposed to appear as the center
-  burst clears (Step 9). Right now the sequence just ends after the center
-  burst fades.
-
-### Step 9 — Congratulation card reveal
-
-- Added `.lsa-card`: centred, starts at `opacity: 0` / `scale(0.85)`,
-  transitions to visible on `.lsa-card--visible` (CSS transition — the "soft
-  scale + fade" the spec asks for).
-- Card contents, in order: `.lsa-card__medallion` (the placeholder white
-  rectangle decided earlier — swap point for the real component is commented
-  in the code and in "Medallion assets" below), line 1
-  ("Congratulations, " + `EMPLOYEE_NAME` + "!"), a small red `.lsa-card__accent`
-  bar, line 2 ("Celebrating 5 Years with us"). Gold/white text, red accent,
-  large and centred — matches the spec's visual style section.
-- `EMPLOYEE_NAME` is referenced in exactly one place (line 1's text), as
-  required — still a one-line change to retarget.
-- `revealCard()` is scheduled via the same `launchTimeouts` array as the
-  fireworks (`CENTER_LAUNCH_DELAY + CARD_REVEAL_DELAY`, 1800ms after the
-  center rocket launches) — an estimate of when its burst/flash has mostly
-  cleared, not a hard sync to the animation. Named and commented so it's
-  easy to retime if the center burst's own timing changes.
-- Cleared correctly on early close: it's just another `launchTimeouts` entry,
-  already covered by teardown's `clearTimeout` sweep.
-
-### Follow-up decisions (Q-A, Q-F, Q-G, Q-I confirmed)
-
-- **Q-A (medallion):** real component still pending, deferred by the client.
-  Decided placeholder: a plain white rectangle in the card's medallion slot,
-  to be built at Step 9 and swapped later.
-- **Q-F (reduced motion):** reconfirmed out of scope. No change.
-- **Q-G (resize below 1024px mid-show):** reconfirmed tear down. No change —
-  not yet implemented, applies once Step 3 builds resize handling.
-- **Q-I (mount snippet asset tags):** resolved yes. `lsa-mount.html` updated
-  to include `<link>`/`<script>` tags with `REPLACE_WITH_ASSET_PATH`
-  placeholders for the real hosted URLs.
-
-### Step 8 (revised) — Single-wave colour-cascade redesign
-
-The client shared real fireworks footage as a storyboard and flagged that
-the original left → right → center scheduler read as three separate pops,
-not a real display. Corrected reading of the footage: it's **one wave** — a
-single barrage of rockets launched together, whose different flight times
-make them burst in a rolling colour cascade — not three time-separated
-beats. Replaces the Step 8 scheduler entirely; `LEFT_LAUNCH_DELAY` /
-`RIGHT_LAUNCH_DELAY` / `CENTER_LAUNCH_DELAY` are gone.
-
-- `startFireworksSequence()` now launches all rockets in one pass, no
-  `setTimeout` stagger between launches. They're grouped into four colour
-  "cohorts" (`FIREWORK_COHORTS`) whose ascent speed is tuned so they reach
-  burst height at different times: **A gold/white** (bursts first) → **B
-  blue** (second) → **C red/gold climax**, biggest, with the flash/shockwave
-  (third) → **D gold** cooldown (last, settles the display). `spawnBurst`,
-  `spawnFlash`, `launchRocket`, `updateRockets`, `updateFlashes` are all
-  unchanged — reused as-is.
-- **Palette remapped to DBS brand colours**, per client decision — this
-  **supersedes** the earlier "spec defaults" palette decision (progress.md
-  decision log #9): red `#E11931` = DBS main, gold `#D4AF37` = DBS
-  Treasures, blue = POSB. Red/gold hex values were already confirmed
-  project colours, reused as-is. **Blue is a placeholder** — no confirmed
-  POSB brand hex exists in this project yet; using `#1C6FD1` until the
-  client supplies the real one. See Open questions, new row K.
-- **Speed is computed as a margin over the physically-required minimum**
-  (`Math.sqrt(2 * ROCKET_GRAVITY * distance)`), not a fixed pixel/frame
-  value. A fixed `vy` tuned for one viewport height can fall short on a
-  taller one — the rocket decelerates to 0 before reaching `targetY` and
-  never bursts. Margin-based speed always clears the target regardless of
-  viewport size, verified analytically against 700px, 800px, 1600px, and
-  2160px canvas heights. Cohort D's margin is kept close to 1 on purpose
-  (it just barely makes it) — that's what makes it read as the slow,
-  lingering "cooldown" rocket, rather than needing a separate mechanism.
-- **Card reveal delay is computed dynamically**, not a fixed constant —
-  `predictBurstFrames()` analytically predicts each rocket's burst time
-  (mirrors `updateRockets`' own integration exactly) and the reveal is
-  scheduled after the *latest* burst's frame + that cohort's `life`, plus a
-  small `CARD_REVEAL_BUFFER` (400ms). Necessary because burst timing now
-  legitimately scales with `canvas.height`; a fixed delay would reveal the
-  card mid-burst on a tall viewport.
-- Added `ctx.globalCompositeOperation = 'lighter'` (additive blending)
-  around the particle draw loop in `tick()`, reset via `ctx.save()`/
-  `ctx.restore()` — overlapping bursts glow brighter and blend colour,
-  matching the reference footage's dense bloom. One-line addition, doesn't
-  touch the backdrop div underneath (canvas-only compositing).
-- **Verification note:** the agent's browser preview pane in this
-  environment doesn't actually composite the tab (`document.hidden` stays
-  `true`), so `requestAnimationFrame` never fires there and nothing
-  renders — a sandbox limitation, not a defect. Verified instead by
-  running the exact ascent-physics formulas as a standalone simulation
-  against the real `lsa-experience.js` constants, confirming: every
-  cohort reaches its target at every tested viewport height (no
-  never-bursts case), burst order is consistently A → B → C → D, and the
-  dynamic card-reveal delay tracks the true last burst at every size
-  tested. **Still needs a real visual check** (open `lsa-demo.html` in an
-  actual browser via `http://localhost:8080/`) to confirm the cascade
-  *looks* right, not just that the timing math is correct.
-
-### Step 8 (revised 2) — 6-scene show + bloom-masked card reveal
-
-The client flagged the card reveal as disjointed: it zoomed/faded in over the
-fireworks. Root cause was structural, not animation tuning — see below. This
-round restructures the whole post-fuse sequence into the client's six scenes
-and changes how the card arrives.
-
-**The z-order bug (root cause).** Neither `.lsa-card` nor `.lsa-canvas` set a
-`z-index`, so they painted in DOM order — and the card is appended *after*
-the canvas. The card was always **on top of** the fireworks, so it could
-never be revealed by them clearing away; the only thing it could do was
-animate in. Fixed with an explicit stack in `lsa-experience.css`:
-`0 backdrop < 1 card < 2 canvas < 3 prompt < 4 close`. **These z-indexes are
-load-bearing** — a comment in the CSS says so. Change them and the reveal
-breaks.
-
-**How the reveal works now.** The canvas is `clearRect`-ed each frame, so it
-is transparent between particles — particle density alone will never hide a
-white card. So a **full-viewport bloom** (`updateScreenBloom()`) spikes over
-140ms to 0.96 alpha, and the card's opacity flips to 1 at that peak,
-underneath it. The switch-on is never visible. The bloom then decays over
-800ms and the card is simply *there* as it clears. All `scale()` was removed
-from `.lsa-card` — no zoom, opacity only, and the 250ms fade completes while
-the bloom is still at ~0.87 alpha.
-
-**Scene 6 is event-driven, not timed.** This was the subtle one. The finale
-originally fired on a fixed timestamp, which was wrong: rockets are launched
-until the climax ends, but they are still *in flight* for another ~1.5s, and
-flight time scales with viewport height (~1.4s on a laptop vs ~2.0s on a 4K
-display). A hardcoded beat flashed and revealed the card while rockets were
-still climbing — they then burst on top of the revealed card. The bloom now
-fires when `rockets.length === 0` after the last phase has ended, i.e. when
-the final firework has actually gone off. `BLOOM_FALLBACK_AT` (9s) is a
-safety net so the card can never be left unrevealed.
-
-**Timeline replaces the scheduler.** `startFireworksSequence()` no longer
-fires a volley; it starts a clock. A `PHASES` table (scene 3 open → 4 build
-→ 5 climax) escalates rocket rate (230→150→80ms), spread (0.45→0.95 of
-width), burst size (45→110 particles) and palette. Launches are *paced
-within* each phase so fire is continuous and the build is legible — this
-supersedes the single-volley model of the previous round, which could not
-sustain escalation across seconds. Scene 6 is simply "no phase active".
-
-- **Colours:** brand trio + lighter tints (`TINT_GOLD`/`TINT_BLUE`/
-  `TINT_RED`), per client decision, widening per phase — gold only, then
-  gold+red, then the full trio + tints at the climax. No off-brand hues.
-  `TINT_BLUE` derives from `POSB_BLUE`, so both swap together when the real
-  POSB hex lands (still open, row K).
-- **Card:** white surface at placeholder 800×460, flex-centred.
-- **Text colours are a STOPGAP, not a design decision.** The card contents
-  were white-on-transparent; on a now-white card they would have rendered it
-  blank. Copy was darkened only enough to stay legible. Card content/design
-  remains explicitly deferred at the client's request.
-- **Fuse now disappears once burned**, so no cord is left sitting over the
-  card during the reveal.
-- **Performance** (the show is ~5× the old particle load): `updateParticles`
-  swapped `splice` (O(n) shifting per death) for swap-and-pop (O(1)) — draw
-  order is irrelevant under additive blending. Added `MAX_PARTICLES` (2800)
-  so a slow machine loses density rather than framerate. Measured peak in
-  simulation is ~2150–2330, leaving headroom.
-- **Teardown is simpler and safer:** with the show fully rAF-driven there are
-  no timers left, so `launchTimeouts` and its `clearTimeout` sweep are gone.
-  Cancelling the rAF loop now stops the entire show outright. Side benefit:
-  rAF pauses on a hidden tab, so backgrounding the page no longer burns
-  through the reveal unseen.
-- **Removed as dead code:** `FIREWORK_COHORTS`, `predictBurstFrames`,
-  `CARD_REVEAL_BUFFER`, `ASSUMED_FPS`, `VOLLEY_SPREAD`, `launchTimeouts`.
-
-**Verification.** The agent's browser pane in this environment never
-composites the tab (`document.hidden` stays `true`), so rAF never fires and
-nothing renders there — a sandbox limit, not a defect. Verified instead with
-a frame-accurate simulation replaying the real constants and the same
-integration, at 1024×700 / 1280×800 / 1440×1600 / 1920×2160. All pass:
-every rocket bursts; **zero bursts occur after the card switches on**; bloom
-alpha is 0.87 when the card finishes fading (switch-on stays hidden); sparks
-linger 627ms past the bloom clearing (card emerges from fading sparks, not a
-blank screen); peak particles stay under the cap. Total show 8.2–9.3s after
-the fuse, against the ~8s target. **Still needs a real visual check in a
-browser** — the maths is right, but density, colour balance and whether the
-escalation *reads* can only be judged by eye.
-
-### Step 8 (revised 3) — Milestone-scaled rockets, multi-break sparkles, organic reveal
-
-**Vocabulary** (client's terms, now used throughout code and docs):
-a **rocket** is the firework that goes up; **sparkles** are the elements
-thrown out when it bursts. The `particles` pool keeps its generic name
-because it also backs rocket trails and cursor sparks, which are *not*
-sparkles — there's a comment at the top of the JS saying exactly this.
-
-**1. Rocket count is now the milestone.** `YEARS` sits beside
-`EMPLOYEE_NAME` and is the single source of truth: it drives one rocket per
-year *and* the card copy (previously the copy hardcoded "5 Years", which
-would have silently desynced). `PHASES` — the time-window, rate-based
-launcher — is gone; it could not express "exactly N rockets". Rockets are
-now spread evenly across `LAUNCH_WINDOW` (4200ms), so 5 years fires one
-every ~1050ms and 25 years one every ~175ms: same window, denser show.
-Escalation moved from time-phases to **rocket index** (`progress = i/(N-1)`),
-scaling sparkle count, palette width, break depth, spread and shockwave
-chance — so one curve covers 5 rockets and 25 alike.
-
-Because 5 rockets would otherwise be far sparser than the show approved
-last round, **each rocket is a multi-break shell**: ~12% of its sparkles
-carry a `breakInto` spec and, when they die, spawn a further burst of
-different colour and shape. Chain depth is capped at
-`MAX_BREAK_DEPTH` (2), so one rocket yields ~2.5s of cascading activity
-without exploding. Note `spawnParticle` now *resets* `breakInto`/
-`gravityScale`/`breakDepth` — pooled objects otherwise carry stale values
-and a recycled sparkle would re-break forever.
-
-**2. Sparkles shift colour, and come in four shapes.** Colour is no longer
-a fixed string per sparkle: each carries a **LUT** (lookup table) of
-prebuilt colour strings interpolating birth → death (white-hot → brand
-pigment, etc), indexed by remaining life in the draw loop. Built this way
-because the obvious approach — composing an `rgb()` string per sparkle per
-frame — would allocate thousands of strings a second at these densities.
-Shapes: **peony** (even spray), **ring** (evenly spaced angles, clean
-circle), **willow** (slow, long-lived, `gravityScale` 1.5 so it droops and
-hangs), **palm** (7 thick spokes). `gravityScale` is a new per-particle
-field, defaulting to 1.
-
-**3. The white flash is gone.** The client rejected it as inorganic — "the
-screen changes to white and then the card is shown". Replaced by three
-things working together:
-
-- The finale is a **barrage of 9 bursts laid out in a loose 3×3 across the
-  card's footprint** (`FINALE_BARRAGE`), not a single burst. This was the
-  key fix: simulation showed one central finale burst covered only ~9–25%
-  of the card, leaving it plainly visible through the gaps. The 3×3 spread
-  measures ~66%.
-- A soft **radial** glow sized to the card (`GLOW_RADIUS`, ~card
-  half-diagonal + margin), drawn additively so it reads as the burst's own
-  light pooling over the card. It never reaches the viewport edges.
-- The card fades up over **1.2s** (was 0.25s) *while* the sparkles are
-  still dense and already fading, so the two overlap and there is no
-  discrete moment where the card appears.
-
-The barrage is queued in a `pendingBursts` array drained by `updateShow`,
-**not** `setTimeout` — the show stays entirely rAF-driven, so teardown still
-needs no timer sweep and a backgrounded tab pauses instead of firing unseen.
-
-**Tuning knobs.** `sparkleScale` (`clamp(6/YEARS, 0.4, 1)`) shrinks
-per-burst counts as the milestone grows, so 25 years lands ~2× denser than
-5 rather than 5× over budget; the finale is `scaleExempt` because it must
-blanket the card at every milestone. `MAX_PARTICLES` (2800) is the hard
-backstop — measured peak is 2246–2434.
-
-**Verification.** Simulated frame-accurately against the real constants
-across **4 viewport sizes × 5 milestones — all 20 pass**: rocket count
-equals `YEARS`; every rocket bursts; break chains terminate at depth 2;
-peak sparkles stay under the cap; no *rocket* bursts after the card starts
-fading; sparkles outlive the glow by ~1.75s (so the card emerges from
-fading sparkles, not a blank screen); card coverage ~64–68% at the moment
-the card begins fading. Show ends 9.8–10.5s including the fading tail; the
-card is fully visible from ~7.6s. **Still needs a real visual check** — the
-agent's browser pane cannot composite in this environment, so nothing here
-has been seen rendering.
-
-### Step 8 (revised 4) — Simultaneous launch, generation-driven cascade
-
-Restructured around a simpler idea: **all rockets launch at once, and the
-cascade generations _are_ the scenes.**
-
-| Scene | What happens | In code |
-| --- | --- | --- |
-| 1 | All rockets go off at once | `launchAllRockets()` on the first frame |
-| 2 | They burst into sparkles | Generation 0 |
-| 3 | Those sparkles burst again, new colours | Generation 1 |
-| 4 | Another round; density covers the middle | Generation 2 |
-| 5 | Sparkles fade, card revealed | Gen-2 sparkles dying |
-
-**The show's whole structure is now one table.** `GENERATIONS` has one row
-per scene (shapes, count, speeds, size, life, palette, breakFraction). A
-sparkle carries only `breakGen`; on death it spawns that generation where it
-died. The chain terminates because the last generation has no successor —
-there is no separate depth cap to keep in sync.
-
-**Deleted as obsolete** (this change removes far more than it adds):
-`FINALE_BARRAGE` and its `pendingBursts` / `scheduleFinaleBarrage` /
-`drainPendingBursts` machinery, `LAUNCH_WINDOW` and the staggered launch
-loop, `buildBreakChain`, `rocketSpec`, `launchShowRocket`, `ROCKET_SHAPES`,
-`MAX_BREAK_DEPTH`, the `breakInto`/`breakDepth` particle fields, and
-`ROCKET_SPEED_MARGIN_MIN/MAX`. Rockets no longer carry a burst spec at all —
-every rocket bursts as generation 0.
-
-**Two defects the simulation caught, both viewport-dependent:**
-
-1. **Burst geometry was viewport-relative, the card is not.** Rocket heights
-   were fractions of viewport height, so on a large display they burst far
-   above a fixed 800×460 card; the cascade arrived late and thin and card
-   coverage was still *climbing* when the fade began (40% at 4K, rising to
-   58%). Burst heights are now anchored to the card's own geometry
-   (`BURST_ABOVE_CARD` / `BURST_DEPTH_INTO_CARD`), and the launch fan is
-   capped relative to card width — so the cascade lands on the card at any
-   screen size.
-2. **Choosing a launch speed coupled burst height to burst time.** Varying
-   heights for visual interest inflated scene 2's spread to 400–533ms, and
-   it drifted with viewport size. Flight time is now specified directly and
-   the velocity solved exactly for it (`velocityForFlight`, matching
-   `updateRockets`' own integration). Heights stay free, the spread is
-   exactly `FLIGHT_JITTER`, and it is identical on every screen. It also
-   cannot stall short of its target, which is what the old margin-based
-   speed existed to prevent — so that guard is no longer needed.
-
-**Also added:** ±10% life jitter per sparkle. Without it every sparkle in a
-generation dies on the same frame and the next generation spawns as one
-mechanical pop; the jitter spreads each scene into a short wave while
-keeping the generations clearly separate.
-
-**`sparkleScale` now holds the generation-0 total roughly constant (~450)
-across milestones** rather than scaling density up with years. This is
-deliberate and worth understanding before "fixing" it: measured peaks sit at
-the `MAX_PARTICLES` ceiling at *every* milestone, so the particle budget —
-not the milestone — is the binding constraint. Letting counts scale up just
-means the cap clips them unpredictably, dropping sparkles and tearing gaps
-in the very coverage the reveal depends on. What visibly scales with the
-milestone is the number of rockets you see go up, which is the point.
-
-**Verification.** Frame-accurate simulation against the real constants,
-**4 viewport sizes × 5 milestones = 20 configs, all passing**: exactly
-`YEARS` rockets all launched on one frame and all bursting; scene-2 spread
-150–200ms everywhere; exactly three generations with the chain terminating;
-peak sparkles at/under the cap with few drops; card coverage 60–77% when the
-fade starts and holding through it; middle-band density 3–10× the edges
-(the confirmed "dense middle, thinner edges"); sparkles outliving the glow
-so the card emerges from fading sparkles. Total length **6.07–6.17s**,
-now essentially viewport-independent.
-
-**Length note:** ~6.1s is shorter than the ~8s agreed for the previous
-design — three generations is a tighter shape than a 4.2s launch window plus
-a finale barrage. Stretch `GENERATIONS[*].life` if it feels rushed. Flagged
-rather than silently changed.
-
-**Still needs a real visual check** — the agent's browser pane cannot
-composite in this environment, so none of this has been seen rendering.
-
-### Step 8 (revised 5) — CFG object + local tuning panel
-
-**All tunables consolidated into one `CFG` object** at the top of
-`lsa-experience.js` — physics, rocket, sparkle, colours, the generation
-table, glow, card timing, cursor sparks, fuse. Values are read *live* (per
-frame / per spawn) rather than cached into locals, which costs a property
-lookup in the hot loops — immaterial next to the canvas work, and it is what
-makes live tuning possible. This also finally delivers the single
-"tweak points" surface this document has promised since Step 1.
-
-Colours are stored as hex and compiled into LUTs by **`rebuildPalettes()`**;
-call it after changing any colour or the change won't appear.
-
-**New per-sparkle effects**, both in `CFG.sparkle`:
-- `glowSize` / `glowAlpha` — a larger, dimmer halo drawn behind each
-  sparkle. **On by default (2.2 / 0.35), and it doubles the draw calls** —
-  the first thing to turn down if framerate suffers.
-- `trailLength` — draws each sparkle as a short line from where it was to
-  where it is, instead of a dot. Done by *stretching the existing sparkle*
-  rather than spawning trail particles: a trail particle per sparkle per
-  frame would multiply the particle count several-fold and blow the budget
-  outright. Default 0 (plain dots).
-
-**`restartShow()`** replays the show from the first rocket without a page
-reload — recycles live particles back into the pool, clears rockets and
-flashes, resets the scene flags, hides the card, and restarts the clock.
-
-#### The dev hook — the one deliberate exception to the no-globals rule
-
-`lsa-experience.js` exposes `window.__lsaDev` **only** when the page sets
-`data-lsa-dev` on `<html>`. `lsa-demo.html` sets it; `lsa-mount.html` does
-not, so on the Liferay page that branch never executes and no global is
-ever created — the safety contract still holds in production. It is roughly
-ten lines, clearly marked, and can be deleted outright if you want zero dev
-code in the deployed file; the only thing lost is the local tuning panel.
-
-#### The tuning panel
-
-Lives entirely in `lsa-demo.html` (demo-only, never deployed). Right-hand
-collapsible panel, 35 controls in five sections: **Show / Rocket / Sparkles
-/ Shapes / Colours**. Header has **Replay**, **Reset**, **Copy settings**,
-and a live `fps · particles · rockets` readout — the fps number is the
-feedback loop for the glow/density cost above.
-
-**Sparkle settings are uniform across all three scenes.** An earlier version
-exposed a separate panel per generation; that was rejected as too complex
-and inconsistent to reason about. Everything under Sparkles is now a
-*multiplier* — `densityScale`, `sizeScale`, `lifeScale`, `speedScale`,
-`breakScale` — applied identically to every generation, so one control moves
-the whole show by the same proportion.
-
-The per-generation base values still live in `CFG.generations` and still
-differ from each other, because the cascade is multiplicative: generation 0
-spawns ~90 sparkles per rocket, generation 1 ~12 per break, generation 2 ~10.
-Flattening those to a single shared number would multiply out to tens of
-thousands of sparkles and blow the budget several times over. They are just
-no longer tuned individually.
-
-The **Settings** box emits only what the panel exposes (~47 lines), built
-from the panel's own schema so the two can never drift apart. Untuned parts
-of `CFG` stay at their code defaults and are not printed, which keeps the
-export short enough to paste comfortably.
-
-Note `Reset` deep-assigns into the existing `CFG` object rather than
-replacing it — the experience holds a reference, so it must be mutated in
-place or tuning would silently detach from the running show.
-
-**Verified in a real browser** (unlike the show itself, this part could be
-tested here — it is DOM wiring, not canvas rendering): sliders mutate `CFG`
-live, generation sliders target the correct generation without touching
-siblings, colour inputs rebuild the palettes, shape chips add/remove and
-refuse to leave a generation shapeless, the exported JSON is valid and
-reflects every edit, `Reset` restores all values including nested arrays
-while preserving object identity, and `restart()` clears particles and
-rockets. Behaviour of the show itself is unchanged — the full simulation
-still passes all 20 configurations.
-
-### Step 8 (revised 6) — Hanabi rendering model + physics
-
-Adopted from `avanderw.co.za/hanabi` (source: `github.com/avanderw/hanabi`,
-a Svelte/TS port of a Flash effect). Read from the actual source, so the
-constants below are the real ones.
-
-**Layered rendering.** One visible canvas, four offscreen buffers composited
-each frame: `trailBuf` (full res, persistent), `particleBuf` (full res, also
-the glow's source), `glowBuf` (quarter res, smoothing off), `smokeBuf` (half
-res). The reference stacks four `<canvas>` elements; we composite instead
-because the card sits *behind* the canvas in the z-stack and four DOM layers
-would each need their own z-index, teardown and resize handling for no gain.
-
-Fuse, rocket heads and sparkles all draw into `particleBuf`, so they feed
-the trail and glow together. Flashes and the card glow are composite-level
-only — they would smear badly through the trail.
-
-**Physics adopted and retuned:** gravity `0.05 → 0.2`, drag `0.98 → 0.9`.
-Because displacement is `v/(1-drag)`, that drag reaches a fifth as far for
-the same speed, so generation speeds were scaled up ~5× (`8–26`, `6–17`,
-`5–13`) to hold burst radius while gaining the snap-and-hang motion.
-Terminal fall settles at `gravity/(1-drag)` = 1.8 px/frame — the "hang".
-Note the reference's "die below velocity 0.01" check is effectively dead
-code once gravity applies, since velocity converges to 1.8; **life remains
-the limiter**, which is why our death-triggered cascade still works.
-
-**Also adopted:** `sqrt(random())` burst radius (uniform-area distribution —
-a plain uniform radius piles particles toward the centre); HSL per-sparkle
-jitter (±5° hue, ±10 sat/light) but around the **DBS brand hues**, not the
-reference's Fire/Blue/Purple — pre-built as variants at init so the LUT
-system keeps its no-per-frame-allocation property, with variant 0 always the
-exact brand colour; and the full smoke system, unmodified.
-
-**Smoke deviates in one way, for performance:** the reference builds a radial
-gradient per smoke particle per frame (500 gradient objects/frame at cap).
-We bake one soft-puff sprite at init and blit it scaled — same result, far
-cheaper. The `multiply` wisp pass is kept.
-
-#### Three defects found and fixed during this work
-
-**1. Decision Log #7 was wrong about *why* the fade-trail failed.** Step 3
-reverted it as "darkens the canvas to near-black". The cause was the
-operation, not the idea: `fillRect` with `rgba(0,0,0,0.2)` *paints black*.
-`destination-out` *erases alpha*, so faded regions go transparent, not
-black. The trail is therefore achievable, and is now built.
-
-**2. But a proportional fade can never reach zero on an 8-bit canvas.**
-Measured in-browser: alpha rounds `a*(1-fade)` back up to `a` once
-`a*fade < 0.5`, so it stalls at ~`0.5/fade` — 9/255 at fade 0.05, 25/255 at
-0.02, **127/255 at 0.005** (half opacity, permanently). Over a full show at
-the reference's 0.05, **88% of the screen ended up permanently lit**. Fixed
-two ways: default fade raised to `0.12` (floor ~4/255, measured residue
-0.13% of screen instead of 21%), and the buffer gets one hard `clearRect`
-once nothing is left to trail — verified to leave 99.8% of pixels at zero.
-The panel's fade slider is floored at 0.05 for the same reason.
-
-**3. Random flight jitter could collapse the burst spread.** With only five
-rockets, independent random draws sometimes produced five near-identical
-flight times — measured as low as **17ms** spread, making scene 2 a single
-mechanical pop. Flight times are now a deterministic ladder across the
-jitter range, shuffled so burst order stays uncorrelated from position.
-Spread is now a reliable 150–200ms.
-
-Also narrowed the launch fan (`0.55 → 0.45` of viewport width): at 0.55 on a
-1024px display the fan was wider than the central half of the screen, so
-rockets launched into the edge bands and diluted the dense-middle shape.
-
-#### Panel
-
-New sections: **Trail** (enabled, fade, stamp opacity) and **Smoke** (11
-controls). **Show** gains two enum selects — *Show layer*
-(composite/particles/trail/glow/smoke, the reference's isolation toggles)
-and *Glow style* (gradient/sparkle). Sparkles gains drag, gravity, the
-sparkle-mode pixel size and the three colour-jitter controls. 56 controls
-total; export is 78 lines.
-
-**Glow is a mode, not a replacement** — the linear gradient glow added last
-round is still the default; the downscale/upscale sparkle sits alongside it.
-
-#### Verification
-
-Simulation: all 20 configurations (5 milestones × 4 viewports) pass, run
-repeatedly to catch the intermittent failures the randomisation exposes.
-Coverage 70% at fade start, dense-middle ratio ~3×, show ends ~6.1s.
-
-Rendering was verified *in the browser* this time, which previous rounds
-could not do: a dev-only `step()` on the dev hook runs frames synchronously,
-so the pipeline can be exercised where `requestAnimationFrame` never fires.
-Confirmed the buffers are the right resolutions, every layer produces
-pixels, and the trail residue behaves as described above.
-
-**One expectation not met, worth knowing:** smoke does **not** reach the
-card. It spawns at the rocket burst (~1.3s) and lives ~83 frames (~1.4s), so
-it has cleared by ~2.7s, while the card only begins fading at ~4.1s. The
-grey-haze-over-the-card tradeoff accepted when choosing "unmodified" simply
-does not arise at these timings. If smoke over the card is actually wanted,
-its `lifeDecay` needs lowering substantially.
-
----
-
-## Liferay integration steps
-
-**Not yet written.** These will be filled in at Step 13, once the asset
-loading method is decided (Q-I) and the mount behaviour is built (Step 2).
-Writing them now would mean documenting something that does not exist.
-
-What is already settled and will shape them:
-
-- Two separate files, one `.css` and one `.js`. No inline `<script>` and no
-  inline `style` attributes carrying logic, because the page enforces a CSP.
-- The CSS must load before the JS mounts, so the overlay never renders unstyled.
-- The mount markup goes in a Web Content fragment.
-
----
-
-## How to change the employee name and the milestone
-
-Two constants at the top of `lsa-experience.js`, inside the IIFE:
-
-```js
-var EMPLOYEE_NAME = 'Timothy Tan';
-var YEARS = 5;
-```
-
-- **`EMPLOYEE_NAME`** is referenced in exactly one place (the card's first
-  line), so retargeting the celebration is a one-line edit.
-- **`YEARS`** is the single source of truth for the milestone. It drives
-  **both** the card copy ("Celebrating N Years with us") **and** the number
-  of rockets — one per year. Do not hardcode the year anywhere else; that is
-  precisely how the two would drift apart.
-
-Supported values: **5, 10, 15, 20, 25.** `MAX_SUPPORTED_YEARS` clamps the
-rocket count at 25 so nothing breaks above that, but a 30-year award would
-then fire 25 rockets while the card reads "30 Years" — wrong, and tracked as
-an open TODO in `progress.md`. Milestones past 25 need a different visual
-approach, not a bigger number.
-
----
-
-## The once-only flag — BACKEND RESPONSIBILITY, NOT IMPLEMENTED HERE
-
-**Decision (explicit, from the client):** the "show once" gating is deliberately
-**not** implemented in `lsa-experience.js`. There is no `localStorage` check.
-As shipped, the experience runs on **every page load** where the viewport is
-`>= 1024px` wide. This is intentional for now, not an oversight.
-
-**What the backend developer needs to build:** a per-user flag (e.g. "has
-seen LSA 5-year experience") persisted server-side against the user's account
-— not a browser-local flag, since that resets per device/browser and doesn't
-survive a cleared cache. The developer decides the mechanism (a Liferay user
-attribute, a database row, a session service call, etc.) — that is entirely
-outside this front-end deliverable.
-
-**The integration point for that flag**, once it exists, is simple: gate
-whether `lsa-experience.js` runs at all. The cleanest hook is the top of the
-IIFE in `lsa-experience.js`, right after the `MIN_WIDTH` check — an early
-`return` there, driven by whatever the backend exposes (e.g. a data attribute
-on `#lsa-mount` rendered server-side only for users who haven't seen it, or a
-small inline JSON value the Liferay template already has access to). This
-front end does not currently read any such flag; it is a one-line addition
-once the backend contract exists.
-
-**For local testing right now:** nothing to reset. It always shows.
-
----
-
-## Medallion assets
-
-**Placeholder built, real component still pending.** The card (Step 9) now
-contains `.lsa-card__medallion` — a plain white 160x160 rectangle — in the
-`medallionEl` element in `lsa-experience.js`. Q-A itself (the real component
-+ images) is still open, explicitly deferred by the client ("we will handle
-it later").
-
-**How to swap it in later:** replace the `medallionEl` block (creates a
-single `div.lsa-card__medallion`) with the supplied medallion markup, and
-move its styles into `lsa-experience.css` under prefixed selectors so they
-can't leak into Liferay or collide with the rest of the overlay. This section
-will then record every image asset path and how to swap them.
-
----
-
-## Planned follow-ups
-
-- [ ] **Enhance fireworks visual quality** — flagged by the client after
-  Step 8, not yet scoped or scheduled. Current rockets/bursts/flash are
-  functionally complete (left → right → oversized center, per spec) but are
-  a first pass; revisit density, trail quality, and burst shape polish later.
-
----
-
-## Assumptions
-
-Applied so far. Each is cheap to reverse; say the word.
-
-1. **Prefix is `lsa-`.** Taken from the example in the spec.
-2. **Files live in `C:\Users\akhil\Desktop\SRA\`** — flat, no subfolder.
-3. **Filenames** `lsa-experience.css` / `lsa-experience.js` — from the spec's examples.
-4. ~~**No local demo page.**~~ Superseded at Step 1b — a demo page was
-   requested and now exists (`lsa-demo.html`).
-5. **`bg.png` is a placeholder only.** It stands in for the live intranet for
-   demo and communication purposes, and will be replaced by the actual
-   intranet page. The overlay code makes no reference to it.
-
----
-
-## Open questions
-
-Only Q-A remains genuinely open (with a placeholder decided so work isn't
-blocked). Everything else below is resolved and kept for record — struck
-through, with the decision noted.
-
-| # | Question | Resolution |
-| --- | --- | --- |
-| A | Medallion code + image assets, and how the images are served in Liferay (Documents & Media URL, theme path, or base64). | **Still open — hard blocker for the real medallion.** Explicitly deferred by the client: "we will handle it later." Placeholder decided: a plain white rectangle in the card's medallion slot until then. |
-| ~~B~~ | ~~One close control or two?~~ | **Resolved.** One circular × button, top-right, 40px/40px offset, present from launch. Confirmed sufficient. |
-| ~~C~~ | ~~When is the once-only flag written?~~ | **Resolved — moved off the front end entirely.** See "Once-only flag" section: this is now a backend responsibility. The front end has no gating logic and shows every time. |
-| ~~D~~ | ~~Fuse never lit — timeout or wait?~~ | **Resolved: wait indefinitely.** No auto-light timeout. The user closes via the close button if they don't want to proceed. |
-| ~~E~~ | ~~Backdrop click-through vs. modal; scroll lock?~~ | **Resolved: true modal.** Backdrop blocks clicks (`pointer-events: auto`), and page scroll is locked while open, restored exactly on teardown. |
-| F | Respect `prefers-reduced-motion`? | **Resolved: explicitly out of scope.** Not implemented, not planned. |
-| G | Resize below 1024px mid-show — tear down, or keep running? | **Resolved: tear down.** Not yet implemented (canvas/resize handling is Step 3, not built yet) — recorded here as the decision to build against when that step happens. |
-| ~~H~~ | ~~Prefix, file location, demo page.~~ | **Resolved** at Step 1b. |
-| ~~I~~ | ~~Should `lsa-mount.html` include the `<link>` / `<script>` tags, or are assets deployed via the theme?~~ | **Resolved: yes, include them.** Implemented — `lsa-mount.html` now has `<link>`/`<script>` tags with `REPLACE_WITH_ASSET_PATH` placeholders, to be swapped for the real hosted URLs once known. |
-| ~~J~~ | ~~Root inside `#lsa-mount` or on `document.body`?~~ | **Resolved: `document.body`.** Implemented — avoids the transform-ancestor clipping trap. |
-| K | POSB brand blue — exact hex? | **Open, placeholder in place.** The fireworks palette was remapped to DBS brand colours (see Step 8 revised): red = DBS main, gold = DBS Treasures, blue = POSB. Red/gold already had confirmed hexes; blue does not. Using `#1C6FD1` as a placeholder in `BURST_COLORS_BLUE` until the client supplies the real POSB brand hex — same shape as Q-A's medallion placeholder. |
-
-### New decisions, not previously tracked as questions
-
-- **Fuse shape/position:** no reference supplied — designing a simple
-  procedural curved fuse cord near bottom-centre myself, per the spec's
-  description. Not yet built.
-- ~~**Colours:** confirmed — using the spec's defaults as-is: red `#E11931`,
-  gold `#D4AF37`, white `#FFFFFF`.~~ **Superseded at Step 8 (revised).** The
-  fireworks burst palette is now mapped to DBS brand colours instead of
-  generic defaults — see Open questions row K and the Step 8 (revised)
-  changelog entry. Red/gold hex values carried over unchanged; blue is new.
+Pushes work non-interactively via Git Credential Manager. No `gh` CLI, no SSH keys.

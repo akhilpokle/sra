@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<!--
+  THROWAWAY. A rough rig for judging ONE thing by eye before any of it is built
+  for real:
+
+      does a bigger milestone actually FEEL bigger when the only thing
+      that changes is how long you hold and how fast the number climbs?
+
+  The flat-3s version this file was built to test is GONE. It answered its
+  question — the same 3 seconds for every milestone meant 50 years read as 5
+  years with a faster counter, and nothing about it felt bigger. So the charge
+  now stretches with the milestone, 3s at 5 years to 5s at 50.
+
+  Longer, not ten times longer: at a fixed climb rate 50 years would be a
+  30-second motionless hold, which stops being a celebration and becomes an
+  endurance test. The compressed curve is the compromise.
+
+  THE TOP END HAS ALREADY COME DOWN ONCE — 6s was tried and judged too long.
+  That is worth knowing before anyone raises it again looking for more contrast
+  between the milestones: the contrast is not free, and this end of it has been
+  looked at.
+
+  Note what lowering the hold does, because the two knobs are tied: the counter
+  still has to reach 50, so a shorter charge makes the number climb FASTER, not
+  slower. 6s was ~8 numbers a second; 5s is ~10. Buying back a second of hold
+  spends it on legibility, which is the open question the rig is now for:
+
+      at 50, does ~10 numbers a second read as impressive, or as noise?
+
+  If it reads as noise there is no third knob to turn here — the fix would be
+  to stop showing every number, and that is a different design.
+
+  Deliberately ugly. No sparks, no shimmer, no growth, no snap, no fireworks.
+  Those are later steps and would only get in the way of judging the timing.
+
+  The ONE thing built properly here is that the counter is derived from the
+  FILL LEVEL, not from a timer — `count = round(fill * years)`. That is the
+  part of the real design most likely to be got wrong, so the prototype does it
+  right and proves the feel of it.
+
+  Delete this file once the real interaction is built.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Charge test — hover to fill</title>
+<style>
+  /* Black at the bottom, galaxy layered on top of it, content above both.
+     backdrop-filter on the number then has the galaxy to blur. */
+  /* THE GALAXY SITS ON TOP, AND CAN ONLY BRIGHTEN.
+
+     color-dodge cannot lift black at all, so the image is invisible everywhere
+     except where something bright is already painted. The letters are the only
+     bright surface on the page, so the galaxy lands on the letters and nowhere
+     else. No mask, no clip path, nothing cut to the shape of the text.
+
+     It is a SIBLING of the text, never a child. It has to see both the letters
+     and the black underneath them; nested inside the text it could only blend
+     with that one element.
+
+     pointer-events none so it does not eat clicks on the picker or the spark. */
+  .galaxy {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    mix-blend-mode: color-dodge;
+    pointer-events: none;
+  }
+
+  /* ⚠ NOTHING BETWEEN THE GALAXY AND THIS BLACK MAY HAVE a transform, an
+     opacity below 1, a filter, or will-change. Any of those seals the blend
+     inside that wrapper, it stops reaching the black, and the effect dies for
+     a reason that looks unrelated to whatever was changed.
+
+     isolation: isolate keeps the blend contained here rather than reaching out
+     to the page behind. */
+  html { background: #000; }
+
+  body {
+    background: #000;
+    position: relative;
+    isolation: isolate;
+  }
+
+  html, body {
+    margin: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 40px;
+    user-select: none;
+    /* The drawn spark IS the cursor. Set here and inherited, exactly as the
+       overlay does it on .lsa-root, so no child can punch a hole in it by
+       asking for its own pointer. */
+    cursor: none;
+  }
+
+  /* Keeps the centred stage clear of the fixed tuning panel on the right,
+     which otherwise sits on top of the last three milestone buttons. */
+  body { box-sizing: border-box; padding-right: 262px; }
+
+  /* Which milestone we are pretending to be. */
+  .picker { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .picker button {
+    padding: 8px 18px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.45);
+    background: transparent; color: #fff; font-size: 14px;
+  }
+  .picker button.on { background: #fff; color: #172733; }
+
+  /* The counter — sits ABOVE the button, as agreed. */
+  .count { font-size: 88px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+
+  /* The number grows as the spark fills.
+
+     SCALED, NOT RESIZED. A changing font-size reflows the line and shoves
+     YEARS sideways on every step. A transform is painted, not laid out, so the
+     number swells in place and nothing around it moves. inline-block because a
+     transform does nothing at all on a plain inline box.
+
+     transform is the ONLY thing written here. The swap already writes filter
+     and opacity on this element every frame, and two writers on one property
+     is the trap that makes these effects fight. */
+  .count #count {
+    display: inline-block;
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+
+  /* WHITE, and that choice is the whole difference in how the galaxy reads.
+
+     color-dodge is a volume knob on what is underneath. Pure white is already
+     at maximum, so turning it up does nothing: a fully revealed white letter
+     shows no galaxy at all. The image's entire job here is the ignition on the
+     way in, and then it gets out of the way.
+
+     Glyph EDGES will still catch it. Antialiased pixels are part-transparent,
+     so they land between white and black, and anything between the two dodges.
+     A faint fringe on the outlines is inherent to the technique.
+
+     Grey gives the other version: the galaxy stays in the letters at rest. */
+  .count { color: #fff; }
+
+
+  /* The dormant spark. Replaces the pill, and the change is not cosmetic: this
+     is an OBJECT that fills, not a control that gets pressed. It is the same
+     4-point sparkle the cursor is made of, so the thing being charged is
+     visibly the same substance doing the charging.
+
+     Far larger than the 15px source art, because the fill has to read as a
+     rising level. At the old pill's 52px height you cannot see a waterline
+     inside a star at all. */
+  .rig { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+  .charge {
+    position: relative;
+    width: 140px; height: 140px;
+    /* THE HIT AREA IS THE CIRCLE, NOT THE STAR. Asking someone to hover the
+       actual outline of a thin 4-point shape would be a precision task, and
+       this interaction then asks them to HOLD there for seconds. So the target
+       is the generous circle the star sits inside. The visible shape is the
+       feedback; this is what you are actually aiming at. */
+    border-radius: 50%;
+
+    /* NO drop-shadow HERE. There was one, driven by --fill, and it was a
+       mistake: a drop-shadow applies to the whole silhouette, STROKE INCLUDED,
+       so it hung a halo off the outline rather than glowing from the light
+       inside. Gold at 70% smeared over pure black reads as a brown smudge, not
+       as glow — it was the thing that "stood out" around the border.
+
+       If the spark wants a glow later it has to come from the fill alone, not
+       from the element. */
+  }
+
+  /* overflow visible so the art can grow past its 140px box without being
+     clipped. transform-origin centre so it swells in place. */
+  .charge svg {
+    width: 100%; height: 100%; overflow: visible; display: block;
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+
+  /* The EMPTY state: an outline with nothing in it. This is what "dormant"
+     looks like — the shape is fully present, it just has no light in it yet. */
+  .spark-track {
+    fill: none;
+
+    /* GOLD, NOT WHITE. A cool white hairline around warm gold light reads as
+       two different materials — a wireframe someone poured light into. The
+       dormant spark should be the SAME substance as the lit one, just unlit,
+       so this is the fill's own gold at low alpha.
+
+       And it warms as it fills: the alpha climbs with --fill (inherited from
+       .charge), so the outline comes up with the light inside it rather than
+       staying a constant frame around a changing picture. */
+    stroke: rgba(240, 194, 75, calc(0.34 + 0.46 * var(--fill, 0)));
+
+    /* Back to the original hairline. It was doubled to 0.45 and that was the
+       wrong read of the complaint — the weight was never the problem, the
+       colour was. A thin gold line is fine; a thin WHITE line around gold light
+       was not. */
+    stroke-width: 0.22;
+    stroke-linejoin: round;
+  }
+
+  /* The same path again, over the outline, filled by the radial gradient.
+
+     NOT BLURRED. It was, and that is what put a dark seam between the light and
+     the border: feGaussianBlur softens the SILHOUETTE, so the fill's edge
+     retreated inward from the outline, and since the stroke straddles the path
+     edge its inner half then sat over a half-transparent fill with black
+     showing through. Read as an emboss.
+
+     The soft edge you want is the growing FRONT of the light, and SOFT_BAND in
+     the gradient already does that. The star's own outline is the one edge that
+     should stay crisp. */
+  .spark-fill { stroke: none; }
+
+  /* Opacity and brightness are both written from the loop, so no transition
+     here. Starts at 0 because an empty spark must not glow. */
+  .spark-halo { stroke: none; opacity: 0; }
+
+  /* The spark cursor's canvas. Ported from the overlay, where it is .lsa-spark
+     at z 5 — above everything, and never a pointer target itself. */
+  .sparks {
+    position: fixed; inset: 0; z-index: 10;
+    width: 100%; height: 100%;
+    display: block; pointer-events: none;
+  }
+
+  .label {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; opacity: 0.7;
+  }
+
+  .readout { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; text-align: center; line-height: 1.7; }
+
+  /* Blur tuning panel. Lab only, and the whole reason this file still exists.
+     Sits above the spark canvas (z 10) so it can be clicked, and restores a
+     real cursor: the body hides it because the drawn spark IS the cursor, but
+     you cannot drag a slider you cannot see. */
+  .tune {
+    position: fixed; top: 16px; right: 16px; z-index: 20;
+    width: 230px; padding: 14px 16px;
+    background: rgba(20, 20, 20, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    font-size: 12px;
+    cursor: auto;
+  }
+  .tune * { cursor: auto; }
+  .tune h4 {
+    margin: 0 0 10px; font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; opacity: 0.55; font-weight: 700;
+  }
+  .tune label { display: block; margin-bottom: 10px; }
+  .tune .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .tune .row b { font-weight: 600; opacity: 0.8; }
+  .tune .row span { font-variant-numeric: tabular-nums; opacity: 0.65; }
+  .tune input[type=range] { width: 100%; display: block; accent-color: #F0C24B; }
+  .tune button {
+    width: 100%; margin-top: 4px; padding: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 6px;
+    background: transparent; color: #fff; font-size: 12px; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+  <div class="picker" id="picker"></div>
+
+  <div class="count"><span id="count">0</span></div>
+
+  <div class="rig">
+    <div class="charge" id="charge">
+      <!-- assets/Path.svg, inlined. Inlined rather than an <img> because the
+           fill has to be addressable: an <img> is an opaque box and its insides
+           cannot be styled or clipped from the page. Same path data as
+           SPARK_SHAPE in lsa-experience.js. 15x15 box, centred at 7.44. -->
+      <svg viewBox="0 0 15 15" aria-hidden="true">
+        <defs>
+          <!-- INSIDE OUT. Light gathers at the core and grows outward, which is
+               what a spark actually does — the rising waterline this replaced
+               was liquid logic borrowed from the pill, and it also made the
+               fill read as non-linear, since a 4-point star's mass is all at
+               its waist and the arms taper to nothing.
+
+               userSpaceOnUse so the radius is in viewBox units: centred on the
+               shape's own centre (7.44) with r 10.6, the distance from there
+               out to the diagonal tips. So offset 1 is exactly "the tips are
+               lit" and nothing is wasted past the shape.
+
+               THE TWO STOPS ARE DELIBERATELY APART, unlike the hard waterline
+               they replace — the gap between them IS the blurred edge, so the
+               light has a soft front rather than a cut line. -->
+          <radialGradient id="sparkfill" gradientUnits="userSpaceOnUse"
+                          cx="7.44" cy="7.44" r="10.6">
+            <stop id="coreA" offset="0" stop-color="#FFF0C0"/>
+            <stop id="coreB" offset="0" stop-color="#F0C24B" stop-opacity="0"/>
+          </radialGradient>
+
+          <!-- Blurs the halo copy below. Generous region because the default
+               clips at 120% and would cut the bloom off square. -->
+          <filter id="halo" x="-75%" y="-75%" width="250%" height="250%">
+            <feGaussianBlur id="haloBlur" stdDeviation="0.6"/>
+          </filter>
+        </defs>
+
+        <!-- THE GLOW. A third copy of the path, filled with the SAME gradient
+             and blurred, sitting behind everything else.
+
+             This is why it is not the drop-shadow that was tried and thrown
+             out. That one applied to the whole element, outline included, so an
+             empty spark still had a halo hanging off its hairline and it read
+             as a brown smudge on black. This one carries only the gradient, so
+             an unlit spark glows not at all and the bloom grows with the light
+             that is actually inside it. -->
+        <path class="spark-halo" fill="url(#sparkfill)" filter="url(#halo)" d="M14.8563 14.88L9.09636 10.0498C9.09636 10.0498 8.31607 9.28792 7.44088 9.28792C6.5569 9.28792 5.77661 10.0498 5.77661 10.0498L0.0184526 14.88L0 14.8633L4.83112 9.10339C4.83112 9.10339 5.5912 8.32574 5.5912 7.44C5.5912 6.56305 4.83112 5.78452 4.83112 5.78452L0 0.0202103L0.0184526 0L5.77661 4.83552C5.77661 4.83552 6.5569 5.59911 7.44088 5.59911C8.31607 5.59911 9.09636 4.83552 9.09636 4.83552L14.8563 0L14.88 0.0254826L10.0392 5.78452C10.0392 5.78452 9.2844 6.56305 9.2844 7.44C9.2844 8.32574 10.0392 9.10339 10.0392 9.10339L14.88 14.8615L14.8563 14.88Z"/>
+
+        <path class="spark-track" d="M14.8563 14.88L9.09636 10.0498C9.09636 10.0498 8.31607 9.28792 7.44088 9.28792C6.5569 9.28792 5.77661 10.0498 5.77661 10.0498L0.0184526 14.88L0 14.8633L4.83112 9.10339C4.83112 9.10339 5.5912 8.32574 5.5912 7.44C5.5912 6.56305 4.83112 5.78452 4.83112 5.78452L0 0.0202103L0.0184526 0L5.77661 4.83552C5.77661 4.83552 6.5569 5.59911 7.44088 5.59911C8.31607 5.59911 9.09636 4.83552 9.09636 4.83552L14.8563 0L14.88 0.0254826L10.0392 5.78452C10.0392 5.78452 9.2844 6.56305 9.2844 7.44C9.2844 8.32574 10.0392 9.10339 10.0392 9.10339L14.88 14.8615L14.8563 14.88Z"/>
+        <path class="spark-fill" fill="url(#sparkfill)" d="M14.8563 14.88L9.09636 10.0498C9.09636 10.0498 8.31607 9.28792 7.44088 9.28792C6.5569 9.28792 5.77661 10.0498 5.77661 10.0498L0.0184526 14.88L0 14.8633L4.83112 9.10339C4.83112 9.10339 5.5912 8.32574 5.5912 7.44C5.5912 6.56305 4.83112 5.78452 4.83112 5.78452L0 0.0202103L0.0184526 0L5.77661 4.83552C5.77661 4.83552 6.5569 5.59911 7.44088 5.59911C8.31607 5.59911 9.09636 4.83552 9.09636 4.83552L14.8563 0L14.88 0.0254826L10.0392 5.78452C10.0392 5.78452 9.2844 6.56305 9.2844 7.44C9.2844 8.32574 10.0392 9.10339 10.0392 9.10339L14.88 14.8615L14.8563 14.88Z"/>
+      </svg>
+    </div>
+
+    <div class="label" id="label">Hover to charge</div>
+  </div>
+
+  <div class="readout" id="readout"></div>
+
+  <div class="tune" id="tune"><h4>Tuning</h4></div>
+
+  <canvas class="sparks" id="sparks"></canvas>
+
+  <!-- Last, and a sibling of everything it blends with. -->
+  <!-- Moved into assets/ on 2026-09-04 when the overlay started loading it too.
+       It is a shipped asset now, not a loose file at the repo root, and one
+       ASSET_PATH is the only path rule the Liferay integration should need. -->
+  <img class="galaxy" src="../assets/gal4.jpg" alt="">
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---- How long a charge takes -------------------------------------------
+     ONE INTERVAL PER NUMBER, EVERYWHERE. The charge lasts as long as it takes
+     to walk the step list at a fixed pace, so a number is on screen for the
+     same time at 5 years as at 50 and the counter never feels rushed at the
+     big milestones.
+
+         5y    5 steps ->  2.0s
+         25y  13 steps ->  5.2s
+         50y  18 steps ->  7.2s
+
+     ⚠ THIS REPLACES a 3s-to-5s curve, which capped 50 years at 5s and so ran
+     its 18 numbers at 278ms each. Watched, it read as too quick. Capping the
+     hold and showing every milestone the same way cannot both be had; the cap
+     is what went.
+
+     ⚠ It also means 5 years is now a SHORTER hold than it was, 2.0s against
+     3.0s, which is the price of one pace for everyone. Raise the interval if 5
+     years now feels too brief to be a gesture, and 50 years gets longer with
+     it. The slider is in the panel. */
+  function chargeSecondsFor() {
+    return steps.length * (tune.stepMs / 1000);
+  }
+
+  /* Draining is slower than charging, so a moment's wobble off the button costs
+     a little progress rather than all of it.
+
+     A RATIO, not a constant, and that is the point. It used to be a flat 6s,
+     which was exactly twice the flat 3s charge. Now that the charge stretches,
+     a flat 6 would quietly collapse to 1:1 at 50 years — making the LONGEST
+     hold also the least forgiving one, which is backwards. Deriving it keeps
+     every milestone equally tolerant of a wobble. */
+  var DRAIN_RATIO = 2;
+
+  /* How soft the growing edge of the light is, as a fraction of the radius.
+     This is the blur: the fill's leading edge and its trailing opaque edge are
+     this far apart, so the front is a gradient rather than a line. Too small
+     and it snaps back to a hard ring; too large and the spark never looks
+     properly lit, because the fade eats the whole shape. */
+  var SOFT_BAND = 0.18;
+
+  // All ten real milestones, so every one can be judged by eye. The award has
+  // no others; 7 or 12 work, but nobody is ever given them.
+  var YEARS_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+  var years = 5;
+
+  /* ---- The step list ----------------------------------------------------
+     The counter no longer shows every number. It shows every number to 10,
+     then every FIVE, and always lands exactly on the milestone.
+
+     Fives, not tens. Every milestone is a multiple of five, so stepping by
+     five lands on all ten of them with no odd final jump. Stepping by ten made
+     the odd milestones stutter at the end (30 then 35), and the rhythm changed
+     halfway through for no reason the viewer could see.
+
+     WHY: at 50 years the counter had 100ms per number, and a number needs
+     roughly 200ms to be read at all. Showing all 50 readably would take 10
+     seconds of holding, and 6s was already rejected as too long. So the fix is
+     to show fewer numbers, not to hold longer.
+
+         5   1 2 3 4 5                       5 steps   600ms each
+         25  1..10, 15, 20, 25              13 steps   299ms each
+         50  1..10, 15, 20 ... 45, 50       18 steps   278ms each
+
+     Against the charge curve every milestone lands between 278ms and 600ms a
+     step, all above the ~200ms a number needs to be read at all, with room
+     left for a blur.
+
+     It also keeps a big milestone feeling big: 18 steps against 5.
+
+     Works for any positive number, not just multiples of five, because the
+     real overlay accepts any (a seven-year award counts 1..7). The final push
+     is what guarantees the last number is the milestone itself. */
+  function stepsFor(y) {
+    var out = [];
+    for (var n = 1; n <= 10 && n <= y; n++) out.push(n);
+    for (var m = 15; m <= y; m += 5) out.push(m);
+    if (out[out.length - 1] !== y) out.push(y);
+    return out;
+  }
+
+  var steps = stepsFor(years);
+
+  // Lab debug hook, same idea as window.lab2 in the fireworks lab.
+  window.__chargeDebug = { stepsFor: stepsFor };
+
+  var fill = 0;          // 0..1
+  var hovering = false;
+  var charged = false;
+
+  /* The last number actually written to the DOM.
+
+     The loop runs every frame, but the number only changes 5 to 18 times in
+     the whole charge. Writing it 60 times a second was harmless while it was
+     plain text; it stops being harmless the moment a blur hangs off the
+     change, because the animation would restart every frame and never play a
+     single one to the end.
+
+     -1 rather than 0 so the first frame always writes. */
+  var shownCount = -1;
+
+  /* ---- The number swap --------------------------------------------------
+     The old number blurs out, the new one blurs in.
+
+     ONE ELEMENT, ONE CURVE. Rather than an out animation followed by an in
+     animation, this is a single arc: blur and fade rise to a peak, the text is
+     swapped at that peak while it is invisible, then blur and fade come back
+     down. Half the timing to get right, and the swap can never be seen because
+     opacity is 0 at exactly the frame it happens.
+
+     DRIVEN FROM THE FRAME LOOP, NOT A CSS TRANSITION. The loop writes `filter`
+     and `opacity` every frame; a transition on those properties would be a
+     second writer chasing values that have already changed. One writer per
+     property.
+
+     The duration ADAPTS to the milestone. A step lasts 600ms at 5 years and
+     278ms at 50, so a fixed duration would either crawl at 5 or overrun at 50.
+     Taking 85% of the step interval leaves a beat of the number sitting still
+     and readable before the next swap starts. */
+  /* Every one of these is a slider in the tuning panel.
+
+     THESE ARE TUNED VALUES, dialled in by eye on 2026-09-04, not defaults
+     anybody guessed. They are what gets ported to production. */
+  var tune = {
+    stepMs: 800,   // how long ONE number is on screen. Sets the whole charge.
+    scale0: 0.55,  // number size at empty
+    scale1: 1.2,   // number size at full
+    spark0: 0.65,  // spark size at empty
+    spark1: 1.65,  // spark size at full
+    glow: 1,       // strength of the bloom behind the spark, at full
+    glowBlur: 0.6, // bloom radius, in viewBox units
+    hot: 0.5,      // extra brightness on the fill itself, at full
+    blur:  0.34,   // em at the peak. em, so it scales with font-size.
+    maxMs: 250,    // longest a swap may take
+    frac:  0.85,   // of one step's interval, so it adapts to the milestone
+    floor: 0.45,   // brightness at the peak. Never reaches 0, so the number
+                   // stays part-lit and the galaxy keeps dodging through it.
+    peak:  0.65,   // where in the swap the text changes. Past halfway, so it
+                   // blurs out slowly and snaps back in.
+    power: 1       // curve shape. >1 holds sharp longer then blurs hard.
+  };
+
+  var TUNE_ROWS = [
+    { k: 'stepMs', label: 'Time per number', min: 150, max: 800, step: 25, unit: 'ms' },
+    { k: 'scale0', label: 'Size at empty',   min: 0.5, max: 1.5, step: 0.05, unit: 'x' },
+    { k: 'scale1', label: 'Size at full',    min: 0.5, max: 2.5, step: 0.05, unit: 'x' },
+    { k: 'spark0', label: 'Spark at empty',  min: 0.5, max: 1.5, step: 0.05, unit: 'x' },
+    { k: 'spark1', label: 'Spark at full',   min: 0.5, max: 2.5, step: 0.05, unit: 'x' },
+    { k: 'glow',   label: 'Glow strength',   min: 0,   max: 2,   step: 0.05, unit: '' },
+    { k: 'glowBlur', label: 'Glow spread',   min: 0.1, max: 2,   step: 0.05, unit: '' },
+    { k: 'hot',    label: 'Brightness',      min: 0,   max: 1.5, step: 0.05, unit: '' },
+    { k: 'blur',  label: 'Blur at peak',    min: 0,   max: 0.6, step: 0.01, unit: 'em' },
+    { k: 'maxMs', label: 'Max swap',        min: 40,  max: 600, step: 10,   unit: 'ms' },
+    { k: 'frac',  label: 'Of step gap',     min: 0.2, max: 1,   step: 0.05, unit: '' },
+    { k: 'floor', label: 'Opacity at peak', min: 0,   max: 1,   step: 0.05, unit: '' },
+    { k: 'peak',  label: 'Swap point',      min: 0.2, max: 0.8, step: 0.05, unit: '' },
+    { k: 'power', label: 'Curve power',     min: 0.4, max: 3,   step: 0.1,  unit: '' }
+  ];
+
+  (function buildTune() {
+    var box = document.getElementById('tune');
+
+    TUNE_ROWS.forEach(function (row) {
+      var wrap = document.createElement('label');
+      var head = document.createElement('div');
+      head.className = 'row';
+      head.innerHTML = '<b></b><span></span>';
+      head.querySelector('b').textContent = row.label;
+
+      var out = head.querySelector('span');
+      var input = document.createElement('input');
+      input.type = 'range';
+      input.min = row.min; input.max = row.max; input.step = row.step;
+      input.value = tune[row.k];
+
+      function show() { out.textContent = input.value + row.unit; }
+      input.addEventListener('input', function () {
+        tune[row.k] = parseFloat(input.value);
+        show();
+      });
+      show();
+
+      wrap.appendChild(head);
+      wrap.appendChild(input);
+      box.appendChild(wrap);
+    });
+
+    /* Replays the arc on the number already on screen. Charging to see one
+       swap is slow, and this shows the blur and the fade without touching the
+       fill. The number does not change, which is fine — the shape of the arc
+       is the thing being judged. */
+    var btn = document.createElement('button');
+    btn.textContent = 'Replay blur';
+    btn.addEventListener('click', function () {
+      swapTo = null;
+      swapT = 0;
+      swapDur = Math.min(tune.maxMs / 1000, 0.6);
+    });
+    box.appendChild(btn);
+  })();
+
+  var swapT = -1;             // seconds into the current swap, -1 when idle
+  var swapTo = null;          // the number waiting to be written at the peak
+  var swapDur = tune.maxMs / 1000;
+
+  function swapTick(dt) {
+    if (swapT < 0) return;
+
+    swapT += dt;
+    var p = swapT / swapDur;
+
+    if (p >= 1) {
+      // Guard: normally written at the peak below, but a single frame longer
+      // than the whole swap would skip that.
+      if (swapTo !== null) { elCount.textContent = swapTo; swapTo = null; }
+      elCount.style.filter = '';
+      swapT = -1;
+      return;
+    }
+
+    /* 0 at both ends, 1 at the swap point. Two half-curves rather than one
+       sine, so the peak can sit off-centre: a peak at 0.35 blurs out fast and
+       eases the new number in slowly, which is a different feel from the
+       symmetric version even at the same duration. */
+    var pk = tune.peak;
+    var t = (p < pk) ? (p / pk) : ((1 - p) / (1 - pk));
+    var k = Math.pow(Math.sin(t * Math.PI / 2), tune.power);
+
+    if (p >= pk && swapTo !== null) {
+      elCount.textContent = swapTo;
+      swapTo = null;
+    }
+
+    /* BRIGHTNESS, NOT OPACITY, and the two are not interchangeable here.
+       Opacity fades the letter against the background after it is drawn, which
+       flattens the whole thing into an ordinary crossfade. Brightness changes
+       how much light the letter is emitting BEFORE the galaxy blends with it,
+       and that is what makes the reveal ignite unevenly.
+
+       Blur first, then brightness. A blurred letter spreads its light over
+       more pixels so it reads dimmer, which turns the dodge down; as the blur
+       tightens the light concentrates and the galaxy amplifies it. The two
+       feed each other only in this order. */
+    elCount.style.filter =
+      'blur(' + (k * tune.blur).toFixed(3) + 'em) ' +
+      'brightness(' + ((1 - k * (1 - tune.floor)) * 100).toFixed(1) + '%)';
+  }
+
+  var coreA = document.getElementById('coreA');
+  var coreB = document.getElementById('coreB');
+  var elCount = document.getElementById('count');
+  var elLabel = document.getElementById('label');
+  var elReadout = document.getElementById('readout');
+  var elCharge = document.getElementById('charge');
+  var sparkArt = document.querySelector('#charge svg');
+  var elHalo = document.querySelector('.spark-halo');
+  var elFillPath = document.querySelector('.spark-fill');
+  var elHaloBlur = document.getElementById('haloBlur');
+  var haloBlurNow = -1;
+
+  YEARS_OPTIONS.forEach(function (y) {
+    var b = document.createElement('button');
+    // Bare numbers, not "5 years". Ten buttons of the long label do not fit.
+    b.textContent = y;
+    b.addEventListener('click', function () {
+      years = y;
+      steps = stepsFor(years);
+      reset();
+      sync();
+    });
+    document.getElementById('picker').appendChild(b);
+  });
+
+  function sync() {
+    var kids = document.getElementById('picker').children;
+    for (var i = 0; i < kids.length; i++) {
+      kids[i].className = (YEARS_OPTIONS[i] === years) ? 'on' : '';
+    }
+  }
+
+  function reset() {
+    fill = 0;
+    charged = false;
+  }
+
+  elCharge.addEventListener('mouseenter', function () { hovering = true; });
+  elCharge.addEventListener('mouseleave', function () { hovering = false; });
+  // Click resets so it can be tried again without reloading.
+  elCharge.addEventListener('click', reset);
+
+  /* ---- The spark cursor ---------------------------------------------------
+     PORTED VERBATIM from lsa-experience.js — same constants, same physics, same
+     draw. It is here so the charge can be judged against the thing that will
+     actually be doing the charging, rather than against a mouse pointer.
+
+     Do NOT tune it here. The overlay owns it; this is a copy for looking at,
+     and any change made here has to be made there or the two drift apart.
+
+     The one deliberate difference: the overlay reads the pointer from its own
+     root element, and this reads it from the window, because the lab has no
+     overlay root to hang it on. */
+  var SPARK_MAX = 40;
+  var SPARK_LIFE = 0.6;         // s
+  var SPARK_PER_SEC = 45;       // embers spawned per second
+  var SPARK_SPEED_MIN = 50;     // px/s outward from the cursor
+  var SPARK_SPEED_MAX = 170;
+  var SPARK_SIZE_MIN = 10;      // px, the shape's on-screen footprint
+  var SPARK_SIZE_MAX = 20;
+  var SPARK_SPIN_MAX = 5;       // rad/s, +/-
+  var SPARK_GLOW_RADIUS = 14;   // px, the cursor's own soft glow
+
+  var SPARK_SHAPE = new Path2D('M14.8563 14.88L9.09636 10.0498C9.09636 10.0498 8.31607 9.28792 7.44088 9.28792C6.5569 9.28792 5.77661 10.0498 5.77661 10.0498L0.0184526 14.88L0 14.8633L4.83112 9.10339C4.83112 9.10339 5.5912 8.32574 5.5912 7.44C5.5912 6.56305 4.83112 5.78452 4.83112 5.78452L0 0.0202103L0.0184526 0L5.77661 4.83552C5.77661 4.83552 6.5569 5.59911 7.44088 5.59911C8.31607 5.59911 9.09636 4.83552 9.09636 4.83552L14.8563 0L14.88 0.0254826L10.0392 5.78452C10.0392 5.78452 9.2844 6.56305 9.2844 7.44C9.2844 8.32574 10.0392 9.10339 10.0392 9.10339L14.88 14.8615L14.8563 14.88Z');
+  var SPARK_SHAPE_CENTER = 7.44;
+
+  // cfg.goColors.mix.hues from the overlay — the hues the show's biggest
+  // bursts use — plus one warm white.
+  var SPARK_COLORS = [357, 352, 46, 58].map(function (h) {
+    return 'hsl(' + h + ', 90%, 62%)';
+  }).concat(['#FFF6D6']);
+
+  var sparkCanvas = document.getElementById('sparks');
+  var sparkCtx = sparkCanvas.getContext('2d');
+  var sparks = [];
+  var sparkX = -1000, sparkY = -1000;
+  var sparkSeen = false;
+  var sparkDebt = 0;
+  var sparkW = 0, sparkH = 0, sparkDpr = 0;
+
+  window.addEventListener('mousemove', function (e) {
+    sparkX = e.clientX;
+    sparkY = e.clientY;
+    sparkSeen = true;
+  });
+
+  function sparkResize() {
+    var w = sparkCanvas.clientWidth || 1;
+    var h = sparkCanvas.clientHeight || 1;
+    var dpr = window.devicePixelRatio || 1;
+    if (w === sparkW && h === sparkH && dpr === sparkDpr) return;
+    sparkW = w; sparkH = h; sparkDpr = dpr;
+    sparkCanvas.width = Math.round(w * dpr);
+    sparkCanvas.height = Math.round(h * dpr);
+    sparkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function sparkTick(dt) {
+    if (!sparkSeen) return;
+
+    /* Spawned on a debt counter rather than a whole number per frame, so the
+       rate is per SECOND and does not quietly double on a 120Hz display. */
+    sparkDebt += SPARK_PER_SEC * dt;
+    while (sparkDebt >= 1) {
+      sparkDebt -= 1;
+      if (sparks.length < SPARK_MAX) {
+        var angle = Math.random() * Math.PI * 2;
+        var speed = SPARK_SPEED_MIN + Math.random() * (SPARK_SPEED_MAX - SPARK_SPEED_MIN);
+        sparks.push({
+          x: sparkX, y: sparkY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          rot: Math.random() * Math.PI * 2,
+          spin: (Math.random() - 0.5) * 2 * SPARK_SPIN_MAX,
+          size: SPARK_SIZE_MIN + Math.random() * (SPARK_SIZE_MAX - SPARK_SIZE_MIN),
+          color: SPARK_COLORS[(Math.random() * SPARK_COLORS.length) | 0],
+          life: 1
+        });
+      }
+    }
+
+    for (var i = sparks.length - 1; i >= 0; i--) {
+      var p = sparks[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.spin * dt;
+      p.life -= dt / SPARK_LIFE;
+      if (p.life <= 0) {
+        sparks[i] = sparks[sparks.length - 1];
+        sparks.pop();
+      }
+    }
+  }
+
+  function sparkDraw() {
+    sparkResize();
+    sparkCtx.clearRect(0, 0, sparkW, sparkH);
+    if (!sparkSeen) return;
+
+    sparkCtx.globalCompositeOperation = 'lighter';
+
+    for (var i = 0; i < sparks.length; i++) {
+      var p = sparks[i];
+      // Shrinks as well as fades, so a sparkle closes rather than blinking off.
+      var scale = (p.size * (0.4 + 0.6 * p.life)) / 15;
+      sparkCtx.save();
+      sparkCtx.translate(p.x, p.y);
+      sparkCtx.rotate(p.rot);
+      sparkCtx.scale(scale, scale);
+      sparkCtx.translate(-SPARK_SHAPE_CENTER, -SPARK_SHAPE_CENTER);
+      sparkCtx.globalAlpha = p.life;
+      sparkCtx.fillStyle = p.color;
+      sparkCtx.fill(SPARK_SHAPE);
+      sparkCtx.restore();
+    }
+    sparkCtx.globalAlpha = 1;
+
+    var glowR = SPARK_GLOW_RADIUS;
+    var glow = sparkCtx.createRadialGradient(sparkX, sparkY, 0, sparkX, sparkY, glowR);
+    glow.addColorStop(0,    'rgba(255, 250, 235, 0.95)');
+    glow.addColorStop(0.3,  'rgba(255, 246, 214, 0.55)');
+    glow.addColorStop(1,    'rgba(255, 246, 214, 0)');
+    sparkCtx.fillStyle = glow;
+    sparkCtx.fillRect(sparkX - glowR, sparkY - glowR, glowR * 2, glowR * 2);
+
+    sparkCtx.globalCompositeOperation = 'source-over';
+  }
+
+  var last = performance.now();
+
+  function frame(now) {
+    var dt = Math.min((now - last) / 1000, 0.064);
+    last = now;
+
+    // Read per frame rather than cached, so switching milestone mid-charge
+    // takes effect immediately instead of finishing at the old rate.
+    var chargeSeconds = chargeSecondsFor();
+    var drainSeconds = chargeSeconds * DRAIN_RATIO;
+
+    if (!charged) {
+      if (hovering) fill += dt / chargeSeconds;
+      else fill -= dt / drainSeconds;
+
+      if (fill >= 1) { fill = 1; charged = true; }
+      if (fill < 0) fill = 0;
+    }
+
+    /* THE POINT OF THIS PROTOTYPE. The number is derived from how full the
+       button is, never from elapsed time, so it rises and falls with the fill
+       and draining counts back down instead of freezing.
+
+       STILL TRUE with the step list. The number is quantised now, but it is
+       quantised off the fill, so the two still agree and a drain still walks
+       the steps backwards.
+
+       ceil, not floor, so that 0 is shown ONLY at a dead-empty spark. With
+       floor, fill 0 would already read 1 and the counter would never show
+       zero. Each step gets an equal slice of the fill; the last slice ends
+       exactly at 1, which is what puts the milestone itself on the final
+       frame. */
+    var idx = Math.ceil(fill * steps.length) - 1;
+    if (idx > steps.length - 1) idx = steps.length - 1;
+    var count = idx < 0 ? 0 : steps[idx];
+
+    /* Grow the light outward from the core. The OUTER stop is the front edge;
+       the inner one trails it by SOFT_BAND, and that gap is the blur.
+
+       The front is pushed past 1 as it completes (fill * (1 + SOFT_BAND)) so
+       that at full charge the trailing stop has reached the rim too — without
+       it the tips would still be mid-fade at 100%, and a fully charged spark
+       would never look fully lit.
+
+       Fixed to 4 places rather than raw: a drain lands on a residue like
+       4.9e-14, and an offset serialised in exponential notation is not a number
+       SVG will parse. */
+    var front = fill * (1 + SOFT_BAND);
+    var trail = front - SOFT_BAND;
+    if (front > 1) front = 1;
+    if (trail < 0) trail = 0;
+    coreA.setAttribute('offset', trail.toFixed(4));
+    coreB.setAttribute('offset', front.toFixed(4));
+
+    // Feeds the glow in the stylesheet, so light and level move together.
+    elCharge.style.setProperty('--fill', fill.toFixed(4));
+
+    /* THE ONE PLACE THE NUMBER IS WRITTEN. Step 4 puts the blur here and
+       nowhere else, so the effect fires on a real step change and on nothing
+       else. Works in both directions: a drain walks the steps back down and
+       each of those is a change too. */
+    if (count !== shownCount) {
+      if (shownCount === -1) {
+        // First frame. Nothing to blur out of, so just put it on screen.
+        elCount.textContent = count;
+      } else {
+        /* Restarted from the top even if a swap is already running. At 278ms a
+           step the next change can land before the last swap finished, and
+           riding the curve from the start keeps the number continuously soft
+           rather than snapping to sharp between two blurs. */
+        swapTo = count;
+        swapT = 0;
+        swapDur = Math.min(tune.maxMs / 1000, (chargeSeconds / steps.length) * tune.frac);
+      }
+      shownCount = count;
+    }
+
+    /* Grows with the FILL, not with the step, so it swells smoothly through
+       the whole charge instead of jumping on each number. It also shrinks back
+       on a drain, since fill runs both ways. */
+    var numScale = tune.scale0 + (tune.scale1 - tune.scale0) * fill;
+    elCount.style.transform = 'scale(' + numScale.toFixed(3) + ')';
+
+    /* THE ART GROWS, THE TARGET DOES NOT. This scales the <svg>, never the
+       .charge div, because that div is the 140px circle you are aiming at. A
+       hit area that swelled under a cursor being held still for seconds would
+       move the goalposts mid-gesture, which is the reason production nailed
+       its button to a fixed size in the first place. */
+    var sparkScale = tune.spark0 + (tune.spark1 - tune.spark0) * fill;
+    sparkArt.style.transform = 'scale(' + sparkScale.toFixed(3) + ')';
+
+    /* Brightness, two ways. The halo is light escaping the shape; the
+       brightness filter is the light inside it getting hotter. Both ride the
+       fill, so an empty spark is dead and a full one is burning. */
+    elHalo.style.opacity = (fill * tune.glow).toFixed(3);
+    elFillPath.style.filter = 'brightness(' + (1 + fill * tune.hot).toFixed(3) + ')';
+
+    // Only on change: rewriting a filter attribute every frame re-renders it.
+    if (haloBlurNow !== tune.glowBlur) {
+      haloBlurNow = tune.glowBlur;
+      elHaloBlur.setAttribute('stdDeviation', haloBlurNow);
+    }
+
+    swapTick(dt);
+
+    elLabel.textContent = charged ? 'Charged' : (hovering ? 'Charging' : 'Hover to charge');
+
+    elReadout.textContent =
+      'fill ' + (fill * 100).toFixed(0) + '%   ·   ' +
+      steps.length + ' steps, ' +
+      Math.round(chargeSeconds / steps.length * 1000) + 'ms each   ·   ' +
+      chargeSeconds.toFixed(1) + 's to charge, ' +
+      drainSeconds.toFixed(1) + 's to drain' +
+      '\nclick the button to reset';
+
+    sparkTick(dt);
+    sparkDraw();
+
+    requestAnimationFrame(frame);
+  }
+
+  sync();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

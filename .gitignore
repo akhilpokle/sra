@@ -1,0 +1,5 @@
+# Packaged handover bundles — regenerate from handoff/ instead
+*.zip
+
+# Imported skill file, not project code
+text-blur-reveal.skill
