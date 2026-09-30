@@ -601,7 +601,6 @@
     // an overlay.
     background: null,
 
-    palette: 'fire',        // fire | blue | purple | random · click-bursts only
 
     // The burst
     count: 200,             // sparkles per burst
@@ -742,9 +741,6 @@
     ambientLook: {
       background: null,
 
-      // Not used: each background burst is given its own colour (see
-      // ambientTick()).
-      palette: 'fire',
 
       scale: 3,
 
@@ -832,8 +828,8 @@
                   top. The twinkle comes from pixels lost in that shrink.
 
      WHAT A BURST DOES: throws `count` sparks out from a point. Each spark gets
-     a direction and speed from the burst shape, a colour from the palette, and
-     a life. Gravity pulls it down and drag slows it until it dies. Optional
+     a direction and speed from the burst shape (an even disc or a star), a
+     colour from the firework's hues, and a life. Gravity pulls it down and drag slows it until it dies. Optional
      extras: a flash of light at the burst point, and second bursts.
 
      UNITS: Hanabi's numbers are per frame at 30fps. This engine runs on real
@@ -849,35 +845,24 @@
      --------------------------------------------------------------------------
      USAGE
 
-       var fw = Fireworks2(canvasElement, { palette: 'blue' });
+       var fw = Fireworks2(canvasElement, config);
 
-       fw.cfg                the live config — mutate it, the engine re-reads it
-       fw.burst(x, y)        break a shell where it stands
-       fw.launch(x, y)       send a rocket up that bursts at y
-       fw.update(dt)         advance the sim by dt seconds
-       fw.draw()             render one frame
-       fw.clear()            wipe the stage, trail included
-       fw.resize()           re-read the canvas size (also hooked to window)
-       fw.stats()            live counts
-       fw.destroy()          unhook the resize listener
+       fw.cfg                the engine's copy of the config
+       fw.burst(x, y, spec)  a burst where it stands (background fireworks)
+       fw.launch(x, y, spec) a rocket that flies up and bursts at y (the show)
+       fw.update(dt)         move everything forward dt seconds
+       fw.draw(dt)           draw one frame
+       fw.destroy()          remove the resize listener
 
-     The caller owns the requestAnimationFrame loop; the engine never starts one.
-     Minimal driver:
+     The show runs the animation loop (tick() further down); the engine never
+     starts one.
 
-       var last = 0;
-       (function tick(t) {
-         var dt = last ? (t - last) / 1000 : 0; last = t;
-         fw.update(dt); fw.draw();
-         requestAnimationFrame(tick);
-       })(0);
-
-     `spec`, the optional last argument to burst/launch, describes one
-     firework:
+     `spec` describes one firework:
 
          { hues: [357, 352, 2], white: 0.33, scale: 1.5, look: {...} }
 
-     hues: colours to pick from. white: share of sparks drawn white.
-     scale: size. look: count, size, shape, flash and second-burst values
+     hues: colours to pick from (required). white: share of sparks drawn
+     white. scale: size. look: count, size, shape, flash and second-burst values
      for this firework only (see lookOf()). Leave any out and cfg is used.
 
      fw.onBurst(x, y, spec), if set, is called each time a rocket bursts.
@@ -892,13 +877,7 @@
     var FPS_REF = 30;
     var TAU = Math.PI * 2;
 
-    // Colour sets, as lists of hues. Every spark uses the same base saturation
-    // and lightness, plus a little random jitter.
-    var PALETTES = {
-      fire:   [357, 58, 46, 9, 352],
-      blue:   [220, 200, 240, 180, 210],
-      purple: [280, 300, 260, 320, 270]
-    };
+    // Every spark's base saturation and lightness, before a little jitter.
     var BASE_SAT = 90;
     var BASE_LIGHT = 62;
 
@@ -1016,30 +995,15 @@
       return 1 - d * (1 - inner);
     }
 
-    // Returns [angle, speed share 0-1] for spark i.
-    function shapePoint(i, S, type) {
-      switch (type) {
-        // A hollow ring: every spark near full speed, so the middle stays empty.
-        case 'ring':
-          return [Math.random() * TAU, 1 - Math.random() * S.ringThickness];
-
-        case 'star burst': {
-          var sa = Math.random() * TAU;
-          return [sa, Math.sqrt(Math.random()) * starRadius(sa, Math.round(S.starPoints), S.starInner)];
-        }
-
-        case 'concentric': {
-          // Sparks take turns between bands, so every band gets the same number.
-          var rings = Math.round(S.rings);
-          var band = ((i % rings) + 1) / rings;
-          return [Math.random() * TAU, band + (Math.random() - 0.5) * 2 * S.ringWidth];
-        }
-
-        // `normal`: an even disc. The square root spreads sparks evenly over the
-        // area instead of bunching them in the middle.
-        default:
-          return [Math.random() * TAU, Math.sqrt(Math.random())];
+    // Returns [angle, speed share 0-1] for one spark.
+    function shapePoint(S) {
+      if (S.type === 'star burst') {
+        var sa = Math.random() * TAU;
+        return [sa, Math.sqrt(Math.random()) * starRadius(sa, Math.round(S.starPoints), S.starInner)];
       }
+      // `normal`: an even disc. The square root spreads sparks evenly over the
+      // area instead of bunching them in the middle.
+      return [Math.random() * TAU, Math.sqrt(Math.random())];
     }
 
     // Fill in every key the caller left out, one level into objects.
@@ -1137,15 +1101,9 @@
 
       /* ---- Colour ----------------------------------------------------------- */
 
-      // A hue for one spark: from spec.hues if given, else from cfg.palette.
+      // A hue for one spark, picked from the firework's own hues.
       function pickHue(spec) {
-        var list;
-        if (spec && spec.hues && spec.hues.length) {
-          list = spec.hues;
-        } else {
-          if (cfg.palette === 'random') return Math.random() * 360;
-          list = PALETTES[cfg.palette] || PALETTES.fire;
-        }
+        var list = spec.hues;
         return list[Math.floor(Math.random() * list.length)];
       }
 
@@ -1227,11 +1185,10 @@
 
         // The shape, read once per burst.
         var S = L.shape;
-        var type = S.type;
 
         for (var i = 0; i < n; i++) {
           // Direction and share of full speed, from the shape.
-          var g = shapePoint(i, S, type);
+          var g = shapePoint(S);
           var a = g[0];
           var r = g[1] * speed;
           var p = spawn(x, y, Math.cos(a) * r, Math.sin(a) * r, spec);
@@ -1470,7 +1427,6 @@
 
       // Draws one frame, in five steps (numbered below).
       function draw(dt) {
-        if (!particleBuf) resize();
         dt = Math.min(dt === undefined ? 1 / 60 : dt, cfg.deltaCap);
 
         var pc = particleBuf.ctx, tc = trailBuf.ctx, gc = glowBuf.ctx;
@@ -1531,14 +1487,8 @@
         /* 4. Composite, additively, onto the visible canvas. */
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        if (cfg.background) {
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.fillStyle = cfg.background;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        } else {
-          // No background: clear to see-through so the page shows behind.
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+        // Clear to see-through so the page shows behind.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.globalCompositeOperation = 'lighter';
         ctx.drawImage(trailBuf.canvas, 0, 0);
         ctx.drawImage(particleBuf.canvas, 0, 0);
@@ -1554,20 +1504,6 @@
         ctx.restore();
       }
 
-      // Removes everything and wipes the canvas and buffers.
-      function clear() {
-        while (particles.length) pool.push(particles.pop());
-        rockets.length = 0;
-        blasts.length = 0;
-        pendingBursts.length = 0;
-        idleTime = 0;
-        if (!particleBuf) return;
-        particleBuf.ctx.clearRect(0, 0, w, h);
-        trailBuf.ctx.clearRect(0, 0, w, h);
-        glowBuf.ctx.clearRect(0, 0, glowBuf.canvas.width, glowBuf.canvas.height);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-
       // Follow window resizes. destroy() removes the listener.
       function onResize() { resize(); }
       window.addEventListener('resize', onResize);
@@ -1581,44 +1517,23 @@
       // api.onBurst, which the caller sets later.
       var api = {
         cfg: cfg,
-        canvas: canvas,
-        ctx: ctx,
         burst: burst,
         launch: launch,
         update: update,
         draw: draw,
-        resize: resize,
-        clear: clear,
         destroy: destroy,
-        size: function () { return { w: w, h: h }; },
-        stats: function () {
-          return {
-            particles: particles.length,
-            pooled: pool.length,
-            rockets: rockets.length,
-            blasts: blasts.length
-          };
-        },
-        debug: { particles: particles, pool: pool, rockets: rockets, blasts: blasts },
 
         /* Set this to a function(x, y, spec) to be told the moment each rocket
            bursts. Use it for anything that must happen on a burst, rather than
            guessing the timing. Every rocket calls it; tag your own rockets'
            specs to tell them apart.
 
-           Not stored on cfg, because "Copy config" turns cfg into JSON and
-           would silently drop a function. It runs inside update(), so an error
-           in it stops the animation loop. */
+           It runs inside update(), so an error in it stops the animation loop. */
         onBurst: null
       };
 
       return api;
     }
-
-    // Extras for the lab: a copy of the defaults, the palettes and FPS_REF.
-    createFireworks2.defaults = function () { return JSON.parse(JSON.stringify(DEFAULTS)); };
-    createFireworks2.PALETTES = PALETTES;
-    createFireworks2.FPS_REF = FPS_REF;
 
     return createFireworks2;
   })();
@@ -2193,7 +2108,6 @@
        already in the sky.
 
        One random colour for the whole burst, passed as a one-item `hues` list.
-       (palette: 'random' would give every spark a different colour.)
        No `scale` here, so ambientLook.scale still controls the size. */
     var w = ambCanvas.clientWidth;
     var h = ambCanvas.clientHeight;
