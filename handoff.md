@@ -13,6 +13,32 @@ step list, the 800ms pace, the blur swap, the star and the galaxy are all in
 production — it is a reference copy. Two pieces of the port are still open; see
 "Still to do on the charge port".
 
+✅ **2026-09-30: the medal and card went silver, and the charge got shorter.**
+Five changes, all in production:
+
+- The medal face is `Front.png` (since replaced by `medal.svg`, below) and
+  the rim is `Stack.png`. The old
+  `medal-face-blank.png` and `medal-edge.svg` are no longer loaded.
+- The number on the medal is grey, `#A0A0A0 → #949494`, matched to the new
+  face's own "Years".
+- **The sparkle on the number is REMOVED**, code, CSS, sliders and dev hook.
+- The charge is spread evenly from **4s at 5 years to 10s at 50**.
+- The card's plate is `Backs.png`, silver, same 3200×2160 (since replaced by
+  `Backl.png`, below).
+
+✅ **2026-09-30 (later): the medal face is `medal.svg`, and its texture moves.**
+Built in a new lab, `lab/medal-lab/`, then brought into production:
+
+- The medal face is `medal.svg`, **inlined into the page**, not an `<img>`.
+  `Front.png` is no longer loaded.
+- The face's round brushed-metal texture (the SVG's "image" layer) **turns its
+  dark side toward the cursor** and **fades with the tilt**: 0 far away, 1 at
+  the medal's edge. See "The medal's texture".
+- The card plate is `Backl.png`. `Backs.png` is no longer loaded.
+
+✅ **2026-09-30 (latest): diamonds on the medal, one for every 5 years.**
+Checked by eye at 50 years. See "The diamonds on the ring".
+
 > **This file is the current picture only.** The old 1500-line version carried
 > an 850-line archive of designs that no longer exist (a fuse, a generation
 > cascade, a GO button). That is gone from here. Recover it with
@@ -22,47 +48,55 @@ production — it is a reference copy. Two pieces of the port are still open; se
 
 ## What ships
 
-Six files, **1.37 MB**. Everything is vanilla, classic scripts, no build step,
-no CDN.
+Seven files, **3.9 MB** as of 2026-09-30 (later). Everything is vanilla, classic
+scripts, no build step, no CDN.
+
+⚠ **`Backl.png` is 2.7 MB and uncompressed**, 70% of the payload. It went in
+as it arrived. See Known issues.
 
 | File | What it is |
 |---|---|
 | `lsa-experience.css` | Every style. All selectors prefixed `lsa-`, scoped under `.lsa-root`. **It loads nothing** — see "One path rule". 37 KB. |
 | `fireworks-engine-2.js` | The fireworks — buffers, physics, rendering. One global, `Fireworks2`. **Loads first.** 45 KB. |
-| `lsa-experience.js` | The show — chrome, the tuned `cfg`, the charge, the sequence, the medallion, the sparkle on the number, teardown. Drives the engine, contains none of it. 154 KB. |
-| `assets/medal-face-blank.png` | Medallion front face, **with no number on it**, since 2026-09-07. **605 KB, the heaviest thing loaded.** 2250×2260, exactly 4× the old 563×565 viewBox, so it drops into the same coordinate space and the edge stack still lines up. The milestone is drawn over it as DOM text — see "The number on the medal". `assets/medal-face-blank.svg` is the same artwork as vector at **64 KB** and is not yet used; see Known issues. |
-| `assets/medal-edge.svg` | Textless silhouette, stacked 34× along Z to fake the coin's thickness — **81.6px of depth since 2026-09-07**, doubled from 40.8 because nobody could see the rim. 1.3 KB. |
+| `lsa-experience.js` | The show — chrome, the tuned `cfg`, the charge, the sequence, the medallion, teardown. Drives the engine, contains none of it. 149 KB. |
+| `assets/medal.svg` | Medallion front face, silver, **with no number on it**, since 2026-09-30 (later), replacing `Front.png`. **286 KB.** 563×565 viewBox, which is `Front.png`'s 2250×2260 at a quarter, so it fills the same 320×321 box. **Fetched and inlined into the DOM**, not an `<img>`, so its texture layer can be moved. The milestone is drawn over it as DOM text — see "The number on the medal". |
+| `assets/diamond.svg` | One diamond on the medal's ring, 42×42, loaded as an `<img>` once per diamond (up to 10). Since 2026-09-30. ⚠ **Not yet in `lsa-mount.html`'s hosting list.** Its ring gradient is a Figma `foreignObject`, which Chrome draws but is fragile. 20 KB. |
+| `assets/Stack.png` | Textless silver silhouette, stacked **68×** along Z to fake the coin's thickness — 81.6px of depth. Since 2026-09-30, replacing `medal-edge.svg`. 58 KB, loaded once and reused by all 68 layers. ⚠ **2250×2248, 12px shorter than the face**, so drawn into the same box it is stretched very slightly. 34 layers would now do, for half the compositing; not changed. |
 | `assets/gal4.jpg` | The galaxy the counter ignites through. **565 KB.** Moved here from the repo root 2026-09-04 so there is one `ASSET_PATH` rule and not a third path convention. |
+| `assets/Backl.png` | The card's surface, since 2026-09-30 (later), replacing `Backs.png` — a light silver plate with rounded corners baked into the artwork. 3200×2160, a landscape **1.4815**, so the card's 800×540 still matches. **2.7 MB and uncompressed.** |
 
 **It was 3.9 MB on the morning of 2026-09-07.** Two changes that day took 65%
 off it: the face and the galaxy were recompressed, from 2.28 MB and 1.05 MB; and
 the medallion's cursor-tracking shimmer was removed, taking a 542 KB mask with
 it. Both are written up under Known issues.
 
-⚠ **The face is now an INDEXED PNG** — 227 palette colours, 22 alpha levels.
-It was compared against the original side by side at the shipped 320px and again
-at 2×: no visible banding in the centre glow, no stepping on the edge. The
-artwork is a narrow brown-and-cream range, which is why a palette survives it.
-**Re-check it by eye if the medallion is ever made screen-relative** and drawn
-much larger — that is the condition this was not tested under.
+**The 09-07 recompression no longer applies to the face.** It was done on the
+brown `medal-face-blank.png`, which is no longer loaded.
 
 `lsa-mount.html` is the snippet you paste into Liferay, not a file you host.
 
-**One more thing has to load, and it is not a file you host: Aleo, from Google
-Fonts.** Three `<link>` tags at the top of `lsa-mount.html`. It is the only CDN
-in this project and the one deliberate exception to the no-CDN rule — see
+**Two more things have to load, and they are not files you host: Aleo and
+Public Sans, from Google Fonts.** Three `<link>` tags at the top of
+`lsa-mount.html`, carrying both families on one request. It is the only CDN in
+this project and the one deliberate exception to the no-CDN rule — see
 "Integrating with Liferay" for the two CSP entries it needs and what happens if
 they are refused.
 
-**Does NOT ship:** `assets/back.png` (no click-to-flip, nothing loads it),
+**Does NOT ship, replaced 2026-09-30:** `assets/medal-face-blank.png` (the
+brown face), `assets/medal-edge.svg` (the brown rim), `assets/card-back.png`
+(the cream plate), and later the same day `assets/Front.png` (the silver PNG
+face) and `assets/Backs.png` (the first silver plate). All still on disk,
+nothing loads them.
+
+**Does NOT ship:** `assets/back.png` (it was the coin's far cap while
+click-to-flip existed, 2026-09-10 to 09-21; nothing loads it again),
 `assets/Path.svg` (its path data is inlined as `SPARK_PATH` in
 `lsa-experience.js`, so the file itself is never fetched — one string now feeds
 both the charge star's three SVG copies and the cursor's `Path2D`),
-`assets/medal.svg` (the original numberless front face, replaced 2026-09-07),
 `assets/medal-face.png` (the face **with a 5 baked into it**, replaced later the
 same day; kept because subtracting it from the blank one is how the number's
 position was measured, and it is the only way to re-derive that), 
-`assets/medal-face-blank.svg` (the vector face, not wired up yet),
+`assets/medal-face-blank.svg` (the old brown face as vector, never wired up),
 `assets/shimmer.png` (the shimmer mask — the effect was removed 2026-09-07 and
 nothing reads the file now; still on disk),
 `fireworks-engine.js` and `lab/fireworks-lab.html` (engine 1, superseded, still
@@ -99,41 +133,37 @@ CSS or JS refers to it).
 8. The first burst takes the counter and the star away over 0.7s. Each burst
    moment clears a third of the black veil; after the third, the medallion and
    message are fully out.
-9. **1.4s after the centre firework breaks** — long enough for its sparkles and
-   its second break to settle — **the milestone sparkles on the medal's face**.
-   Dots in the shape of its own digits come up over 0.6s, twinkle for 2.8s and
-   fade out over 2.0s, so the whole beat is 6.8s from that break. The engraved
-   number stays visible underneath the entire time. See "The sparkle on the
-   number".
+9. ~~The milestone sparkled on the medal's face.~~ **Removed 2026-09-30.** The
+   number on the medal is plain now.
 10. Background fireworks start behind the blue veil and run until close.
 
-**The hold is as long as the milestone.** One interval per number, 800ms each,
-so every milestone runs at the same pace and differs only in how many numbers
-it walks. Leave the star early and it drains at half that rate, so a wobble
-costs a little progress rather than all of it.
+**The hold is spread evenly from 4s to 10s**, since 2026-09-30. 5 years is 4s,
+50 is 10s, and each milestone between adds the same ~0.67s. Past 50 it stays
+at 10s. The time for one number is the hold divided by how many numbers the
+counter walks, so **the gap between numbers is no longer the same at every
+milestone**. The user chose this knowingly over capping the old model at 10s,
+which would have made 25 to 50 all identical. Leave the star early and it
+drains at half the charge rate.
 
-All ten, measured in a running page on 2026-09-07 by driving one charge per
-milestone and counting the numbers that actually reached the screen:
+All ten, measured in a running page on 2026-09-30 by holding once per milestone
+and counting the numbers that reached the screen:
 
-| Milestone | Steps | Charge | Drain |
-|---|---|---|---|
-| 5 | 5 | 4.0s | 8.0s |
-| 10 | 10 | 8.0s | 16.0s |
-| 15 | 11 | 8.8s | 17.6s |
-| 20 | 12 | 9.6s | 19.2s |
-| 25 | 13 | 10.4s | 20.8s |
-| 30 | 14 | 11.2s | 22.4s |
-| 35 | 15 | 12.0s | 24.0s |
-| 40 | 16 | 12.8s | 25.6s |
-| 45 | 17 | 13.6s | 27.2s |
-| 50 | 18 | 14.4s | 28.8s |
+| Milestone | Steps | Charge | Per number | Drain |
+|---|---|---|---|---|
+| 5 | 5 | 4.0s | 800ms | 8.0s |
+| 10 | 10 | 4.7s | 467ms | 9.3s |
+| 15 | 11 | 5.3s | 485ms | 10.7s |
+| 20 | 12 | 6.0s | 500ms | 12.0s |
+| 25 | 13 | 6.7s | 513ms | 13.3s |
+| 30 | 14 | 7.3s | 524ms | 14.7s |
+| 35 | 15 | 8.0s | 533ms | 16.0s |
+| 40 | 16 | 8.7s | 542ms | 17.3s |
+| 45 | 17 | 9.3s | 549ms | 18.7s |
+| 50 | 18 | 10.0s | 556ms | 20.0s |
 
-**The ladder is lopsided, and that is a consequence of the step list rather
-than a choice.** 5 to 10 doubles the hold, because those are the only two
-milestones inside the every-number stretch; from 10 up each milestone adds one
-number and 0.8s. So a 10-year award already costs more than half of what 50
-does, and the ten milestones occupy 4.0s to 14.4s with two thirds of them
-crowded into the last four seconds.
+It replaced one flat 800ms per number, which ran 4.0s to 14.4s and doubled the
+hold from 5 to 10 years. **10 years is now the fastest pace, 467ms**, because
+it walks every number 1 to 10 in only 4.7s.
 
 **There is no click-to-skip.** Holding the spark on the button is the only route
 through. That was an explicit decision, not an omission.
@@ -145,10 +175,10 @@ through. That was an explicit decision, not an omission.
 ```
 1  galaxy     .lsa-galaxy    z  6   color-dodge, over everything. Charge only.
 2  spark      .lsa-spark     z  5   the cursor
-3  chrome     —              z  4   star, counter, RESET, close, dev panel
+3  chrome     —              z  4   star, counter, close, dev panel
 4  fireworks  .lsa-canvas    z  3   transparent composite
 5  black      .lsa-black     z  2   opaque; the show clears it in thirds
-6  card       .lsa-card      z  1   medallion + message + sparkle, never fades
+6  card       .lsa-card      z  1   medallion + message, never fades
 7  blue       .lsa-backdrop  z  0   blurred veil, constant throughout
 8  ambient    .lsa-ambient   z -1   background fireworks, seen THROUGH the blue
    intranet   —                     the live page, behind .lsa-root
@@ -157,12 +187,63 @@ through. That was an explicit decision, not an omission.
 **The order is the design.** The fireworks sit in *front* of the black, so they
 burn at full brightness while the card behind it is still hidden. Layer 8 is the
 only thing behind the blue veil — that blur is what makes it read as distance.
-The card is a transparent positioning box; it has no white surface of its own.
 
-**The sparkle field is not a stage layer.** `.lsa-medal-sparkle` is a canvas
-*inside* the medallion's front face, alongside `.lsa-medal-number`, which is
-what makes it ride the 3D tilt. A layer of its own at stage level would slide
-off the digits the moment the cursor moved the coin.
+**The card has a surface again, since 2026-09-10.** It was a transparent
+positioning box from 08-30 until then, so its padding boxed nothing you could
+see. It went flat white first, became the cream `card-back.png` plate on 09-11,
+the silver `Backs.png` plate on 09-30, and the lighter `Backl.png` later that
+day.
+Two things followed from it and are not decoration:
+
+- **The sentence's ink is dark now**, `#1b2733`. It was `#ffffff` for as long as
+  there was black behind it, which on a cream plate would be invisible.
+- **The medallion was designed and judged against black.** Its cream face and
+  gold rim now sit on a cream plate. ⚠ Nobody has made that call by eye.
+
+**The plate's rounded corners and gold rim live in the artwork's alpha**, so
+`.lsa-card` carries no `background-color` and no `border-radius`. Adding either
+back squares off the corners the PNG just rounded, or rounds them a second time
+at a different radius. The cost is that a failed load leaves a transparent card
+with dark text on it — the same bet the medallion's own images already take.
+
+✅ **The plate is no longer stretched.** Resolved 2026-09-21. It used to be:
+`background-size: 100% 100%` putting a landscape 3200×2160 image into a card
+that sized itself from its contents — **464×566, a portrait 0.82** — so the two
+axes scaled by different amounts and the artwork came out 1.8× taller than it
+was drawn. The 16px rim landed at 2.6px at the sides and 3.9px top and bottom.
+
+**The card now carries the artwork's own proportions: 800×540, which is
+1.4815 to four decimal places.** The rim is an even ~4px all round.
+`background-size` stays `100% 100%` — it means the same thing as `contain` now
+that the two agree, and leaving it that way makes a future ratio mistake show up
+as a stretch rather than as bare card down the sides.
+
+⚠ **The height is FIXED, so content that outgrows it overflows.** There is no
+reflow to warn you and nothing logs it — the rim simply crosses the sentence.
+Measured at the current 24px padding, 32px gap, 320×321 medallion and 20px type:
+the column is **409px in a 492px inner box**, 437px when a long name pushes the
+sentence to three lines. Re-measure any of those five numbers if you change one.
+
+**A 9-slice `border-image` is still the tidier end state** and would let the
+card resize freely; it would shift the inner padding, and it is not done.
+
+### The card's five numbers, all changed on 2026-09-21
+
+| | Was | Now |
+|---|---|---|
+| `.lsa-card` | 464 × 566, content-sized | **800 × 540**, written out |
+| padding | 56px 72px | **24px** |
+| `.lsa-card-text` | 24px | **20px** |
+| `.lsa-medal-scene` | 320 × 321 | **320 × 321**, unchanged |
+| gap | 32px | 32px, unchanged |
+
+The medallion went to **374 × 375** briefly the same day — the largest that
+still cleared a three-line sentence — and was called back to 320 by eye.
+
+⚠ **`.lsa-card-text` still carries `max-width: 420px`, tuned when the type was
+24px.** At 20px in a 752px-wide card it breaks the sentence as
+"…on completing 5 years / with DBS." Widening the measure is a one-line change
+and has not been made.
 
 **`.lsa-root` carries `isolation: isolate`, and it is load-bearing.** Without
 it the galaxy's `color-dodge` would blend all the way through to the live
@@ -228,6 +309,15 @@ reading 5, and ten milestones would have needed ten 2.3 MB faces.
 stays, since that word does not change — and the milestone is drawn over it as
 DOM text, `.lsa-medal-number`. **One face covers all ten milestones**, and
 `setYears()` writes the digit, so the dev panel's picker changes the medal.
+
+**The fill is SILVER since 2026-09-30**, `#A0A0A0 → #949494`, levelled to
+`Front.png`'s own "Years", which samples at `#949494` to `#9D9D9D`. The
+angle and stop positions are unchanged. What follows is the history of the
+brown fill it replaced.
+
+⚠ **The number's POSITION and SIZE were measured on the brown face** and have
+not been re-checked against `Front.png` or `medal.svg`. By eye it sits right
+on both. The fill was not re-sampled against `medal.svg` either.
 
 **The fill was levelled to the artwork, and the design spec was wrong.** The
 supplied gradient, `#A18D7E → #998474`, rendered visibly darker than the digit
@@ -334,162 +424,96 @@ covers the galaxy fade for it.
 
 ### The counter is still white, and the gradient cannot come across
 
-The medal's digit is a brown gradient. The counter is pure white and must stay
+The medal's digit is a grey gradient. The counter is pure white and must stay
 that way: `.lsa-galaxy`'s `color-dodge` needs white to ignite the letters, and a
-mid-tone brown is exactly what dodges hardest, which inverts the effect. The two
+mid-tone is exactly what dodges hardest, which inverts the effect. The two
 numbers match in face, weight, slant and size — **not in colour**, deliberately.
 See "The galaxy, and the three things that kill it silently".
 
 ---
 
-## The sparkle on the number
+## The medal's texture, since 2026-09-30 (later)
 
-Added 2026-09-07. When the centre firework breaks and its sparkles have
-settled, the milestone twinkles on the medal's face: a field of dots sitting in
-the shape of its own digits, holding for a few seconds and fading out.
+`medal.svg` has a layer named "image": the round brushed-metal texture in the
+middle of the face, behind the number. In the file it is a 387×387 circle at
+`opacity="0.7"`, filled by a pattern that holds an embedded 740×740 PNG
+(`#image0_5482_71034`). The circle is what draws, so it is the element that
+gets the class `.lsa-medal-image`; in JS it is `medalImage`.
 
-**The engraved number stays visible under it the whole time.** The dots are a
-flare over a digit that is already there, not the thing that puts it on the
-medal. Hiding the number and handing off to the sparkles was built as an option
-and rejected.
+**The SVG is fetched and inlined, and that is the only reason this works.** An
+SVG inside an `<img>` is a closed document that CSS and JS cannot reach. The
+`.lsa-medal-img` node is a `<div>` now and holds the `<svg>` once it arrives;
+`FACE_SCALE` still applies to it.
 
-**The dots never fly in.** They are in place from the first frame and the field
-fades up as a whole. That was an explicit call — an assembling effect was
-proposed and dropped — and it is why the twinkle sits on a floor rather than
-going to zero: a dot that goes fully dark makes the digits come apart and
-reassemble, which is the effect that was not wanted.
+**It turns its dark side toward the cursor.** The side of the medal nearest the
+cursor is the side tipping away, so the texture's darkest wedge is turned to
+face it. `DARK_ANGLE` 105 is where that wedge sits at rest, measured by
+averaging brightness around the embedded PNG; the other dark lobe, ~245, just
+follows. The angle is unwrapped so the 0.15s transition never spins the long
+way. Cursor left gives `rotate(-195deg)`.
 
-### The shape comes from the font
+**It fades with the tilt.** Opacity is the tilt strength rescaled: 0 at the
+screen's far corner, 1 at the medal's edge, and back to 0 toward the medal's
+centre, where the lean flattens. That **overrides the file's 0.7**. It starts at
+0 until the mouse moves.
 
-The digits are drawn to an offscreen canvas in `.lsa-medal-number`'s own
-computed font, and every grid square with ink under it becomes a dot. **One
-code path covers all ten milestones**, there is no eleventh asset to keep in
-step, and a change to the typeface or the medal's size carries through on its
-own. 88 dots at 5 years, 185 at 50, at the default 4px spacing.
+⚠ **Two layers in the SVG sit on top of the texture** (the radial lines and the
+centre glow, which also hold "Years") and mostly cover it. That is why it read
+as lace before any of this, and why the effect is subtler than the numbers
+suggest.
 
-A hand-authored point list was the alternative. It would have been ten lists,
-each of them wrong the day the artwork moved.
+⚠ **The fill pattern's ids are the SVG's own** (`pattern0_5482_71034` and
+friends). Inlined, they share the page's id space. Nothing on the intranet is
+likely to collide, and `turnImage()` finds the circle by that id.
 
-**Aimed by one read of the stylesheet.** `top` on `.lsa-medal-number` IS the ink
-line — the 0.055em nudge in the CSS is what makes that true — and the canvas
-shares `coinFront`'s box, so that value is the target with nothing to convert.
-Same single source `medalNumberY()` and `burstY()` already use.
+`lab/medal-lab/` is where this was built: the medal alone on white, with the
+same class names as production so changes carry back without renaming.
 
-⚠ **Then re-centred on measured ink, not on where `fillText` was told to put
-it.** `textBaseline: middle` centres the EM BOX, which is not the ink centre and
-is off by a different amount for every typeface — the same distinction the
-0.055em nudge exists for. So the ink's real bounding box is read back out of the
-pixels and the whole field is shifted onto the target. **That shift is why "50"
-centres as well as "5"**, and it is what makes the `fillText` placement above it
-merely need to be close enough to keep the glyphs on the canvas.
+---
 
-The bounding box is taken from **every** pixel while the dots are taken on the
-grid, in one pass. A box measured off the grid samples alone is coarse by up to
-a whole step, which would throw the centring by half of one.
+## The diamonds on the ring, since 2026-09-30
 
-### Why the dots are sprites and not arcs
+One diamond for every 5 years, `Math.floor(YEARS / 5)`, so 5 years has 1 and
+50 has 10. A 7-year award rounds down to 1. Taken from a reference sheet of
+all ten medals the user supplied.
 
-The first build drew hard-edged cream discs. On a cream medal face they read as
-the digit being **eroded**, not lit — texture, not light. What separates a point
-of light from a coloured dot is the falloff around it.
+**Where they sit.** Centred on straight down, 18° apart, on the edge of
+`medal.svg`'s inner disc: **r 170 about (281.5, 282.5)**, the line between the
+textured centre and the plain band. Each diamond's centre is on that line, so
+half of it is always on either side. `drawDiamonds()` in `lsa-experience.js`:
 
-Every dot is now one soft radial blob — white core, warm gold edge, transparent
-at the rim — built once into a 64px canvas and stamped with `drawImage`. A
-gradient per dot per frame would be ~185 gradient objects every frame for the
-same picture. Drawn with `globalCompositeOperation: 'lighter'` so overlapping
-dots **add**, which is what makes the denser parts of a glyph read as hotter.
+```
+n = floor(years / 5)
+angle(k) = 90° + (k − (n−1)/2) × 18°      k = 0 … n−1, 90° = straight down
+x = 281.5 + 170 × cos(angle)
+y = 282.5 + 170 × sin(angle)
+```
 
-Alongside it the resting level dropped from 0.32 to 0.16, so the flashes have
-something to stand out from.
+At 50 years they reach ±81° and stay clear of the ring text.
 
-### Every dot on its own clock
+**Two placements were tried first and dropped.** The band's middle line, r
+191.25, put them fully out in the band. Moving every diamond straight up by 21
+did not fix it: the ring curves, so a vertical nudge only suits the bottom one.
+The radius is the only thing that keeps every diamond half on the ring.
 
-One shared curve, a random phase and a random rate multiplier per dot, both
-rolled once at sample time. That costs nothing and is what stops the field
-pulsing as a single object.
+- Values are in `medal.svg`'s 563×565 units, written as percentages, so the
+  diamonds follow the medal if it is resized.
+- They live in `.lsa-medal-diamonds`, inside `coinFront`, so they ride the
+  tilt. It takes the same `FACE_SCALE` as the face.
+- `setYears()` redraws them, so the dev panel's milestone picker changes them.
+- The 18° spacing was measured off a low-resolution reference. It has not been
+  checked against the full artwork.
 
-**Sharpness is what makes it sparkle rather than breathe.** A raw sine spends
-half its time near the top, so every dot looks lit at once. Raising it to a
-power squashes the curve down and leaves short bright peaks with long dim gaps.
-`SPARKLE_SHARP` is 3; below about 2 it goes back to breathing.
+---
 
-**Size moves with brightness too.** A point of light that grows as it brightens
-reads as a spark catching; one that only changes alpha reads as a pixel being
-faded, which is what it actually is.
+## The sparkle on the number — REMOVED 2026-09-30
 
-**The twinkle keeps running through the fade out**, which is what stops the exit
-reading as one object being turned down. Dots that happen to be flashing as the
-level drops hang on a moment longer than dots that happen to be dim, so the
-field thins unevenly and the last few wink out on their own. Free here; it would
-have cost a per-dot exit time to fake.
-
-### It hangs off the centre firework, not off a clock
-
-`fw.onBurst` again, the same hook the veil steps on, testing `spec.n === 3`.
-
-**The centre is number 3 and it goes FIRST.** `goSequence` is inside-out — 3 at
-`at: 0`, then 2+4, then 1+5 — so this is the show's opening break, not its last.
-It is also the only firework carrying sub-bursts, which re-break 0.7s after the
-main one, so "its sparkles have settled" is a good deal later than the burst
-itself. That is what `settle` is buying.
-
-⚠ **Armed ABOVE the one-burst-per-frame guard, deliberately.** That guard exists
-so two rockets breaking on the same frame only move the veil once; this wants
-the opposite — it asks "did *this* firework break", and the answer must not
-depend on whether something else broke first on the same frame. Today firework 3
-breaks alone and the two agree, but that is a fact about the current
-`goSequence`, not a thing to rely on.
-
-⚠ **The end of the field is tested on elapsed time, not on the level.**
-`env <= 0` was the obvious test and it was **wrong**: the envelope is zero at
-*both* ends, so on the very first frame — age 0, still climbing — it read as
-finished and wiped the field before a single dot was ever drawn. The effect
-silently did nothing, with no error. Caught by driving a full run through
-`step()` and logging the canvas's total alpha per frame, not by reading.
-
-### Its values
-
-`sparkleTune` holds everything an eye has to judge, and **all seven have sliders
-in the dev panel** under **The sparkle on the number**.
-
-| Key | Default | What it does |
-|---|---|---|
-| `settle` | 1.4 | seconds from the centre break to the dots arriving |
-| `fadeIn` | 0.6 | seconds for the field to come up — **no slider** |
-| `hold` | 2.8 | seconds at full |
-| `fadeOut` | 2.0 | seconds to go |
-| `grid` | 4 | CSS px between dots — the density |
-| `floor` | 0.16 | the level an unlit dot rests at |
-| `rate` | 1.1 | flashes per second |
-| `halo` | 3.4 | glow width, against the dot's own radius |
-
-Everything lands **live** except `grid`, which is read while sampling rather
-than while drawing — it is in the cache key instead, so moving it re-samples on
-the next frame. The practical result is that the whole section can be judged
-during one press of `Play show` rather than a run per value.
-
-The rest are constants in the file and were not given controls: `SPARKLE_INK`
-0.55 (the alpha a pixel must clear to count), `SPARKLE_JITTER` 0.85,
-`SPARKLE_R` 1.15 and `SPARKLE_R_VARY` 0.55 (dot size), `SPARKLE_SHARP` 3, and
-`SPARKLE_R_LIT` 0.45.
-
-**Jitter is not decoration.** Dots on an exact grid read as a dot-matrix display
-— the eye finds the rows instantly. Just under half a step of scatter in each
-axis breaks the rows while every dot stays inside the glyph it came from. Rolled
-once, at sample time, so the field does not crawl.
-
-### What it costs, and what it does not
-
-185 stamps on a 320px canvas per frame at the largest milestone, on a canvas
-that is only painted for 6.8 seconds of the run. The sprite is built once. The
-sample is cached on milestone, canvas size, font and spacing, so a second run
-re-uses it.
-
-**Teardown needs nothing.** The canvas is a child of `.lsa-root` and goes with
-`root.remove()`; no listener is added and no timer is set. `resetScene()`
-disarms the clock and wipes the canvas — it deliberately does **not** drop the
-sampled dots, which are still correct. Verified: RESET wipes it, a second run
-reproduces it exactly, and close leaves zero `.lsa-medal-sparkle` nodes.
+Dots in the shape of the milestone used to twinkle on the medal's face 1.4s
+after the centre firework broke. **Removed at the user's request**: the
+`.lsa-medal-sparkle` canvas, `sparkleTune`, the drawing and timing code, the
+arming line in `fw.onBurst`, the lines in `resetScene()`, the seven dev-panel
+sliders, the CSS rule, and `__lsaDev.sparkle`. The whole thing is in git at
+commit `93a56bd` if it is ever wanted back.
 
 ---
 
@@ -575,12 +599,19 @@ overlay never renders unstyled for a frame; and the engine must load before
 `lsa-experience.js`, which calls into it. Both scripts are deferred, and
 deferred scripts run in document order — do not reorder them.
 
-### Aleo, and the one CDN in this project
+### Aleo and Public Sans, the one CDN in this project
 
-The count-up and the medal's number are both **Aleo 700 italic**, loaded from
-Google Fonts by three `<link>` tags at the top of `lsa-mount.html`. This is the
-only external dependency the overlay has and the only exception to the no-CDN
-rule. **It was a deliberate choice over self-hosting a woff2 in `assets/`.**
+The count-up and the medal's number are both **Aleo 700 italic**. The card's
+sentence is **Public Sans 600**, added 2026-09-10 when the card got a surface.
+Both come from Google Fonts on **one `css2` request** — three `<link>` tags at
+the top of `lsa-mount.html`, not six. This is the only external dependency the
+overlay has and the only exception to the no-CDN rule. **It was a deliberate
+choice over self-hosting the woff2 files in `assets/`.**
+
+⚠ **Only `wght@600` of Public Sans is fetched.** Restyling `.lsa-card-text` to
+another weight without adding that weight to the URL — in `lsa-mount.html` *and*
+`lsa-demo.html` — gets you a browser-synthesised fake, which looks close enough
+to miss.
 
 Two things to confirm with whoever owns the page's Content Security Policy:
 
@@ -589,16 +620,29 @@ Two things to confirm with whoever owns the page's Content Security Policy:
 
 **If either is refused, nothing breaks and nothing warns you.** The counter
 silently falls back to the system sans in `.lsa-count`'s stack and stops
-matching the medal, while the medal's own number falls back to Georgia. The fix
-is to delete the three tags and self-host the woff2 with an `@font-face`; the
+matching the medal, the medal's own number falls back to Georgia, and the card's
+sentence falls back to the system sans behind Public Sans. The fix is to delete
+the three tags and self-host both woff2 files with `@font-face` rules; the
 CSS needs no other change. Check it by eye on the real page rather than
 assuming, because a fallback font renders perfectly happily.
 
 ### One path rule, since 2026-09-07
 
-All three images — `medal-face-blank.png`, `medal-edge.svg`, `gal4.jpg` — are
-`img.src`, built from `ASSET_PATH`, which resolves **against the page**. Set
-that one constant and every image is found.
+Every image — `medal.svg`, `Stack.png`, `gal4.jpg` and `Backl.png` — is
+built from `ASSET_PATH`, which resolves **against the
+page**. Set that one constant and every image is found.
+
+⚠ **`medal.svg` is loaded with `fetch()`, not `img.src`**, since 2026-09-30.
+`fetch()` is governed by the page's CSP **`connect-src`**, which an image is
+not. On Liferay `assets/` must be same-origin or allowed there, or the medal
+face comes up **blank** with only an error in the console.
+
+**`Backl.png` is not an `img.src` either**, and it was still put
+through `ASSET_PATH` on purpose. It is the card's `background-image`, which is
+the natural thing to write as a `url()` in the stylesheet — and a `url()` in the
+stylesheet resolves against the *stylesheet*, which is exactly the two-rule trap
+below. So it is set from `lsa-experience.js` as
+`card.style.backgroundImage` instead. **Do not move it into the CSS.**
 
 **This used to be two rules and it was the easiest thing here to get wrong.**
 `shimmer.png` was a `mask-image` url() in the stylesheet, which resolves against
@@ -647,10 +691,7 @@ Then open `http://localhost:8126/lsa-demo.html`.
   which blanks the medallion. It also sends `Cache-Control: no-store`, so tuning
   reloads never serve a stale stylesheet.
 - `data-lsa-dev` on `<html>` exposes `window.__lsaDev` —
-  `{cfg, fw, amb, burst, launch, stats, go, step, sparkle}` — and the tuning
-  panel. `sparkle` is `{show(env, age), hide(), dots(), tune}`, which paints one
-  frame of the medal's dot field at any point in its life with no run and no
-  waiting — the only way to look at it standing still.
+  `{cfg, fw, amb, burst, launch, stats, go, step}` — and the tuning panel.
   `lsa-demo.html` sets it; `lsa-mount.html` deliberately does not, so no panel
   and no global ever exist on the intranet.
 - **A milestone picker and a `Play show` button**, added 2026-09-07, at the
@@ -658,7 +699,7 @@ Then open `http://localhost:8126/lsa-demo.html`.
   the only thing in the file that moves `YEARS` after mount — it calls
   `setYears()`, which rebuilds the counter's step list and rewrites the card
   line, then resets the stage. `Play show` resets and runs the sequence with no
-  hold, because judging fireworks at 50 years through a 14.4-second hold every
+  hold, because judging fireworks at 50 years through a 10-second hold every
   time makes the comparison useless. It resets first on purpose: `onGo()`
   returns early while anything is still scheduled, so without that it would do
   nothing mid-show and read as a broken button.
@@ -688,9 +729,9 @@ whole-object paste:
 load. Pasting new lab values leaves the per-firework rows stale unless you delete
 `fireworkCfg` from the literal first.
 
-**Neither route carries `chargeTune` or `sparkleTune`.** Both belong to the
+**Neither route carries `chargeTune`.** It belongs to the
 show's chrome rather than to the engine, and `Copy config` dumps `cfg` for the
-engine's benefit. Values dialled in on those two sections of the dev panel have
+engine's benefit. Values dialled in on that section of the dev panel have
 to be written into the file by hand or they are gone on reload.
 
 **`cfg.scale` does not reach the show.** `scaleOf(spec)` is
@@ -708,14 +749,14 @@ holds every tuned value**, and every one of them was dialled in by eye on
 
 | Key | What it does |
 |---|---|
-| `stepMs` 800 | how long one number is on screen. **Sets the whole charge length.** |
+| `minS` 4, `maxS` 10 | the hold at 5 and at 50 years, in seconds; everything between is spread evenly. **Sets the whole charge length.** Since 2026-09-30; replaced `stepMs` 800 |
 | `scale0` 0.30 | the size the number starts at, against the stylesheet's 88px. Taste; has a slider |
 | `scale1` 1.04 | the size it finishes at. **DERIVED — overwritten by `aimCounterAtMedal()` so it matches the medal's number. Editing it does nothing** |
 | `spark0/1` 0.65 → 1.65 | the star's size, against its 140px box |
 | `glow` 1, `glowBlur` 0.6 | the bloom behind the star, and its radius |
 | `hot` 0.5 | extra brightness on the star's fill at full |
 | `blur` 0.1em, `floor` 0.45 | the number swap's depth. **A cap, not a taste — see below** |
-| `maxMs` 250, `frac` 0.85 | the swap's length: `min(maxMs, stepMs × frac)` |
+| `maxMs` 250, `frac` 0.85 | the swap's length: `min(maxMs, one step × frac)` |
 | `peak` 0.65, `power` 1 | where in the swap the text changes, and the curve |
 | `pop` **false** | the charged flash. **Off** — it renders as a black disc, see Known issues |
 | `galaxyFade` 2.3 | seconds for the galaxy to leave, against a ~2.4s climb |
@@ -752,10 +793,8 @@ once:**
   still playing then. Running it from there freezes the milestone half-blurred
   at the moment it matters most.
 
-⚠ **The top end has still not been watched.** 800ms was tuned at 5 years, where
-it is a 4-second hold. At 50 it is 14.4 seconds of holding a cursor motionless
-and 28.8s to drain, which makes slipping off near the top close to
-unrecoverable. This is the single value most likely to need moving.
+⚠ **The top end has still not been watched.** Since 2026-09-30 it is a 10s hold
+at 50 years with a 20s drain, down from 14.4s and 28.8s.
 
 ### Still to do on the charge port
 
@@ -838,34 +877,39 @@ Its `<img>` was repointed to `../assets/gal4.jpg` when the photo moved.
   hosting list. **The medal's 3D tilt is untouched** — verified it still writes
   `rotateX(10.11deg) rotateY(12.45deg)` over the medal and resets to zero off it.
   `assets/shimmer.png` is still on disk and nothing reads it.
-- **The sparkle's density has not been settled.** At the default 4px spacing it
-  reads as "the 5 is *built out of* lights" rather than "the 5 has lights on
-  it". That is what was asked for — dots that come together to make up the
-  number — but it is the value most likely to move, and it is one slider. It has
-  only been judged in still frames and at 2.4× magnification; it has not been
-  watched running at its real size on a real screen.
-- **The sparkle beat runs past the end of the reveal.** It starts 1.4s after the
-  centre break and lasts 6.8s, while the veil finishes about 1.9s after that
-  break. So it is still going for roughly five seconds after the medallion has
-  fully landed, over the top of the background fireworks. Nobody has judged
-  whether those two fight.
 - **The glow is nearly inert at `devicePixelRatio: 1`** — total composite energy
   moves 7824 → 7832 turning it on. Correct engine behaviour, but the glow
   sliders look broken on a non-retina display.
 - **Resize below 1024px does not tear down.** Decided, never implemented.
 - **`prefers-reduced-motion` is out of scope**, explicitly.
-- ✅ **The payload came down from 3.9 MB to 1.37 MB** on 2026-09-07 — a 65% cut,
-  from recompressing the face and the galaxy and from deleting the shimmer's
-  mask. The images are 1.14 MB of that and the code 237 KB. See "What ships",
-  and the indexed-PNG caveat there.
-- **`medal-face-blank.svg` is on disk, unused, and 64 KB against the PNG's
-  605 KB.** It is the same artwork as vector, so switching `medalImg.src` to it
-  would take another **40%** off the whole payload and make the medallion crisp
-  at any size — which matters more now that the medallion being fixed at 320px is
-  a flagged item. Not done, and not free: SVG in an `<img>` must be served as
-  `image/svg+xml`, the face's filters would be rasterised by the browser rather
-  than baked, and it has not been compared against the PNG by eye. **Worth
-  doing**, and it is now the only real win left on the payload.
+- ⚠ **`Backl.png` (2.7 MB) is uncompressed.** It arrived 2026-09-30 and went
+  in as it arrived. It is 3200×2160 shown at 800×540, so it is far bigger than
+  it can ever show. **This is the biggest win available on the payload.**
+  Nothing in the CSS or JS depends on its pixel size, so a smaller file is a
+  drop-in, **but keep its ratio**. `medal.svg` also carries a 740×740 PNG
+  embedded as base64, which is most of its 286 KB.
+- **The payload history:** 3.9 MB → 1.37 MB on 2026-09-07 (recompression and
+  the shimmer's removal), 7.9 MB on 09-11 (`card-back.png`), 5.5 MB on 09-30
+  (the silver assets), 3.9 MB later that day (`medal.svg` and `Backl.png`).
+- ✅ **Click-to-flip was removed.** Built 2026-09-10, taken out 2026-09-21 at
+  the client's request. **The cursor tilt was not touched** — the medal still
+  leans toward the pointer from anywhere on the stage, and that is the only
+  rotation left. Gone with it: the back face and `assets/back.png`, `setFlip()`,
+  the keyframed `scaleZ` squeeze that kept the 68-layer rim from combing apart
+  edge-on, `applyCoinSqueeze()`, `overMedal()`, the click branch, the
+  `resetScene()` line, and the two squeeze sliders. `.lsa-medal-coin` and
+  `.lsa-medal-depth` stay as inert 3D wrappers — nothing writes a transform to
+  either — because the whole coin hangs off them and they are where the flip
+  goes if it comes back. **Every removed block and rule is kept verbatim in
+  `lab/medal-flip.reference.md`**, with the wiring notes needed to restore it.
+- ⚠ **Two bits of 2026-09-10 work are still in the code and in no document.**
+  The medal's whole-screen cursor tracking, and the RESET button being deleted.
+  The code comments are thorough; this file, the layer list above and
+  `progress.md` still describe the overlay without them. **Read the source, not
+  the docs, on those two.**
+- **`medal-face-blank.svg` is the OLD brown face as vector**, and is no use now
+  that the face is silver. `medal.svg` is the silver vector face and is what
+  ships.
 - **A CSS comment error hid `@keyframes lsa-charge-pop` entirely.** Found and
   fixed 2026-09-04: a comment block closed, ran on for three more lines and
   closed again, so the parser read the prose as a selector and swallowed the
@@ -896,7 +940,9 @@ Its `<img>` was repointed to `../assets/gal4.jpg` when the photo moved.
   second bug here that only a rendered frame could have caught; the missing
   `@keyframes` below is the first.
 - One throwaway lab file to delete: `lab/milestone-test.html`.
-  **`lab/charge-test.html` is NOT a throwaway** — see above.
+  **`lab/charge-test.html` is NOT a throwaway** — see above, and neither is
+  `lab/medal-flip.reference.md`, which is the only copy of the click-to-flip
+  code now that it is out of the source.
 
 ---
 

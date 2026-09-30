@@ -19,10 +19,11 @@
   on load.
 
   THREE FILES ARE TAGGED HERE, BUT THREE IMAGES ALSO HAVE TO BE HOSTED —
-  assets/medal-face-blank.png and assets/medal-edge.svg for the medallion, and
+  assets/medal.svg and assets/Stack.png for the medallion, and
   assets/gal4.jpg for the galaxy the counter ignites through. They are not
-  tagged below because nothing loads them from markup: all three are img.src,
-  built in lsa-experience.js against its ASSET_PATH constant, which resolves
+  tagged below because nothing loads them from markup: medal.svg is fetched
+  and the other two are img.src, all built in lsa-experience.js against its
+  ASSET_PATH constant, which resolves
   against THE PAGE. Set that constant to match wherever the folder ends up.
 
   ONE PATH RULE, not two, since 2026-09-07. shimmer.png used to be a
@@ -42,22 +43,27 @@
 -->
 
 <!--
-  Aleo, the count-up's typeface. THE ONE CDN IN THIS PROJECT, and the one thing
-  here that is not self-hosted — everything else is served from your own paths.
+  TWO TYPEFACES, ONE REQUEST. Aleo for the count-up, Public Sans for the
+  sentence on the card. THE ONLY CDN IN THIS PROJECT, and the one thing here
+  that is not self-hosted — everything else is served from your own paths.
 
   Two things to check with whoever owns the page's Content Security Policy:
   fonts.googleapis.com must be allowed as a style-src, and fonts.gstatic.com as
   a font-src. If either is refused, delete these three tags and self-host the
-  woff2 in assets/ with an @font-face instead — the overlay does not break
-  without them, the counter just falls back to the system sans (see .lsa-count
-  in lsa-experience.css).
+  woff2 files in assets/ with @font-face rules instead — the overlay does not
+  break without them, the counter and the sentence just fall back to the system
+  sans (see .lsa-count and .lsa-card-text in lsa-experience.css).
 
-  It goes before the stylesheet so the @font-face is known by the time
-  .lsa-count is styled.
+  Only wght 600 of Public Sans is fetched, matching .lsa-card-text. Restyling
+  that rule to another weight needs this URL changed too, or the browser fakes
+  the weight instead of loading it.
+
+  It goes before the stylesheet so both @font-faces are known by the time
+  .lsa-count and .lsa-card-text are styled.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&family=Public+Sans:wght@600&display=swap">
 
 <link rel="stylesheet" href="REPLACE_WITH_ASSET_PATH/lsa-experience.css">
 

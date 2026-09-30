@@ -1,0 +1,136 @@
+/* Medal lab. Medal rules copied from lsa-experience.css as of 2026-09-30.
+   The card, its sentence, the blue veil and the intranet background were
+   removed from this lab; the page is plain white. */
+
+html, body { margin: 0; padding: 0; height: 100%; }
+
+.lsa-lab-body {
+  background-color: #ffffff;
+}
+
+.lsa-root {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  isolation: isolate;
+}
+
+/* Centres the medal on screen, the way the card used to. Carries a translate,
+   never a rotation, so the tilt can read its rect safely. */
+.lsa-medal-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* The perspective root. JS writes the tilt transform here on every mousemove.
+   Never add a transform to this rule. */
+.lsa-medal-scene {
+  --lsa-medal-w: 320px;
+
+  width: var(--lsa-medal-w);
+  height: 321px;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform 0.15s ease-out;   /* the tilt's lag and weight */
+}
+
+.lsa-medal-coin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.lsa-medal-depth {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.lsa-medal-face {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+/* Placeholder. JS overwrites it with the offset that caps the edge stack. */
+.lsa-coin-front {
+  transform: translateZ(1px);
+}
+
+/* No backface-visibility on purpose: the rim must show from every angle. */
+.lsa-coin-edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lsa-coin-edge img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+
+.lsa-medal-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.lsa-medal-img svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The medal's "image" layer: the round radial texture in the middle of the
+   face. Tagged from medal-lab.js once the SVG is inlined.
+
+   JS writes a rotate() here on every mousemove. It turns about its own
+   centre, and the circle shape means only the texture appears to move.
+   Same 0.15s lag as the tilt so the two move together.
+
+   JS also writes its opacity, from the tilt strength. That overrides the
+   file's own opacity="0.7". Starts at 0 until the cursor moves. */
+.lsa-medal-image {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+/* The milestone on the face. Position and size are fractions of the medal. */
+.lsa-medal-number {
+  position: absolute;
+  left: 50%;
+  top: 44.934%;
+  transform: translate(-50%, -50%) translateY(0.055em);
+
+  font-family: Aleo, Georgia, "Times New Roman", serif;
+  font-size: calc(var(--lsa-medal-w) * 0.28597);   /* 161 / 563 */
+  font-style: italic;
+  font-weight: 700;
+  line-height: normal;
+  white-space: nowrap;
+
+  /* background-image, never the `background` shorthand: it un-clips the text. */
+  background-image: linear-gradient(166deg, #A0A0A0 19.49%, #949494 80.64%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 0.0124em 0.0186em rgba(0, 0, 0, 0.22);
+
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

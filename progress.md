@@ -1472,3 +1472,350 @@ magnification — it has not been watched running at its real size.
 lasts 6.8s; the veil finishes about 1.9s after that break. So the sparkle is
 still going for roughly five seconds after the medallion has landed, over the
 top of the background fireworks. Whether those two fight is unjudged.
+
+---
+
+## 2026-09-11 — the card got a real surface
+
+The ask, in full: *"replace the white background with the back png in assets."*
+
+The card went flat white on 09-10, after being a transparent positioning box
+since 08-30. This swaps that white for artwork — a cream plate with a 16px gold
+rim and rounded corners, all of it baked into a 3200×2160 PNG.
+
+### The filename was the one real decision
+
+The file arrived as `handoff/assets/Back.png`. There is already an
+`assets/back.png` — the medallion's own reverse face, which the click-to-flip
+built on 09-10 now loads. **On Windows, and on any case-insensitive host,
+copying one in beside the other is not two files, it is an overwrite.** The
+flip would have started showing the card's plate on the back of the coin, and
+the original artwork would have been gone.
+
+It went in as `assets/card-back.png`. Two files, two names that differ by more
+than a capital letter.
+
+### The url() is in the JS, and that was not a style preference
+
+A `background-image` wants to be a `url()` in the stylesheet. That is the
+natural place for it and it is the wrong place here.
+
+**A `url()` in a stylesheet resolves against the stylesheet**, not against the
+page. That is what forced `lsa-experience.css` and `assets/` to stay siblings
+wherever they were hosted, for as long as `shimmer.png` was a `mask-image` — a
+second path rule, and `handoff.md` had called the pair "the easiest thing here
+to get wrong". Deleting the shimmer on 09-07 got rid of it, and the note that
+**the stylesheet now loads nothing at all** was written up as a win.
+
+Putting the plate in the CSS would have handed that straight back, four days
+later, for one line. It is `card.style.backgroundImage` built from `ASSET_PATH`
+instead, which resolves against the page like every other image here. Still one
+constant to set at integration time.
+
+`card.style.backgroundImage`, not `card.style.background`. The shorthand resets
+`background-clip`, and this card contains the count-up, which is gradient text
+held together by `background-clip` — the exact way that was broken once already
+on 09-07. Nothing on the card itself clips. They are one property apart.
+
+### The white and the border-radius both had to go, not just the white
+
+The artwork carries its own rounded corners in its alpha. A `background-color`
+behind it paints the full padding box, so the transparent corners fill back in
+and the plate is square again. A `border-radius` on the element is a second
+rounding at a different radius, fighting the one in the PNG.
+
+So `.lsa-card` now has no colour and no radius, and the shape is entirely the
+image's. **The cost is that a failed load leaves a transparent card with dark
+text on it** — the ink went to `#1b2733` on 09-10 when the surface went white.
+That is the same bet the medallion's three images already take, so it is not a
+new exposure, but it is worth saying out loud.
+
+### The plate is stretched, and the number is known
+
+`background-size: 100% 100%` on a 3200×2160 image in a card that measures
+512×532. The axes scale by 0.160 and 0.246 — a 54% difference.
+
+Almost nothing in the artwork cares. It is a near-flat cream gradient with a
+faint grain, both symmetrical. **The rim is the exception**: 16px in the source,
+which lands at **2.6px at the sides and 3.9px top and bottom.**
+
+The two alternatives are worse rather than different. `contain` leaves bare card
+either side of the plate; `cover` crops the rim clean off the two long edges.
+A 9-slice `border-image` is the actual fix — it keeps the corners and the rim
+undistorted and stretches only the flat middle — and it costs a `border-width`
+on `.lsa-card`, which moves the content box inward and shifts the medallion.
+Not done, and flagged.
+
+**Judged on a screenshot at real size, not by argument.** It reads as a soft
+gold edge rather than a crisp line, which is what makes 1.3px of asymmetry
+survivable.
+
+### ⚠ 6.5 MB, in as it arrived
+
+The file is **6.5 MB**. Everything else that ships put together is 1.37 MB.
+
+It is a near-flat cream gradient displayed at about 512px, so essentially all of
+that is headroom. On 09-07 this project spent a day taking the payload from
+3.9 MB to 1.37 MB and called the remaining SVG swap "the only real win left".
+This puts it at **7.9 MB** — worse than the day that work started, and it makes
+the SVG face the second-biggest win rather than the first.
+
+Not compressed, because that was not what was asked for, and it is a drop-in:
+nothing in the CSS or the JS depends on the file's pixel size.
+
+### A note on how the browser pane behaved
+
+Screenshots taken inside a `browser_batch` came back **one frame stale** — twice
+a change was verified as applied in the DOM and the picture still showed the
+state before it. Taking the screenshot as its own call after the change shows
+the truth. Worth knowing before concluding from a batched screenshot that an
+edit did nothing.
+
+---
+
+## 2026-09-21 — the flip came out, and the card got the plate's proportions
+
+Two unrelated pieces of work. Production only; the labs were not touched.
+
+### Click-to-flip was removed, and kept
+
+The client's call. It went in on 09-10 and came out eleven days later, on the
+one condition that it be recoverable: *"keep the code and logic for rotation in
+a backup file to reference later and remove it from main."*
+
+**Which rotation mattered, because there were two.** The medallion carries a
+cursor tilt and carried a click-to-flip, and both are rotation. Asked rather
+than guessed. **The tilt stays** and is now the only rotation in the overlay.
+
+Out of `lsa-experience.js`: the back face and its `back.png`, `setFlip()` and
+the `flipped` flag, `applyCoinSqueeze()`, `overMedal()`, the click branch, the
+`resetScene()` line, `coinTune.thin` and `.hold`, and the two squeeze sliders.
+Out of `lsa-experience.css`: `.lsa-coin-back`, `@keyframes lsa-coin-thin`,
+`.lsa-medal-depth--flip`, the 0.9s transition on `.lsa-medal-coin`, and
+`backface-visibility` on `.lsa-medal-face`.
+
+**`lab/medal-flip.reference.md` holds all of it verbatim**, with the wiring
+notes and the three findings worth keeping — that the rim is 68 pictures rather
+than geometry and combs apart edge-on, that the squeeze has to lead the
+rotation rather than mirror it, and that `void medalDepth.offsetWidth` is what
+makes a second flip inside 0.9s replay the squeeze.
+
+**Two wrapper divs were kept rather than flattened.** `.lsa-medal-coin` and
+`.lsa-medal-depth` are inert now — no transform, no transition, no animation —
+but the whole coin hangs off their `preserve-3d`, and pulling them out means
+re-parenting 70 elements for nothing anyone can see. They are also exactly
+where the flip goes if it comes back.
+
+**The rim is still 68 layers and no longer needs to be.** The count went 34 → 68
+on 09-10 *because* the flip turned the coin through 90 degrees, where every
+slice is edge-on. At the tilt's ~34 degrees, 34 layers was compared and judged
+identical. So 34 would now halve the compositing for no visible change — left
+alone because that judgement was made against a black card and the card is
+cream now, and nobody has looked since. Written into the code where the
+constant lives.
+
+**The comment-close bug caught me again.** A `*/` added mid-edit closed a
+comment four lines early and the prose below it became code. `node --check`
+found it in one run. That is five times in this project now, and the fix is the
+same as it has always been: never let a closing `*/` land in the middle of a
+block you are rewriting.
+
+### The card now has the plate's proportions
+
+`card-back.png` is 3200×2160 — a landscape **1.4815**. The card was sizing
+itself from its contents at **464×566**, a portrait 0.82, and
+`background-size: 100% 100%` was stretching the artwork across that. The plate
+was rendering **1.8× taller than it was drawn**, and the 16px rim came out
+2.6px at the sides against 3.9px top and bottom.
+
+**`aspect-ratio` alone does nothing here, and that was worth finding out by
+trying it.** With both width and height auto, an absolutely-positioned
+shrink-to-fit box ignores it — measured at 0.82 with the property applied. One
+axis has to be definite.
+
+The first fix sized the box from the content: **860×580.5**, where 860 was
+measured as the narrowest width at which a three-line sentence still fits under
+the ratio. At 820 the three-line case silently broke it back to 1.449. That
+version lasted about an hour before the numbers were replaced by hand.
+
+**It is 800×540 now**, which is the plate's ratio to four decimal places, with
+**24px padding** and the sentence at **20px**. The rim is an even ~4px all
+round.
+
+**The medallion went to 374×375 and came back to 320×321.** 374 was derived —
+the tallest coin that still clears a three-line sentence in the new inner box,
+with one pixel to spare. It was looked at and called back the same day.
+
+⚠ **The card's height is fixed now, so content that outgrows it overflows
+rather than pushing the box.** Nothing warns you; the rim simply crosses the
+sentence. At the current five numbers the column is 409px in a 492px inner box,
+437px with a three-line name.
+
+**The counter's aim followed the medallion on its own, both times.** It is
+derived from `--lsa-medal-w` rather than written twice, so at 374 the count-up
+rendered at 106.92px against the medal number's 106.95px, and back at 320 it is
+91.52 against 91.51. ΔX 0.00px throughout.
+
+**Left alone, and flagged:** `.lsa-card-text` still carries `max-width: 420px`,
+tuned when the type was 24px. At 20px it breaks the sentence as "…on completing
+5 years / with DBS."
+
+---
+
+## 2026-09-30 — silver medal, silver card, shorter charge
+
+Five changes, all in production, each one asked for and done on its own.
+
+### A new medal: Front.png and Stack.png
+
+The brown face and rim were replaced by silver artwork. `Front.png` is the face
+and `Stack.png` is the rim, stacked 68 times as before. Two lines in
+`lsa-experience.js` and the hosting note in `lsa-mount.html`. The old files are
+still on disk and nothing loads them.
+
+`Front.png` is 2250×2260, the same as the old face, so it dropped into the same
+box. `Stack.png` is 2250×2248, 12px shorter, so the rim is stretched very
+slightly. The 0.992 shrink on the face was measured for the OLD rim and has not
+been re-checked.
+
+### The number on the medal went grey
+
+`#A0A0A0 → #949494`, sampled off the new face's own "Years" (`#949494` to
+`#9D9D9D`). Angle and stops unchanged. The number's position and size were
+measured on the brown face and not re-measured; by eye it sits right.
+
+### The sparkle on the number was removed
+
+The user's call. All of it: the canvas, `sparkleTune`, the draw and timing
+code, the `fw.onBurst` arming line, the `resetScene()` lines, the seven
+sliders, the CSS rule and `__lsaDev.sparkle`. About 15 KB of code. Verified: a
+full run has no errors, the stylesheet still parses with `lsa-charge-pop`, and
+no `.lsa-medal-sparkle` node exists. It is in git at `93a56bd`.
+
+### The charge is spread evenly from 4s to 10s
+
+The old model was 800ms per number, which ran 4.0s at 5 years to 14.4s at 50.
+The ask was a 4s minimum and a 10s maximum. Two ways were offered:
+
+- **Cap at 10s** and keep 800ms a number. Rejected: 25 to 50 would all take the
+  same 10s, so bigger awards stop feeling bigger.
+- **Spread evenly**, 4s at 5 to 10s at 50, about 0.67s per milestone, with the
+  gap per number worked out from that. **Chosen.**
+
+The catch, told to the user before they chose: the gap between numbers is no
+longer the same at every milestone. It is 800ms at 5, 467ms at 10 and 556ms at
+50. That undoes the 09-04 request to keep it constant, knowingly.
+
+`chargeTune.stepMs` is gone; `minS` 4 and `maxS` 10 replace it. Measured by
+holding once per milestone: 4.02, 4.68, 5.33, 6.02, 6.68, 7.33, 8.02, 8.68,
+9.35, 10.00s. The blur swap still fits: its 250ms cap binds even at 467ms.
+
+`lab/charge-test.html` still runs the old 800ms.
+
+### The card plate went silver: Backs.png
+
+Replaces `card-back.png`. Same 3200×2160, so the card's 800×540 still matches
+and nothing is stretched. 3.1 MB against the old 6.5 MB.
+
+### Payload
+
+5.5 MB, down from 7.9. `Backs.png` and `Front.png` are 85% of it and neither
+is compressed.
+
+---
+
+## 2026-09-30 (later) — the medal lab, and a texture that follows the cursor
+
+### A separate lab for the medal
+
+`lab/medal-lab/` — `index.html`, `medal-lab.css`, `medal-lab.js`. The medal
+alone on a white page: no card, no sentence, no veil, no fireworks. The medal,
+its 68-layer rim, the number and the cursor tilt were copied from production
+with the same values and the same `lsa-` class names, so anything built there
+carries back without renaming.
+
+It runs from a second `launch.json` entry, `medal-lab`, on port **8127**,
+because another chat's server holds 8126. Open
+`http://localhost:8127/lab/medal-lab/index.html` — the bundled server does not
+serve a folder's `index.html` on its own, so the bare folder URL is a 404.
+
+### The face is medal.svg
+
+Swapped for `Front.png`. Its 563×565 viewBox is `Front.png` at a quarter, so it
+fills the same 320×321 box with no CSS change. The SVG has "Years" and no
+number, so the DOM number still sits on top as before.
+
+**It is inlined, not an `<img>`.** The ask was to target a layer inside it named
+"image", and an SVG in an `<img>` is a closed document. It is fetched and
+written into a `<div>` instead. The "image" layer turned out to be a circle
+filled by a pattern that holds an embedded PNG of brushed metal; the circle is
+tagged `.lsa-medal-image`.
+
+### The texture turns and fades
+
+- **It turns its darkest wedge toward the cursor**, since that is the side of
+  the medal tipping away. The wedge sits at ~105° at rest, found by averaging
+  brightness around the embedded PNG rather than guessed. The user's example
+  of −90° assumed a wedge at the top; this one starts at the right, so cursor
+  left is −195°.
+- **Its opacity follows the tilt strength**: 0 at the far corner, 1 at the
+  medal's edge, back to 0 over the medal's centre where the lean flattens.
+
+**Checked by looking, not only by numbers.** The first screenshots showed no
+texture at all and suggested the rotate had broken it. It had not: filling the
+circle red showed it drawing, and hiding the two SVG layers above it showed the
+brushed metal with its dark wedge on the left. **Those two layers — radial lines
+and the centre glow — cover most of the texture**, which is why it read as
+lace and why the effect is quieter than it sounds. Offered to change the
+layering; not answered.
+
+### Ported to production
+
+The same code went into `lsa-experience.js` and `lsa-experience.css` as it ran
+in the lab. The card, the sentence and the background stay in production —
+removing them was lab-only. `lsa-mount.html`'s hosting note now lists
+`medal.svg` in place of `Front.png`.
+
+⚠ **New integration risk:** `fetch()` is under the page's CSP `connect-src`,
+which an `<img>` never was. If Liferay blocks it the face is blank.
+
+### The card plate is Backl.png
+
+Replaces `Backs.png`. Same 3200×2160, so nothing stretches. 2.7 MB,
+uncompressed.
+
+### Payload
+
+**3.9 MB**, down from 5.5. `Backl.png` is 70% of it.
+
+---
+
+## 2026-09-30 (latest) — diamonds on the ring
+
+The medal now carries one diamond for every 5 years: 1 at 5, 10 at 50. The
+count and layout come from a reference sheet of all ten medals the user sent,
+where dots under "Years" grow by one per milestone.
+
+### How they are placed
+
+`drawDiamonds()` in `lsa-experience.js`. One formula, no table: centred on
+straight down, 18° apart, each diamond's centre on the edge of `medal.svg`'s
+inner disc, r 170. So half of every diamond sits on either side of the ring.
+`setYears()` calls it, so the milestone picker changes the diamonds.
+
+### It took three tries
+
+- **r 191.25, the middle of the band.** The diamond is 42 and the band 42.5, so
+  it fitted neatly, but it put the stones fully out in the band. The user said
+  it sat below the ring.
+- **Moved straight up by 21.** Still wrong. The ring curves, so a vertical
+  nudge only suits the bottom diamond.
+- **r 170, the ring's own edge.** Right. Checked by eye at 50 years in the
+  browser. **Confirmed by the user.**
+
+### Still open
+
+- `assets/diamond.svg` is not yet in `lsa-mount.html`'s hosting list.
+- The 18° spacing was measured off a small reference image.
+- `diamond.svg` draws its ring gradient with a Figma `foreignObject`. Chrome
+  shows it; other renderers may not.

@@ -10,6 +10,16 @@
         "8126"
       ],
       "port": 8126
+    },
+    {
+      "name": "medal-lab",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        ".claude/serve.js",
+        "C:\\Users\\akhil\\Desktop\\SRA",
+        "8127"
+      ],
+      "port": 8127
     }
   ]
 }
