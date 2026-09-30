@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<!--
+  One run of the overlay under test control. Loaded in an iframe by
+  lab/regression/index.html; not useful on its own.
+
+  ?build=before   loads lab/regression/before/ (the saved baseline)
+  ?build=current  loads the files in the project root
+  ?years=N        the milestone
+  ?seed=N         seed for Math.random
+
+  Math.random, performance.now and requestAnimationFrame are replaced, so the
+  page only moves when the parent calls __h.step(), and two runs with the same
+  seed make the same random choices.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="/">
+<title>Regression run</title>
+<style>html, body { margin: 0; height: 100%; background: #123; }</style>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+
+  // Seeded random (mulberry32).
+  var a = Number(q.get('seed')) || 12345;
+  Math.random = function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+
+  // Fixed pixel density, so a run does not change if the window's does.
+  Object.defineProperty(window, 'devicePixelRatio', { get: function () { return 1; } });
+
+  // A clock and animation loop that only move when step() is called.
+  var now = 0, cbs = [], nextId = 0;
+  performance.now = function () { return now; };
+  window.requestAnimationFrame = function (cb) { cbs.push({ id: ++nextId, cb: cb }); return nextId; };
+  window.cancelAnimationFrame = function (id) { cbs = cbs.filter(function (c) { return c.id !== id; }); };
+
+  window.__h = {
+    frame: 0,
+    step: function (n) {
+      for (var k = 0; k < n; k++) {
+        now += 1000 / 60;
+        this.frame++;
+        var list = cbs; cbs = [];
+        list.forEach(function (c) { c.cb(now); });
+      }
+    }
+  };
+})();
+</script>
+</head>
+<body>
+<div id="lsa-mount" data-name="Akhil"></div>
+<script>
+(async function () {
+  var q = new URLSearchParams(location.search);
+  document.getElementById('lsa-mount').setAttribute('data-years', q.get('years') || '5');
+  var dir = q.get('build') === 'before' ? 'lab/regression/before/' : '';
+
+  // Fonts first, so the card's layout is final before the overlay measures it.
+  var fonts = document.createElement('link');
+  fonts.rel = 'stylesheet';
+  fonts.href = 'https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&family=Public+Sans:wght@600&display=swap';
+  document.head.appendChild(fonts);
+  await new Promise(function (r) { fonts.onload = r; fonts.onerror = r; });
+  await Promise.all([
+    document.fonts.load('italic 700 88px Aleo'),
+    document.fonts.load('600 20px "Public Sans"')
+  ]);
+
+  var css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = dir + 'lsa-experience.css';
+  document.head.appendChild(css);
+  await new Promise(function (r) { css.onload = r; });
+
+  // The engine file is optional: once it is merged into lsa-experience.js
+  // the current build no longer has one.
+  var files = [];
+  var head = new XMLHttpRequest();
+  head.open('HEAD', dir + 'fireworks-engine-2.js', false);
+  head.send();
+  if (head.status === 200) files.push(dir + 'fireworks-engine-2.js');
+  files.push(dir + 'lsa-experience.js');
+
+  for (var i = 0; i < files.length; i++) {
+    await new Promise(function (r) {
+      var s = document.createElement('script');
+      s.src = files[i];
+      s.onload = r;
+      document.body.appendChild(s);
+    });
+  }
+
+  // Wait for the medal SVG and every image.
+  while (!document.querySelector('.lsa-medal-img svg')) {
+    await new Promise(function (r) { setTimeout(r, 20); });
+  }
+  await Promise.all([].map.call(document.images, function (img) {
+    return img.complete ? 0 : new Promise(function (r) { img.onload = img.onerror = r; });
+  }));
+
+  window.__h.ready = true;
+})();
+
+// A short fingerprint of a canvas's pixels.
+function hashCanvas(c) {
+  if (!c || !c.width) return 'none';
+  var d = new Uint32Array(c.getContext('2d').getImageData(0, 0, c.width, c.height).data.buffer);
+  var h = 2166136261, lit = 0;
+  for (var i = 0; i < d.length; i++) {
+    if (d[i]) lit++;
+    h = Math.imul(h ^ d[i], 16777619);
+  }
+  return (h >>> 0).toString(16) + ':' + lit;
+}
+
+// Everything visible about the show at this moment.
+window.__h.snapshot = function () {
+  function q(s) { return document.querySelector(s); }
+  function st(s, p) { var e = q(s); return e ? e.style[p] || '' : 'missing'; }
+  function attr(s, a) { var e = q(s); return e ? e.getAttribute(a) : 'missing'; }
+  var root = q('.lsa-root');
+  return {
+    frame: window.__h.frame,
+    main: hashCanvas(q('.lsa-canvas')),
+    ambient: hashCanvas(q('.lsa-ambient')),
+    spark: hashCanvas(q('.lsa-spark')),
+    rootClass: root ? root.className : 'missing',
+    rootStyle: root ? root.getAttribute('style') || '' : 'missing',
+    black: q('.lsa-black') ? q('.lsa-black').className : 'missing',
+    count: q('.lsa-count-value') ? q('.lsa-count-value').textContent : 'missing',
+    countTransform: st('.lsa-count-value', 'transform'),
+    countFilter: st('.lsa-count-value', 'filter'),
+    countY: q('.lsa-count') ? q('.lsa-count').style.getPropertyValue('--lsa-count-y') : 'missing',
+    label: q('.lsa-charge-label') ? q('.lsa-charge-label').textContent : 'missing',
+    chargeClass: q('.lsa-charge') ? q('.lsa-charge').className : 'missing',
+    chargeStyle: attr('.lsa-charge', 'style'),
+    sparkArt: st('.lsa-spark-art', 'transform'),
+    coreA: attr('#lsa-spark-core-a', 'offset'),
+    coreB: attr('#lsa-spark-core-b', 'offset'),
+    halo: st('.lsa-spark-halo', 'opacity'),
+    fill: st('.lsa-spark-fill', 'filter'),
+    haloBlur: attr('#lsa-spark-halo-blur', 'stdDeviation'),
+    galaxy: attr('.lsa-galaxy', 'style'),
+    tilt: st('.lsa-medal-scene', 'transform'),
+    texture: attr('.lsa-medal-image', 'style'),
+    medalNumber: q('.lsa-medal-number') ? q('.lsa-medal-number').textContent : 'missing',
+    diamonds: [].map.call(document.querySelectorAll('.lsa-medal-diamond'),
+      function (d) { return d.getAttribute('style'); }).join('|'),
+    cardText: q('.lsa-card-text') ? q('.lsa-card-text').textContent : 'missing',
+    cardStyle: attr('.lsa-card', 'style'),
+    faceStyle: attr('.lsa-coin-front', 'style'),
+    edges: document.querySelectorAll('.lsa-coin-edge').length,
+    panel: !!q('.lsa-panel')
+  };
+};
+</script>
+</body>
+</html>

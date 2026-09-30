@@ -1,0 +1,724 @@
+/* ==========================================================================
+   Long Service Award — Milestone Overlay
+   Styles for the overlay that plays on top of the live Liferay intranet page.
+   --------------------------------------------------------------------------
+   RULES FOR THIS FILE — they keep it from touching Liferay's own page:
+
+   1. Every class starts with "lsa-".
+   2. Every rule sits under .lsa-root, the overlay's one container.
+   3. No bare tag selectors (body, div, button...).
+   4. Nothing here changes Liferay's own styles.
+   5. This file loads nothing (no url()). Every image is set from
+      lsa-experience.js, so this file can be hosted anywhere.
+
+   Desktop only. The script does not run below 1024px wide, so there are no
+   small-screen rules.
+
+   LAYERS, back to front (z-index inside .lsa-root):
+     -1  .lsa-ambient   background fireworks, seen through the blue veil
+      0  .lsa-backdrop  blurred blue veil over the page
+      1  .lsa-card      the card with the medal and the sentence
+      2  .lsa-black     black cover, cleared by the fireworks
+      3  .lsa-canvas    the main fireworks
+      4  buttons        the star, the counter, close, dev panel
+      5  .lsa-spark     the spark cursor
+      6  .lsa-galaxy    galaxy photo that lights up the counter
+   ========================================================================== */
+
+/* The overlay's container. Fixed over the whole window, above the page.
+
+   isolation: isolate is REQUIRED. .lsa-galaxy uses a blend mode, and without
+   this the blend would reach through to the Liferay page behind. */
+.lsa-root {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  isolation: isolate;
+}
+
+/* Background fireworks canvas. It sits behind the blue veil, so these read
+   as soft and far away. Never takes clicks. */
+.lsa-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Blue veil over the page. Blurs and tints it, and blocks clicks to it while
+   the overlay is open. Stays the same for the whole show. */
+.lsa-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(23, 39, 51, 0.60) 0%, rgba(69, 118, 153, 0.60) 100%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+/* ---- The counter ----------------------------------------------------------
+
+   The number that counts up to the milestone while the user holds the spark
+   on the star. It sits over the middle of the screen, and at a full charge
+   it lands exactly on top of the number on the medal. */
+.lsa-count {
+  /* How far the counter sits above screen centre so it lines up with the
+     medal's number. Set by aimCounterAtMedal() in lsa-experience.js. Do not
+     type a value here. */
+  --lsa-count-y: 0px;
+
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  transform: translate(-50%, -50%) translateY(var(--lsa-count-y));
+
+  /* Must stay pure white. The galaxy's blend needs white to light it up. */
+  color: #ffffff;
+
+  /* Aleo from Google Fonts. If the page blocks Google Fonts, the system font
+     shows instead and nothing breaks. */
+  font-family: Aleo, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Base size. The script scales the number from 0.30x to its final size, and
+     the final size is worked out to match the medal's number. */
+  font-size: 88px;
+
+  /* Same face, weight and slant as .lsa-medal-number. Change one, change
+     both, or the counter will not match the medal. */
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+
+  /* The medal's number has no letter spacing, so neither does this. */
+  letter-spacing: normal;
+
+  pointer-events: none;
+
+  /* Even-width digits so the number does not jiggle as it changes. */
+  font-variant-numeric: tabular-nums;
+
+  /* NO text-shadow. A soft glow would make the galaxy light up around the
+     number instead of in it. */
+}
+
+/* The digits inside the counter. The script grows them with a transform and
+   blurs them with a filter on every frame, so neither gets a CSS transition. */
+.lsa-count-value {
+  display: inline-block;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+/* ---- The star button ------------------------------------------------------
+
+   The user holds the cursor here to charge the show. The circle is the target;
+   the star inside it is the art. */
+.lsa-charge {
+  /* How close the cursor is, 0 to 1. Written by the script. Nothing reads it
+     right now. */
+  --lsa-near: 0;
+
+  /* How full the star is, 0 to 1. Written by the script. The outline uses it
+     to brighten as the star fills. */
+  --lsa-fill: 0;
+
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+
+  /* The target never changes size, so a held cursor never falls off it. Only
+     the star art inside grows. */
+  width: 140px;
+  height: 140px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+
+  /* The star grows past this box at full charge, so nothing is clipped. */
+  overflow: visible;
+
+  /* No box-shadow and no border. A round glow behind a four-point star looks
+     wrong, and under the galaxy it shows as a black disc. */
+}
+
+/* The star's SVG. The script scales it from 0.65x to 1.65x around its centre. */
+.lsa-charge .lsa-spark-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+/* The star's thin gold outline. It brightens as the star fills. */
+.lsa-charge .lsa-spark-track {
+  fill: none;
+  stroke: rgba(240, 194, 75, calc(0.34 + 0.46 * var(--lsa-fill)));
+  stroke-width: 0.22;
+  stroke-linejoin: round;
+}
+
+/* The light that fills the star from the centre out. Its gradient is driven
+   by the script. */
+.lsa-charge .lsa-spark-fill {
+  stroke: none;
+}
+
+/* A blurred copy of the star behind it, for the glow. The script sets its
+   opacity and brightness. Starts hidden. */
+.lsa-charge .lsa-spark-halo {
+  stroke: none;
+  opacity: 0;
+}
+
+/* A white flash when the star is full.
+
+   OFF (chargeTune.pop is false). Do not turn it back on as it is: under the
+   galaxy it shows as a black disc behind the star. A replacement should be
+   drawn from the star's own shape, not from a box-shadow. */
+@keyframes lsa-charge-pop {
+  0% {
+    box-shadow: 0 0 18px rgba(240, 194, 75, 0.5);
+  }
+  35% {
+    box-shadow: 0 0 64px 12px rgba(255, 240, 200, 0.95);
+  }
+  100% {
+    box-shadow: 0 0 18px rgba(240, 194, 75, 0);
+  }
+}
+
+.lsa-charge--pop {
+  animation: lsa-charge-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+/* When the first firework bursts, the counter and the star fade out and stop
+   taking the cursor. */
+.lsa-root--fired .lsa-count,
+.lsa-root--fired .lsa-charge {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lsa-count,
+.lsa-charge {
+  transition: opacity 0.7s ease;
+}
+
+/* "HOLD YOUR SPARK HERE", under the star. */
+.lsa-charge-label {
+  position: absolute;
+  top: calc(100% + 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* UNUSED. The reset button was removed and nothing builds it now. */
+.lsa-reset {
+  position: absolute;
+  bottom: 64px;
+  left: calc(50% + 140px);
+  z-index: 4;
+  padding: 18px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.lsa-reset:hover {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+/* ---- The black cover ------------------------------------------------------
+
+   Solid black over the card. The fireworks are drawn in front of it, so they
+   burn bright while the card stays hidden. Each burst clears a third of it. */
+.lsa-black {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #000000;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.9s ease;
+}
+
+/* The three steps, one per burst. The script adds them one by one and never
+   removes one mid-show. They depend on source order, so keep them in this
+   order. */
+.lsa-black--r1 {
+  opacity: 0.66;
+}
+
+.lsa-black--r2 {
+  opacity: 0.33;
+}
+
+.lsa-black--r3 {
+  opacity: 0;
+}
+
+/* The main fireworks canvas. */
+.lsa-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+/* ---- The galaxy -----------------------------------------------------------
+
+   A galaxy photo over everything, blended with color-dodge. On a black
+   screen it is invisible, except where something bright is drawn: the
+   counter, the star and the cursor. That makes the numbers look like they
+   light up in patches.
+
+   DO NOT add a transform, filter, will-change or opacity below 1 to any
+   element between this and .lsa-black. Any of those silently stops the
+   blend from working. */
+.lsa-galaxy {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: color-dodge;
+  pointer-events: none;
+}
+
+/* The galaxy fades out when the star is full, before the fireworks burst.
+   The fade time comes from the script (chargeTune.galaxyFade); 0.5s is the
+   fallback. */
+.lsa-galaxy {
+  transition: opacity var(--lsa-galaxy-fade, 0.5s) ease;
+}
+
+.lsa-root--released .lsa-galaxy {
+  opacity: 0;
+}
+
+/* The spark cursor's canvas. Above the buttons so nothing covers it. Never
+   takes clicks. */
+.lsa-spark {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Hides the normal cursor everywhere in the overlay, because the spark is
+   the cursor. There is no fallback cursor, by decision. */
+.lsa-root,
+.lsa-root * {
+  cursor: none;
+}
+
+/* ---- The card -------------------------------------------------------------
+
+   Holds the medal and the sentence, centred on screen. The black cover hides
+   it until the fireworks clear it. The card itself never fades.
+
+   The plate image (card-Back-l.png) is set from lsa-experience.js, not here,
+   so this file loads nothing.
+
+   The size is FIXED at 800 x 540, the plate's own shape. Content that grows
+   taller than the box spills over the edge with no warning. Today there is
+   about 80px to spare. */
+.lsa-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  box-sizing: border-box;
+  padding: 24px;
+  width: 800px;
+  height: 540px;
+
+  /* The plate's rounded corners are in the image, so no background colour
+     and no border-radius. Use these single properties, never the
+     `background` shorthand. */
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+
+  pointer-events: none;
+}
+
+/* ---- The medal ------------------------------------------------------------
+
+   A 3D coin. The script tilts .lsa-medal-scene toward the cursor on every
+   mouse move, so never put a transform on it here. */
+.lsa-medal-scene {
+  /* The medal's width. The number on the medal and the counter both size
+     themselves from this. Change the size here and nowhere else. */
+  --lsa-medal-w: 320px;
+
+  width: var(--lsa-medal-w);
+  height: 321px;          /* the artwork's 563x565 shape, to scale */
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform 0.15s ease-out;   /* the tilt's lag and weight */
+}
+
+/* Two wrappers that keep the coin in 3D. Nothing moves them now. They are
+   where the old click-to-flip lived (see lab/medal-flip.reference.md). */
+.lsa-medal-coin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.lsa-medal-depth {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+/* The medal's front face. */
+.lsa-medal-face {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+/* Placeholder. The script replaces this so the face sits on top of the rim. */
+.lsa-coin-front {
+  transform: translateZ(1px);
+}
+
+/* The rim. The coin's thickness is faked with 68 copies of Stack.png stacked
+   one behind the other. Must stay visible from every angle. */
+.lsa-coin-edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lsa-coin-edge img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+
+/* Holds medal.svg, which the script loads and puts straight into the page. */
+.lsa-medal-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.lsa-medal-img svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The round brushed-metal texture inside medal.svg. The script turns it
+   toward the cursor and fades it in with the tilt. Hidden until the cursor
+   moves. */
+.lsa-medal-image {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+/* The diamonds on the ring, one per 5 years. The script places each one;
+   see drawDiamonds(). */
+.lsa-medal-diamonds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lsa-medal-diamond {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The milestone number on the medal ("5", "10", ...). The medal art has no
+   number, so this draws it.
+
+   Position and size are fractions of the medal, measured from the original
+   artwork, so they follow the medal if it is resized. The 0.055em nudge
+   centres Aleo's digits by their ink, not their box. Re-measure it if the
+   font ever changes.
+
+   Must match .lsa-count in font, weight and slant. */
+.lsa-medal-number {
+  position: absolute;
+  left: 50%;
+  top: 44.934%;
+  transform: translate(-50%, -50%) translateY(0.055em);
+
+  font-family: Aleo, Georgia, "Times New Roman", serif;
+  font-size: calc(var(--lsa-medal-w) * 0.28597);   /* 161 / 563 */
+  font-style: italic;
+  font-weight: 700;
+  line-height: normal;
+  white-space: nowrap;
+
+  /* Silver gradient inside the digits, matched to "Years" on the medal. Use
+     background-image, never the `background` shorthand: the shorthand would
+     undo the clip and paint a grey box behind the number. */
+  background-image: linear-gradient(166deg, #A0A0A0 19.49%, #949494 80.64%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 0.0124em 0.0186em rgba(0, 0, 0, 0.22);
+
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The sentence under the medal ("Congratulations Akhil on completing...").
+
+   Public Sans 600 from Google Fonts. Only weight 600 is loaded; to use
+   another weight, add it to the font link in lsa-mount.html and
+   lsa-demo.html too. */
+.lsa-card-text {
+  max-width: 420px;
+  margin: 0;
+  color: #1b2733;
+  font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: 0px;
+  text-align: center;
+}
+
+/* ---- Dev panel ------------------------------------------------------------
+
+   Tuning sliders for the demo page only. Built only when the page has
+   data-lsa-dev, which Liferay never sets, so none of these rules match
+   anything on the intranet. */
+
+.lsa-panel {
+  position: absolute;
+  top: 96px;
+  right: 24px;
+  z-index: 4;
+  box-sizing: border-box;
+  width: 280px;
+  max-height: calc(100% - 160px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(11, 26, 48, 0.82);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.lsa-panel-title {
+  margin-bottom: 14px;
+  color: #D4AF37;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* One tab per firework, left to right. */
+.lsa-panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.lsa-panel-tab {
+  padding: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lsa-panel-tab--on {
+  border-color: #D4AF37;
+  background: rgba(212, 175, 55, 0.22);
+  color: #ffffff;
+}
+
+/* Section heading inside the panel. */
+.lsa-panel-head {
+  margin: 16px 0 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(212, 175, 55, 0.9);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lsa-panel-note {
+  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.lsa-panel-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 12px;
+}
+
+.lsa-panel-select {
+  width: 100%;
+  grid-column: 1 / -1;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  background: rgba(11, 26, 48, 0.9);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lsa-panel-check {
+  justify-self: end;
+  margin: 0;
+  accent-color: #D4AF37;
+  cursor: pointer;
+}
+
+/* UNUSED. Hides a panel row. Must stay after .lsa-panel-row to win. */
+.lsa-panel-off {
+  display: none;
+}
+
+/* Hidden text box that "Copy config" uses when the clipboard API is not
+   available. Parked off screen. */
+.lsa-panel-clip {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  opacity: 0;
+}
+
+.lsa-panel-label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.lsa-panel-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.lsa-panel-slider {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: #D4AF37;
+  cursor: pointer;
+}
+
+/* The panel's buttons ("Copy config", "Play show"). */
+.lsa-panel-copy {
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.lsa-panel-copy:hover {
+  border-color: rgba(212, 175, 55, 0.7);
+}
+
+/* The close button, top right. Closing removes the whole overlay. */
+.lsa-close {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  z-index: 4;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #000000;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<!--
+  Regression check for the overlay.
+
+  Runs the saved baseline (lab/regression/before/) and the current files side
+  by side, with the same random numbers and the same scripted cursor, and
+  compares them every 20 frames: all three canvases pixel for pixel, plus the
+  counter, the star, the black cover, the galaxy, the medal and the card.
+
+  Open over HTTP (node .claude/serve.js . 8127), then
+  http://localhost:8127/lab/regression/index.html
+  The result shows on the page and in window.__result.
+
+  IGNORE lists snapshot fields that are expected to differ.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Regression check</title>
+<style>
+  body { font: 13px/1.4 system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+  iframe { width: 1280px; height: 800px; border: 0; position: absolute; left: -3000px; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Regression check</h1>
+<pre id="out">Running…</pre>
+<script>
+var MILESTONES = [5, 25, 50];
+var FRAMES = 1320;      // 22 seconds: covers a 10s hold, the show and the reveal
+var EVERY = 20;         // compare every 20 frames
+var SEED = 12345;
+var IGNORE = [];        // snapshot fields expected to differ
+
+var out = document.getElementById('out');
+function log(s) { out.textContent += '\n' + s; }
+
+function load(build, years) {
+  return new Promise(function (resolve) {
+    var f = document.createElement('iframe');
+    f.src = 'run.html?build=' + build + '&years=' + years + '&seed=' + SEED;
+    document.body.appendChild(f);
+    (function wait() {
+      var h = f.contentWindow && f.contentWindow.__h;
+      if (h && h.ready) resolve(f); else setTimeout(wait, 50);
+    })();
+  });
+}
+
+// The same cursor script for both runs: hover the star, slip off, come back,
+// hold until the show fires, then move across the stage to tilt the medal.
+function events(f, frame) {
+  var d = f.contentDocument, w = f.contentWindow;
+  var star = d.querySelector('.lsa-charge');
+  var stage = d.querySelector('.lsa-canvas');
+  var r = star.getBoundingClientRect();
+  var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  function move(x, y) {
+    stage.dispatchEvent(new w.MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }));
+  }
+  if (frame === 0) move(cx, cy);
+  if (frame === 10) star.dispatchEvent(new w.MouseEvent('mouseenter'));
+  if (frame === 100) star.dispatchEvent(new w.MouseEvent('mouseleave'));
+  if (frame === 160) star.dispatchEvent(new w.MouseEvent('mouseenter'));
+  if (frame === 1000) move(300, 200);
+  if (frame === 1100) move(900, 500);
+  if (frame === 1200) move(640, 330);
+}
+
+function diff(a, b) {
+  var keys = [];
+  for (var k in a) {
+    if (IGNORE.indexOf(k) !== -1) continue;
+    if (String(a[k]) !== String(b[k])) keys.push(k);
+  }
+  return keys;
+}
+
+(async function () {
+  out.textContent = 'Seed ' + SEED + ', ' + FRAMES + ' frames, every ' + EVERY + '.';
+  var allPass = true, result = {};
+
+  for (var m = 0; m < MILESTONES.length; m++) {
+    var years = MILESTONES[m];
+    var A = await load('before', years);
+    var B = await load('current', years);
+    var fails = [], checks = 0, mid = null;
+
+    for (var frame = 0; frame < FRAMES; frame++) {
+      events(A, frame);
+      events(B, frame);
+      A.contentWindow.__h.step(1);
+      B.contentWindow.__h.step(1);
+      if ((frame + 1) % EVERY === 0) {
+        var sa = A.contentWindow.__h.snapshot();
+        var sb = B.contentWindow.__h.snapshot();
+        var keys = diff(sa, sb);
+        checks++;
+        if (frame + 1 === 600) mid = sa;
+        if (keys.length) {
+          fails.push({ frame: frame + 1, keys: keys,
+            before: keys.map(function (k) { return k + '=' + sa[k]; }),
+            current: keys.map(function (k) { return k + '=' + sb[k]; }) });
+        }
+        // Let the page breathe between checks.
+        await new Promise(function (r) { setTimeout(r, 0); });
+      }
+    }
+
+    var last = A.contentWindow.__h.snapshot();
+    log(years + ' years: ' + (fails.length ? 'FAIL, ' + fails.length + ' of ' + checks + ' checks differ' :
+      'PASS, ' + checks + ' checks') + '  (end state: ' + last.black + ', count "' + last.count + '")');
+    // Lit pixels at frame 600, to show the canvases really have fireworks on them.
+    if (mid) log('  lit pixels at frame 600: main ' + mid.main.split(':')[1] +
+      ', background ' + mid.ambient.split(':')[1] + ', cursor ' + mid.spark.split(':')[1]);
+    if (fails.length) {
+      allPass = false;
+      log('  first difference at frame ' + fails[0].frame);
+      log('  before:  ' + fails[0].before.join('\n           '));
+      log('  current: ' + fails[0].current.join('\n           '));
+    }
+    result[years] = { checks: checks, fails: fails.length, first: fails[0] || null };
+    A.remove(); B.remove();
+  }
+
+  log(allPass ? '\nALL PASS' : '\nDIFFERENCES FOUND');
+  window.__result = { pass: allPass, milestones: result };
+})();
+</script>
+</body>
+</html>
