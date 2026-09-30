@@ -1,26 +1,22 @@
 <!DOCTYPE html>
 <!--
-  Long Service Award — local demo stage.
+  Long Service Award — local demo page. Not part of what ships.
   ---------------------------------------------------------------------------
-  Loads the REAL overlay (lsa-experience.css + lsa-experience.js) over a
-  stand-in page background, so what you see here is what the Liferay fragment
-  will do. Nothing is duplicated: if it renders here, it is the shipped code
-  rendering it.
+  Loads the real overlay (lsa-experience.css and lsa-experience.js) over a
+  screenshot of the intranet (bg.png), so what you see is what Liferay gets.
 
-  data-lsa-dev on <html> is what opts this page into the experience's dev hook
-  (window.__lsaDev — cfg, burst, launch, stats, step). lsa-mount.html, the
-  actual Liferay markup, does NOT set it, so the hook never exists in
-  production and no global is ever created there.
+  Serve it over HTTP, not file://. From the project folder:
+      node .claude/serve.js . 8126
+  then open http://localhost:8126/lsa-demo.html. The window must be at least
+  1024px wide.
 
-  The inline <style> below is demo-only page dressing. The project's
-  no-inline-code rule applies to the Liferay fragment, which shares a page
-  with a Content Security Policy — it does not apply to this local harness.
+  To try another milestone or name, change data-years or data-name on the
+  mount element below and reload.
 
-  Serve it over HTTP rather than opening the file directly; some browsers
-  refuse to load sibling assets over file://. From the project root:
-      npx serve .        (or any static server)
+  The inline <style> is demo dressing only; the CSP rules apply to Liferay,
+  not to this page.
 -->
-<html lang="en" data-lsa-dev>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>LSA Overlay — Local Demo Stage</title>
@@ -39,10 +35,7 @@
     }
   </style>
 
-  <!-- Aleo for the count-up, Public Sans for the card's sentence. Two families
-       on ONE css2 request. Must load BEFORE lsa-experience.css so both
-       @font-faces are known by the time .lsa-count and .lsa-card-text are
-       styled. Keep this in step with lsa-mount.html. -->
+  <!-- Same fonts, same order as lsa-mount.html. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&family=Public+Sans:wght@600&display=swap">
@@ -51,12 +44,8 @@
 </head>
 <body>
 
-  <!--
-    No mount markup needed: lsa-experience.js builds its own .lsa-root and
-    appends it to <body>. Press GO for the five-firework sequence, or click
-    anywhere on the stage to send up a single rocket.
-  -->
-  <!-- The whole overlay, fireworks engine included. -->
+  <div id="lsa-mount" data-name="Akhil" data-years="5"></div>
+
   <script src="lsa-experience.js"></script>
 
 </body>

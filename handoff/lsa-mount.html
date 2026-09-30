@@ -2,68 +2,41 @@
   Long Service Award — Milestone Overlay
   Mount snippet for a Liferay Web Content fragment.
   ---------------------------------------------------------------------------
-  Paste this whole block into the fragment. It carries the mount point plus
-  the asset tags, loaded here rather than via the theme (project decision).
+  WHAT TO DO
+  1. Host lsa-experience.css, lsa-experience.js and the assets/ folder.
+  2. Replace the two REPLACE_WITH_ASSET_PATH placeholders below with where
+     the CSS and JS are hosted.
+  3. In lsa-experience.js, set ASSET_PATH (near the top) to where assets/ is
+     hosted. It is relative to the PAGE, not to the script.
+  4. Output this snippet only for a user who should see the overlay, with
+     their name and milestone filled in (see the mount element below). The
+     overlay plays every time this snippet is on the page; "show only once"
+     has to be decided on the server.
 
-  Replace the three REPLACE_WITH_ASSET_PATH placeholders below with the actual
-  hosted URLs for lsa-experience.css / fireworks-engine-2.js / lsa-experience.js
-  (e.g. Documents & Media URLs, or a static resource path) once that's decided
-  — see handoff.md.
-
-  THREE assets, not two: the fireworks engine is its own file, shared with the
-  tuning lab so there is only ever one copy of it. All three have to be hosted.
-
-  The engine is fireworks-engine-2.js, NOT fireworks-engine.js. Both exist in
-  the repo; the overlay runs the second. Hosting the wrong one leaves the page
-  with a script that defines a global nothing calls, and an overlay that throws
-  on load.
-
-  THREE FILES ARE TAGGED HERE, BUT FIVE IMAGES ALSO HAVE TO BE HOSTED —
-  assets/medal.svg, assets/Stack.png and assets/diamond.png for the
-  medallion, assets/card-Back-l.png for the card, and assets/gal4.jpg for the
-  galaxy the counter ignites through. They are not tagged below because
-  nothing loads them from markup: medal.svg is fetched, the plate is set as
-  the card's background, and the rest are img.src, all built in
-  lsa-experience.js against its ASSET_PATH constant, which resolves
-  against THE PAGE. Set that constant to match wherever the folder ends up.
-
-  card-Back-l.png has a capital B. On a case-sensitive server the name must
+  THE FIVE IMAGES in assets/ are loaded by the script, not by tags here:
+  medal.svg, Stack.png, diamond.png, card-Back-l.png and gal4.jpg.
+  card-Back-l.png has a capital B; on a case-sensitive server the name must
   match exactly.
 
-  medal.svg is loaded with fetch(), so the page's Content Security Policy
-  must allow the assets folder under connect-src. If it is blocked, the
-  medal face comes up blank and the rest of the overlay still runs.
+  CONTENT SECURITY POLICY. The page must allow:
+    style-src    https://fonts.googleapis.com   (fonts, see below)
+    font-src     https://fonts.gstatic.com
+    connect-src  wherever assets/ is hosted      (medal.svg is loaded with
+                                                  fetch(); if blocked, the
+                                                  medal face is blank)
+  Nothing inline is used, so no 'unsafe-inline' is needed.
 
-  ONE PATH RULE, not two, since 2026-09-07. shimmer.png used to be a
-  mask-image url() in lsa-experience.css, which resolves against THE STYLESHEET
-  and so forced the CSS file and assets/ to stay siblings. The shimmer was
-  removed; that constraint went with it, and so did the file.
-
-  Load order matters twice over: the stylesheet must load before the script
-  runs, so the overlay never renders unstyled for a frame; and the engine must
-  load before lsa-experience.js, which calls into it. Both scripts are
-  deferred, and deferred scripts run in document order, so the order they are
-  written here is the order they execute — do not reorder them.
+  LOAD ORDER. Fonts, then the stylesheet, then the script. The script is
+  deferred, so it runs after the page is parsed. Desktop only: below 1024px
+  wide it does nothing.
 -->
 
 <!--
-  TWO TYPEFACES, ONE REQUEST. Aleo for the count-up, Public Sans for the
-  sentence on the card. THE ONLY CDN IN THIS PROJECT, and the one thing here
-  that is not self-hosted — everything else is served from your own paths.
-
-  Two things to check with whoever owns the page's Content Security Policy:
-  fonts.googleapis.com must be allowed as a style-src, and fonts.gstatic.com as
-  a font-src. If either is refused, delete these three tags and self-host the
-  woff2 files in assets/ with @font-face rules instead — the overlay does not
-  break without them, the counter and the sentence just fall back to the system
-  sans (see .lsa-count and .lsa-card-text in lsa-experience.css).
-
-  Only wght 600 of Public Sans is fetched, matching .lsa-card-text. Restyling
-  that rule to another weight needs this URL changed too, or the browser fakes
-  the weight instead of loading it.
-
-  It goes before the stylesheet so both @font-faces are known by the time
-  .lsa-count and .lsa-card-text are styled.
+  Aleo (the counter and the medal's number) and Public Sans 600 (the card's
+  sentence), from Google Fonts in one request. If the CSP blocks Google Fonts,
+  nothing breaks: the text falls back to the system font. To avoid that,
+  self-host the two fonts with @font-face instead and delete these three tags.
+  Only weight 600 of Public Sans is loaded.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,18 +45,14 @@
 <link rel="stylesheet" href="REPLACE_WITH_ASSET_PATH/lsa-experience.css">
 
 <!--
-  data-name and data-years personalise the overlay, and Liferay should render
-  both server-side per user. They are optional: leave either off and the script
-  falls back to the constants at the top of lsa-experience.js.
-
-  data-years is not just the sentence on the card any more. It is the number
-  the charge button counts up to while the user holds their spark on it, so it
-  is on screen before the card is ever revealed. A five-year award counts to 5
-  in 4 seconds; a fifty-year award counts to 50 in 10 seconds.
-
-  Any positive whole number works. It is not restricted to multiples of five.
+  THE MOUNT ELEMENT. Fill these in per user on the server:
+    data-name   the employee's name, shown in the card's sentence
+    data-years  their milestone, e.g. 5, 10 ... 50. It sets the counter, the
+                number on the medal, the number of diamonds (one per 5 years),
+                and the sentence. The hold lasts 4s at 5 years up to 10s at 50.
+                Any positive whole number works.
+  If either is missing, the script uses "Akhil" and 5.
 -->
 <div id="lsa-mount" data-name="Akhil" data-years="5"></div>
 
-<script src="REPLACE_WITH_ASSET_PATH/fireworks-engine-2.js" defer></script>
 <script src="REPLACE_WITH_ASSET_PATH/lsa-experience.js" defer></script>

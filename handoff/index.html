@@ -1,47 +1,30 @@
 <!DOCTYPE html>
 <!--
-  Long Service Award — Milestone Overlay
-  Local demo stage. NOT part of what ships.
+  Long Service Award — local demo page. Not part of what ships.
   ---------------------------------------------------------------------------
-  Loads the REAL overlay — the same lsa-experience.css, fireworks-engine-2.js
-  and lsa-experience.js that go to Liferay. Nothing here is reimplemented, so
-  what you see is what the fragment will do.
+  Loads the real overlay (lsa-experience.css and lsa-experience.js) over a
+  screenshot of the intranet (bg.png), so what you see is what Liferay gets.
 
-  Serve it, do not double-click it. Over file:// the page reports
-  innerWidth === 0, which trips the script's MIN_WIDTH guard and the overlay
-  never mounts. From this folder:
-
+  Serve it over HTTP, not file://. From the project folder:
       node serve.js . 8126
+  then open http://localhost:8126/. The window must be at least
+  1024px wide.
 
-  ...then open http://localhost:8126/.
+  To try another milestone or name, change data-years or data-name on the
+  mount element below and reload.
 
-  bg.png IS A REFERENCE IMAGE ONLY — a screenshot of the intranet homepage,
-  standing in for the live page. It is not part of the deliverable and nothing
-  in the CSS or the JS refers to it. In production there is no background image
-  at all: the live Liferay page sits in the DOM behind the overlay. Delete
-  bg.png and this file on deployment and nothing else changes.
-
-  The inline <style> is demo dressing. The project's no-inline-code rule exists
-  for the CSP on the Liferay page; it does not apply to this file, which ships
-  nowhere.
-
-  Desktop only. Below 1024px of viewport width the script does nothing at all.
-  That is the guard working, not a fault.
-
-  Add data-lsa-dev to the <html> tag to open the tuning panel and expose
-  window.__lsaDev. lsa-mount.html, the real Liferay markup, deliberately does
-  neither.
+  The inline <style> is demo dressing only; the CSP rules apply to Liferay,
+  not to this page.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Long Service Award — Milestone Overlay</title>
+  <title>LSA Overlay — Local Demo Stage</title>
 
   <style>
     html, body { margin: 0; padding: 0; height: 100%; }
 
-    /* bg.png is a REFERENCE IMAGE — a screenshot standing in for the Liferay
-       intranet page the overlay sits on top of. Demo only; ships nowhere. */
+    /* Stands in for the Liferay intranet page the overlay sits on top of. */
     body {
       background-image: url("bg.png");
       background-size: cover;
@@ -52,8 +35,7 @@
     }
   </style>
 
-  <!-- Aleo, the count-up's typeface. Must load BEFORE lsa-experience.css so
-       the @font-face is known by the time .lsa-count is styled. -->
+  <!-- Same fonts, same order as lsa-mount.html. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&family=Public+Sans:wght@600&display=swap">
@@ -62,15 +44,8 @@
 </head>
 <body>
 
-  <!-- Personalisation, exactly as the Liferay fragment carries it. Both are
-       optional; leave either off and the script falls back to the constants at
-       the top of lsa-experience.js. -->
   <div id="lsa-mount" data-name="Akhil" data-years="5"></div>
 
-  <!-- The engine first: lsa-experience.js calls into it on load. In the Liferay
-       fragment both are deferred, and deferred scripts run in document order —
-       here they are plain and in the same order. Do not swap them. -->
-  <script src="fireworks-engine-2.js"></script>
   <script src="lsa-experience.js"></script>
 
 </body>
