@@ -187,7 +187,7 @@
   medalScene.appendChild(medalCoin);
   card.appendChild(medalScene);
 
-  // The sentence on the card. One function so setYears() can rewrite it.
+  // The sentence on the card.
   function cardLine() {
     return 'Congratulation ' + NAME + ' on completing ' + YEARS +
            ' years with DBS.';
@@ -242,13 +242,13 @@
   medalImg.style.transform = 'scale(' + FACE_SCALE + ')';
   medalDiamonds.style.transform = 'scale(' + FACE_SCALE + ')';
 
-  // The rim's total depth in px. The dev panel has a slider for it.
+  // The rim's total depth in px.
   var coinTune = {
     depth: EDGE_COUNT * EDGE_STEP   // 81.6px, the current look
   };
 
   // Places every rim layer and the face along Z from coinTune.depth. Called
-  // once now and again whenever the depth slider moves.
+  // once at build.
   function applyCoinDepth() {
     var step = coinTune.depth / EDGE_COUNT;
     var layers = medalDepth.querySelectorAll('.lsa-coin-edge');
@@ -542,8 +542,7 @@
      this object leaves out take the engine's defaults. The engine reads these
      live, so changing one while the show runs takes effect at once.
 
-     To re-tune: use lab/fireworks-lab-2.html or the dev panel, press "Copy
-     config", and paste the result over this object. */
+     These values are final. */
 
   var cfg = {
     // Size for a firework set off by clicking the canvas. The five show
@@ -672,8 +671,8 @@
        Settings for each firework, 1 to 5 left to right. A key here beats the
        same key above, for that firework only.
 
-       Each row is complete (it came from "Copy config"), so changing a value
-       above does NOT reach these five until you change them here too.
+       Each row is complete, so changing a value above does NOT reach these
+       five until you change them here too.
 
        1, 2, 4 and 5 are the same. 3, the centre, has its own settings and
        bursts a second time (sub.enabled). */
@@ -835,7 +834,7 @@
       background: null,
 
       // Not used: each background burst is given its own colour (see
-      // ambientTick()). Kept so "Copy config" output stays the same.
+      // ambientTick()).
       palette: 'fire',
 
       scale: 3,
@@ -879,8 +878,7 @@
         stack: 1
       },
 
-      /* Engine defaults, kept so "Copy config" output stays the same. None of
-         these has an effect here: the bursts are plain spheres, no rocket is
+      /* Engine defaults. None of these has an effect here: the bursts are plain spheres, no rocket is
          launched (bursts appear in place), second bursts are off, and the
          frame-time cap comes from the main config. */
       shape: {
@@ -918,180 +916,13 @@
   var fw = Fireworks2(canvas, cfg);
 
   // REQUIRED. The engine made its own copy of cfg, so point cfg at that copy.
-  // Without this, the dev panel and the per-firework settings change nothing.
+  // Without this, the per-firework settings change nothing.
   cfg = fw.cfg;
 
   /* The background fireworks get their own engine on their own canvas, so
      they can sit behind the blue veil. Same copy rule as above. */
   var amb = Fireworks2(ambCanvas, cfg.ambientLook);
   cfg.ambientLook = amb.cfg;
-
-  /* ==== Per-firework settings ================================================
-
-     The lists below describe every control in the dev panel.
-
-     FIREWORK_SETTINGS can differ per firework. The engine only has one
-     config, so for each firework the engine swaps these values in just while
-     that firework bursts, then puts them back. That only works for values
-     read at the moment of the burst.
-
-     SHOW_SETTINGS apply to every firework at once, because the engine reads
-     them on every frame (gravity, trails, glow, most flash settings, the
-     rocket).
-
-     A firework set off by clicking the canvas always uses the plain cfg. */
-
-  var FIREWORK_SETTINGS = [
-    { head: 'Colour and size' },
-    { kind: 'color', label: 'Colour set' },
-    { kind: 'size', label: 'Size', min: 0.3, max: 5, step: 0.05 },
-
-    { head: 'Sparkles' },
-    { path: 'count', label: 'How many', min: 20, max: 600, step: 10 },
-    { path: 'explosionSize', label: 'How far they fly', min: 1, max: 30, step: 0.5 },
-    { path: 'size', label: 'Sparkle thickness', min: 0.2, max: 6, step: 0.1 },
-    { path: 'sizeSpread', label: 'Thickness variety', min: 0, max: 1, step: 0.05 },
-
-    { path: 'lifeDecay', label: 'How fast they die', min: 0.002, max: 0.05, step: 0.001 },
-    { path: 'lifeSpread', label: 'Lifetime variety', min: 0, max: 0.9, step: 0.05 },
-
-    // Burst shape. Each knob after the first only matters for the shape
-    // named in its label.
-    { head: 'Shape' },
-    { path: 'shape.type', label: 'Burst shape',
-      options: ['normal', 'ring', 'star burst', 'concentric'] },
-    { path: 'shape.ringThickness', label: 'Hoop depth · ring', min: 0.01, max: 1, step: 0.01 },
-    { path: 'shape.starPoints', label: 'Points · star burst', min: 3, max: 12, step: 1 },
-    { path: 'shape.starInner', label: 'Waist · star burst', min: 0.05, max: 0.95, step: 0.05 },
-    { path: 'shape.rings', label: 'Bands · concentric', min: 2, max: 8, step: 1 },
-    { path: 'shape.ringWidth', label: 'Band spread · concentric', min: 0, max: 0.3, step: 0.01 },
-
-    { head: 'Colour spread' },
-    { path: 'jitterHue', label: 'Hue', min: 0, max: 60, step: 1 },
-    { path: 'jitterSat', label: 'Saturation', min: 0, max: 60, step: 1 },
-    { path: 'jitterLight', label: 'Lightness', min: 0, max: 60, step: 1 },
-
-    // Only these two flash values can differ per firework. The rest are in
-    // SHOW_SETTINGS.
-    { head: 'The flash' },
-    { path: 'blast.enabled', label: 'Flash at the break', bool: true },
-    { path: 'blast.lead', label: 'Flash leads by (ms)', min: 0, max: 300, step: 10 },
-
-    // Second bursts: these three can differ per firework. The other three are
-    // in SHOW_SETTINGS.
-    { head: 'Secondary bursts' },
-    { path: 'sub.enabled', label: 'Break a second time', bool: true },
-    { path: 'sub.count', label: 'How many break again', min: 1, max: 40, step: 1 },
-    { path: 'sub.delay', label: 'Fuse (s)', min: 0.1, max: 2.5, step: 0.05 }
-  ];
-
-  // Settings that apply to every firework at once. Shown lower in the panel.
-  var SHOW_SETTINGS = [
-    { head: 'Whole show' },
-    { note: 'The engine reads these while it draws, for the whole canvas at ' +
-            'once, so they cannot belong to one firework.' },
-    { kind: 'global', path: 'palette', label: 'Colour set for clicks',
-      options: ['fire', 'blue', 'purple', 'random'] },
-    { kind: 'global', path: 'scale', label: 'Size for clicks', min: 0.3, max: 5, step: 0.05 },
-
-    { head: 'The flash' },
-    { kind: 'global', path: 'blast.radius', label: 'Flash size', min: 20, max: 400, step: 10 },
-    { kind: 'global', path: 'blast.peak', label: 'How bright', min: 0, max: 3, step: 0.05 },
-    { kind: 'global', path: 'blast.rise', label: 'Time to ignite (s)', min: 0.01, max: 0.5, step: 0.01 },
-    { kind: 'global', path: 'blast.hold', label: 'Time at full (s)', min: 0, max: 1, step: 0.01 },
-    { kind: 'global', path: 'blast.decay', label: 'Time fading (s)', min: 0.1, max: 5, step: 0.1 },
-    { kind: 'global', path: 'blast.growth', label: 'Spread as it dies', min: 1, max: 4, step: 0.1 },
-    { kind: 'global', path: 'blast.stack', label: 'Draw it on itself (x)', min: 1, max: 10, step: 1 },
-
-    { head: 'Trail and glow' },
-    { kind: 'global', path: 'trailFade', label: 'Trail fade', min: 0.005, max: 0.3, step: 0.005 },
-    { kind: 'global', path: 'trailAlpha', label: 'Trail strength', min: 0, max: 1, step: 0.05 },
-    { kind: 'global', path: 'glowDownscale', label: 'Glow squeeze', min: 1, max: 12, step: 1 },
-    { kind: 'global', path: 'glowAlpha', label: 'Glow strength', min: 0, max: 2, step: 0.05 },
-
-    { head: 'Physics' },
-    { kind: 'global', path: 'gravity', label: 'Gravity', min: 0, max: 1, step: 0.01 },
-    { kind: 'global', path: 'drag', label: 'Air resistance', min: 0.8, max: 1, step: 0.005 },
-    { kind: 'global', path: 'poolMax', label: 'Max sparks on screen', min: 200, max: 4000, step: 100 },
-    { kind: 'global', path: 'deltaCap', label: 'Longest frame (s)', min: 0.016, max: 0.25, step: 0.002 },
-
-    // Read at the second burst, after the per-firework swap is over, so these
-    // apply to every firework. Making them per-firework needs an engine change.
-    { head: 'Secondary bursts (whole show)' },
-    { kind: 'global', path: 'sub.particles', label: 'Sparkles from each', min: 5, max: 200, step: 5 },
-    { kind: 'global', path: 'sub.scale', label: 'Size of each', min: 0.05, max: 1.5, step: 0.05 },
-    { kind: 'global', path: 'sub.glow', label: 'Flash when they break', bool: true },
-
-    // Read at launch, not at the burst, so these apply to every firework.
-    { head: 'The rocket' },
-    { kind: 'global', path: 'rocket.size', label: 'Rocket thickness', min: 1, max: 12, step: 0.5 },
-    { kind: 'global', path: 'rocket.launchY', label: 'Launches from', min: 0.5, max: 1, step: 0.01 },
-    { kind: 'global', path: 'rocket.light', label: 'How hot it burns', min: 50, max: 100, step: 1 }
-  ];
-
-  /* Controls for the background fireworks, at the bottom of the panel.
-     'global' rows change when and where they go off (cfg.ambient).
-     'ambient' rows change how they look (the second engine's own config). */
-  var AMBIENT_SETTINGS = [
-    { head: 'Background fireworks' },
-    { note: 'Behind the blue veil, so they are blurred and dimmed by it. ' +
-            'They begin when the reveal finishes and run until the overlay ' +
-            'closes. RESET silences them.' },
-
-    { kind: 'global', path: 'ambient.enabled', label: 'On', bool: true },
-    { kind: 'global', path: 'ambient.every', label: 'One every (s)', min: 0.2, max: 6, step: 0.1 },
-    { kind: 'global', path: 'ambient.vary', label: 'Timing variety', min: 0, max: 1, step: 0.05 },
-    { kind: 'global', path: 'ambient.top', label: 'Highest they go', min: 0, max: 1, step: 0.01 },
-    { kind: 'global', path: 'ambient.bottom', label: 'Lowest they go', min: 0, max: 1, step: 0.01 },
-    { kind: 'global', path: 'ambient.margin', label: 'Clear of the edges', min: 0, max: 0.4, step: 0.01 },
-
-    { head: 'Background fireworks · look' },
-    { note: 'A second engine with its own config. Nothing here reaches the ' +
-            'five fireworks in front. Each burst takes one flat colour rolled ' +
-            'from the whole hue wheel, so there is no colour set to choose.' },
-
-    { kind: 'ambient', path: 'scale', label: 'Size', min: 0.3, max: 5, step: 0.05 },
-    { kind: 'ambient', path: 'count', label: 'How many', min: 20, max: 600, step: 10 },
-    { kind: 'ambient', path: 'explosionSize', label: 'How far they fly', min: 1, max: 30, step: 0.5 },
-    { kind: 'ambient', path: 'size', label: 'Sparkle thickness', min: 0.2, max: 6, step: 0.1 },
-    { kind: 'ambient', path: 'lifeDecay', label: 'How fast they die', min: 0.002, max: 0.05, step: 0.001 },
-    { kind: 'ambient', path: 'trailAlpha', label: 'Trail strength', min: 0, max: 1, step: 0.05 },
-    { kind: 'ambient', path: 'glowAlpha', label: 'Glow strength', min: 0, max: 2, step: 0.05 },
-    { kind: 'ambient', path: 'blast.enabled', label: 'Flash at the break', bool: true },
-    { kind: 'ambient', path: 'blast.radius', label: 'Flash size', min: 20, max: 400, step: 10 },
-    { kind: 'ambient', path: 'blast.peak', label: 'How bright', min: 0, max: 3, step: 0.05 },
-    { kind: 'ambient', path: 'blast.stack', label: 'Draw it on itself (x)', min: 1, max: 10, step: 1 }
-  ];
-
-  // Read or write a nested value by a dotted path, e.g. 'blast.radius'.
-  function readPath(o, path) {
-    var parts = path.split('.');
-    for (var i = 0; i < parts.length; i++) o = o[parts[i]];
-    return o;
-  }
-
-  function writePath(o, path, v) {
-    var parts = path.split('.');
-    for (var i = 0; i < parts.length - 1; i++) o = o[parts[i]];
-    o[parts[parts.length - 1]] = v;
-  }
-
-  /* Builds the full settings row for each of the five fireworks. Values
-     already in fireworkCfg (above) are kept; any missing ones are filled in
-     from the main cfg. */
-  var pastedLooks = cfg.fireworkCfg || null;
-  cfg.fireworkCfg = {};
-  [1, 2, 3, 4, 5].forEach(function (n) {
-    var prev = pastedLooks && pastedLooks[n];
-    var look = {};
-    FIREWORK_SETTINGS.forEach(function (f) {
-      if (!f.path) return;
-      look[f.path] = (prev && prev[f.path] !== undefined)
-        ? prev[f.path]
-        : readPath(cfg, f.path);
-    });
-    cfg.fireworkCfg[n] = look;
-  });
 
   /* ---- The show's timing ----------------------------------------------------
      The launches are timed on the animation loop (not setTimeout), so they
@@ -1105,7 +936,7 @@
      moments: fireworks that launch together burst on the same frame.
 
      Two bursts on the same frame count as one step (revealStepped is reset
-     every frame). Once cleared, the cover stays cleared until resetScene(). */
+     every frame). Once cleared, the cover stays cleared. */
   var REVEAL_STEPS = ['lsa-black--r1', 'lsa-black--r2', 'lsa-black--r3'];
   var revealed = 0;       // how many steps have been applied so far
   var revealStepped = false;   // has this frame already advanced the veil?
@@ -1175,7 +1006,7 @@
         x: row.x * w,
         y: y,
         /* What makes this firework itself: colour, size, its settings row
-           (the live object, so panel changes apply on the next run), and `n`,
+           and `n`,
            which tags it as a show firework for fw.onBurst. */
         spec: {
           hues: c.hues,
@@ -1203,7 +1034,7 @@
     }
   }
 
-  // Starts the show. Used by the star when it is full and by the dev panel.
+  // Starts the show, once the star is full.
   // Does nothing if a show is already queued.
   function onGo() {
     if (scheduled.length) return;
@@ -1303,20 +1134,8 @@
     return out;
   }
 
-  // The numbers for this milestone. Only the dev panel changes it later.
+  // The numbers for this milestone.
   var steps = stepsFor(YEARS);
-
-  /* DEV PANEL ONLY. Switches to another milestone: the counter's numbers,
-     the sentence, the medal's number and the diamonds, then re-aims the
-     counter. The caller resets the scene afterwards. */
-  function setYears(y) {
-    YEARS = y;
-    steps = stepsFor(YEARS);
-    cardText.textContent = cardLine();
-    medalNumber.textContent = String(YEARS);
-    drawDiamonds();
-    aimCounterAtMedal();
-  }
 
   var charge = 0;         // 0..1
   var charging = false;   // is the cursor on the button right now
@@ -1637,52 +1456,9 @@
     onGo();
   }
 
-  /* ---- Reset (dev panel only) --------------------------------------------------
-     Puts the screen back to how it opened: black cover back on, card hidden,
-     no fireworks, star empty, counter blank, galaxy back. Safe at any point.
-
-     It does NOT change any settings; it only replays. Keep it that way. */
-  function resetScene() {
-    // Clear everything the engine is drawing.
-    fw.clear();
-
-    scheduled.length = 0;
-
-    for (var i = 0; i < REVEAL_STEPS.length; i++) {
-      black.classList.remove(REVEAL_STEPS[i]);
-    }
-    revealed = 0;
-    ambNext = 0;
-    amb.clear();
-
-    // Empty the star.
-    charge = 0;
-    charging = false;
-    charged = false;
-    releaseIn = -1;
-
-    // Blank the counter and clear any blur left from a swap.
-    shownCount = -1;
-    swapT = -1;
-    swapTo = null;
-    countValue.style.filter = '';
-    // Remove the flash class so it can play again next time.
-    chargeBtn.classList.remove('lsa-charge--pop');
-    // Bring back the star, the counter and the galaxy.
-    root.classList.remove('lsa-root--fired');
-    root.classList.remove('lsa-root--released');
-    // Back to the CSS's 0.5s galaxy fade, so it comes back quickly.
-    root.style.removeProperty('--lsa-galaxy-fade');
-    // Remove the inline styles cutGalaxyShort() left, or the galaxy would stay
-    // hidden on the next run.
-    galaxy.style.removeProperty('transition');
-    galaxy.style.removeProperty('opacity');
-    drawCharge();
-  }
-
   /* ---- Background fireworks: timing --------------------------------------------
      Random bursts at random places behind the blue veil. They start on the
-     frame the black cover is fully cleared and stop if a reset brings it back.
+     frame the black cover is fully cleared.
      The first one goes off straight away. */
   var ambNext = 0;        // seconds until the next background burst
 
@@ -1732,8 +1508,7 @@
     rafId = requestAnimationFrame(tick);
   }
 
-  /* Everything that happens in one frame, in order. Kept separate from
-     tick() so the dev hook's step() can run frames by hand. */
+  // Everything that happens in one frame, in order.
   function frame(dt) {
     // Reset before the engine runs; fw.onBurst sets it during fw.update().
     revealStepped = false;
@@ -1748,8 +1523,7 @@
     // Fire any launches that are due.
     updateSequence(dt);
 
-    // Fill or drain the star. Once it has fired, it stays full; only a
-    // reset empties it.
+    // Fill or drain the star. Once it has fired, it stays full.
     chargeTick(dt);
 
     // The counter's blur swap. Run here, not in chargeTick(), so the last
@@ -1769,330 +1543,10 @@
     sparkDraw();
   }
 
-  /* ---- Dev panel (demo page only) ----------------------------------------------
-     Tuning sliders, built only when the page has data-lsa-dev. Liferay never
-     sets it, so none of this runs on the intranet.
-
-     Five tabs, one per firework. Per-firework controls write into that
-     firework's row in cfg.fireworkCfg; colour and size write to goSequence and
-     fireworkSize; the "Whole show" and background sections write to cfg.
-     Changes apply on the next run, no reload needed.
-
-     Every listener added here is also pushed onto devCleanup, which
-     teardown() runs. */
-
-  var devCleanup = [];
-
-  // Builds the panel from FIREWORK_SETTINGS, SHOW_SETTINGS and
-  // AMBIENT_SETTINGS, plus the milestone picker and the buttons.
-  function buildDevPanel() {
-    var panel = document.createElement('div');
-    panel.className = 'lsa-panel';
-
-    var title = document.createElement('div');
-    title.className = 'lsa-panel-title';
-    title.textContent = 'Per-firework settings';
-    panel.appendChild(title);
-
-    // Which firework the controls edit, 1 (far left) to 5 (far right).
-    var current = 1;
-    var tabBtns = [];
-
-    var tabs = document.createElement('div');
-    tabs.className = 'lsa-panel-tabs';
-    [1, 2, 3, 4, 5].forEach(function (n) {
-      var b = document.createElement('button');
-      b.className = 'lsa-panel-tab';
-      b.type = 'button';
-      b.textContent = n;
-
-      function onTab() { current = n; syncAll(); }
-      b.addEventListener('click', onTab);
-      devCleanup.push(function () { b.removeEventListener('click', onTab); });
-
-      tabs.appendChild(b);
-      tabBtns.push(b);
-    });
-    panel.appendChild(tabs);
-
-    var body = document.createElement('div');
-    panel.appendChild(body);
-
-    var rows = [];
-
-    // The selected firework's settings row.
-    function lookOf() { return cfg.fireworkCfg[current]; }
-
-    // The selected firework's row in goSequence, which holds its colour.
-    function seqRowOf() {
-      for (var i = 0; i < cfg.goSequence.length; i++) {
-        if (cfg.goSequence[i].n === current) return cfg.goSequence[i];
-      }
-      return null;
-    }
-
-    /* Read and write a control's value. `kind` says where it lives:
-         (none)   the selected firework's settings row
-         size     fireworkSize          color    goSequence
-         global   cfg                   ambient  the background engine's config
-         charge   chargeTune            coin     coinTune
-         years    the milestone
-       chargeTune and coinTune are not in cfg, so "Copy config" does not
-       include them; copy those values into the file by hand. */
-    function getVal(def) {
-      if (def.kind === 'size') return cfg.fireworkSize[current];
-      if (def.kind === 'global') return readPath(cfg, def.path);
-      if (def.kind === 'ambient') return readPath(cfg.ambientLook, def.path);
-      if (def.kind === 'charge') return chargeTune[def.path];
-      if (def.kind === 'coin') return coinTune[def.path];
-      // A <select>'s value is a string, and YEARS is a number.
-      if (def.kind === 'years') return String(YEARS);
-      if (def.kind === 'color') { var r = seqRowOf(); return r ? r.color : ''; }
-      return lookOf()[def.path];
-    }
-
-    function setVal(def, v) {
-      if (def.kind === 'size') { cfg.fireworkSize[current] = v; return; }
-      if (def.kind === 'global') { writePath(cfg, def.path, v); return; }
-      if (def.kind === 'ambient') { writePath(cfg.ambientLook, def.path, v); return; }
-      if (def.kind === 'charge') { chargeTune[def.path] = v; return; }
-      // Rim depth: re-place the layers at once.
-      if (def.kind === 'coin') {
-        coinTune[def.path] = v;
-        applyCoinDepth();
-        return;
-      }
-      // Milestone: switch, then reset so the change shows at once.
-      if (def.kind === 'years') { setYears(parseInt(v, 10)); resetScene(); return; }
-      if (def.kind === 'color') { var r = seqRowOf(); if (r) r.color = v; return; }
-      lookOf()[def.path] = v;
-    }
-
-    // Adds one panel row: a heading, a note, a dropdown, a checkbox or a
-    // slider, depending on the entry.
-    function addRow(def) {
-      if (def.head || def.note) {
-        var el = document.createElement('div');
-        el.className = def.head ? 'lsa-panel-head' : 'lsa-panel-note';
-        el.textContent = def.head || def.note;
-        body.appendChild(el);
-        rows.push({ el: el, def: def, sync: function () {} });
-        return;
-      }
-
-      var row = document.createElement('label');
-      row.className = 'lsa-panel-row';
-
-      var name = document.createElement('span');
-      name.className = 'lsa-panel-label';
-      name.textContent = def.label;
-      row.appendChild(name);
-
-      var out = null;
-      var input;
-      var picker = !!(def.options || def.kind === 'color');
-
-      if (picker) {
-        input = document.createElement('select');
-        input.className = 'lsa-panel-select';
-        // Colour choices come from cfg.goColors.
-        var opts = def.options || Object.keys(cfg.goColors);
-        opts.forEach(function (o) {
-          var el = document.createElement('option');
-          el.value = o;
-          el.textContent = o;
-          input.appendChild(el);
-        });
-        row.appendChild(input);
-      } else if (def.bool) {
-        input = document.createElement('input');
-        input.className = 'lsa-panel-check';
-        input.type = 'checkbox';
-        row.appendChild(input);
-      } else {
-        out = document.createElement('span');
-        out.className = 'lsa-panel-value';
-        row.appendChild(out);
-
-        input = document.createElement('input');
-        input.className = 'lsa-panel-slider';
-        input.type = 'range';
-        input.min = def.min;
-        input.max = def.max;
-        input.step = def.step;
-        row.appendChild(input);
-      }
-
-      var evt = (picker || def.bool) ? 'change' : 'input';
-
-      function onInput() {
-        var v;
-        if (def.bool) v = input.checked;
-        else if (picker) v = input.value;
-        else { v = parseFloat(input.value); out.textContent = v; }
-        setVal(def, v);
-
-        // The glow buffer's size is only set on resize, so force one.
-        if (def.path === 'glowDownscale') fw.resize();
-      }
-      input.addEventListener(evt, onInput);
-      devCleanup.push(function () { input.removeEventListener(evt, onInput); });
-
-      body.appendChild(row);
-
-      rows.push({
-        el: row,
-        def: def,
-        sync: function () {
-          var v = getVal(def);
-          if (def.bool) input.checked = !!v;
-          else if (picker) input.value = v;
-          else { input.value = v; out.textContent = v; }
-        }
-      });
-    }
-
-    /* Controls for the charge and the medal. Only some chargeTune values have
-       a slider; the rest are changed in the file.
-       blur and scale0 apply during a hold; pop and galaxyFade apply on the
-       next run; rim depth applies at once. */
-    var CHARGE_SETTINGS = [
-      { head: 'The number swap' },
-      { note: 'Hold the spark and watch the number change. Big values turn ' +
-              'the digit into a round blob — the blur has to stay narrower ' +
-              'than the stroke.' },
-      { kind: 'charge', path: 'blur', label: 'Blur at the peak (em)',
-        min: 0.02, max: 0.4, step: 0.01 },
-
-      // Start size only. The end size is always set to match the medal.
-      { head: 'The counter grows' },
-      { note: 'Where the number starts, as a multiple of 88px. It always ' +
-              'finishes at the size of the number on the medal, which is why ' +
-              'there is no control for the other end.' },
-      { kind: 'charge', path: 'scale0', label: 'Number starts at (x)',
-        min: 0.1, max: 1, step: 0.01 },
-
-      { head: 'The release' },
-      { note: 'The moment the spark fills. RESET, then hold the spark to ' +
-              'watch these — both are read when the charge completes, so a ' +
-              'change lands on the next run, not the one playing.' },
-      { kind: 'charge', path: 'pop', label: 'Flash when charged', bool: true },
-      { kind: 'charge', path: 'galaxyFade', label: 'Galaxy fades over (s)',
-        min: 0.1, max: 4, step: 0.1 },
-
-      // Move the cursor so the medal leans; face-on there is no rim to see.
-      { head: 'Medal thickness' },
-      { note: 'The rim is 68 flat copies of one silhouette, not real ' +
-              'geometry, so it only reads as solid while the coin is turned ' +
-              'a little. Raising this without raising the layer count opens ' +
-              'gaps between them. Lands live.' },
-      { kind: 'coin', path: 'depth', label: 'Rim thickness (px)',
-        min: 0, max: 160, step: 1.2 }
-    ];
-
-    // Milestone picker, the ten real milestones. On Liferay the milestone
-    // comes from data-years instead.
-    var MILESTONE_SETTINGS = [
-      { head: 'The milestone' },
-      { note: 'Changing this resets the stage. Hold the spark to watch the ' +
-              'counter walk it, or press Play show to skip straight to the ' +
-              'fireworks — 50 years is a 14.4-second hold.' },
-      { kind: 'years', label: 'Years',
-        options: ['5', '10', '15', '20', '25', '30', '35', '40', '45', '50'] }
-    ];
-
-    // Build every row. Per-firework ones first, right under the tabs; the
-    // whole-show sections after.
-    FIREWORK_SETTINGS.concat(SHOW_SETTINGS).concat(AMBIENT_SETTINGS)
-      .concat(CHARGE_SETTINGS).concat(MILESTONE_SETTINGS).forEach(addRow);
-
-    // Highlights the selected tab and refreshes every control's value.
-    function syncAll() {
-      for (var i = 0; i < tabBtns.length; i++) {
-        tabBtns[i].className = 'lsa-panel-tab' +
-          (i + 1 === current ? ' lsa-panel-tab--on' : '');
-      }
-
-      for (var k = 0; k < rows.length; k++) rows[k].sync();
-    }
-
-    syncAll();
-
-    /* "Copy config": the whole cfg as text. Slider changes are lost on
-       reload, so paste this over the `cfg` object near the top of this file
-       to keep them. chargeTune and coinTune are not included. */
-    function exportConfig() {
-      return 'var cfg = ' + JSON.stringify(cfg, null, 2) + ';';
-    }
-
-    // Copies text to the clipboard. Falls back to a hidden text box where the
-    // clipboard API is not allowed (plain http).
-    function copyText(text, done) {
-      function legacy() {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.className = 'lsa-panel-clip';
-        document.body.appendChild(ta);
-        ta.select();
-        var ok = false;
-        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-        ta.remove();
-        return ok;
-      }
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(
-          function () { done(true); },
-          function () { done(legacy()); }
-        );
-        return;
-      }
-      done(legacy());
-    }
-
-    // "Play show": resets, then runs the fireworks without the hold. It must
-    // reset first, because onGo() does nothing while a show is queued.
-    var playBtn = document.createElement('button');
-    playBtn.className = 'lsa-panel-copy';
-    playBtn.type = 'button';
-    playBtn.textContent = 'Play show';
-
-    function onPlay() {
-      resetScene();
-      onGo();
-    }
-    playBtn.addEventListener('click', onPlay);
-    devCleanup.push(function () { playBtn.removeEventListener('click', onPlay); });
-
-    panel.appendChild(playBtn);
-
-    var copyBtn = document.createElement('button');
-    copyBtn.className = 'lsa-panel-copy';
-    copyBtn.type = 'button';
-    copyBtn.textContent = 'Copy config';
-
-    function onCopy() {
-      copyText(exportConfig(), function (ok) {
-        copyBtn.textContent = ok ? 'Copied' : 'Copy failed — see console';
-        if (!ok) console.warn('[lsa] clipboard refused; config follows:\n' + exportConfig());
-        setTimeout(function () { copyBtn.textContent = 'Copy config'; }, 1600);
-      });
-    }
-    copyBtn.addEventListener('click', onCopy);
-    devCleanup.push(function () { copyBtn.removeEventListener('click', onCopy); });
-
-    panel.appendChild(copyBtn);
-
-    root.appendChild(panel);
-  }
-
   /* ---- Close ---------------------------------------------------------------------
      Removes everything: every listener, the animation loop, both engines,
      the overlay itself, and gives the page its scrolling back. */
   function teardown() {
-    for (var i = 0; i < devCleanup.length; i++) devCleanup[i]();
-    devCleanup.length = 0;
     closeBtn.removeEventListener('click', teardown);
     chargeBtn.removeEventListener('mouseenter', onChargeEnter);
     chargeBtn.removeEventListener('mouseleave', onChargeLeave);
@@ -2105,27 +1559,4 @@
     document.body.style.overflow = previousOverflow;
   }
 
-  /* ---- Dev hook (demo page only) ------------------------------------------------
-     Only when <html> has data-lsa-dev: builds the dev panel and adds
-     window.__lsaDev for testing. Liferay never sets it, so no global is
-     created there. */
-  if (document.documentElement.hasAttribute('data-lsa-dev')) {
-    buildDevPanel();
-
-    window.__lsaDev = {
-      cfg: cfg,
-      fw: fw,
-      amb: amb,             // the background canvas's own engine
-      burst: fw.burst,
-      launch: fw.launch,
-      stats: fw.stats,
-      go: onGo,
-      // step(n, dt): runs n frames at once, for testing where the animation
-      // loop is paused. Uses the real frame(), so it runs the whole show.
-      step: function (n, dt) {
-        var d = dt || 1 / 60;
-        for (var i = 0; i < (n || 1); i++) frame(d);
-      }
-    };
-  }
 })();
