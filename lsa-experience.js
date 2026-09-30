@@ -25,10 +25,8 @@
    section), so nothing else has to load first. The rest of the file decides
    when and where fireworks go off.
 
-   `cfg` IS THE ENGINE'S OWN CONFIG. The engine copies what it is given, so
-   right after it is built `cfg` is pointed at `fw.cfg`. Everything below
-   edits that. `background: null` is what keeps the fireworks canvas
-   see-through, so the page shows behind it.
+   SETTINGS are plain constants in "The show's settings" section. They are
+   final; nothing changes them while the show runs.
 
    LAYERS, back to front (z-index is set in lsa-experience.css):
      -1  ambient    background fireworks, seen through the blue veil
@@ -536,13 +534,24 @@
   }
   // Called further down, once chargeTune exists.
 
-  /* ---- Each firework's look ---------------------------------------------------
-     How each of the five fireworks throws its sparks, 1 to 5 left to right.
-     These replace cfg's values for that firework's own sparks. Second-burst
-     sparks still use cfg's values.
+  /* ---- The show's settings ----------------------------------------------------
+     Every value here was tuned by eye and is final. */
 
-     1, 2, 4 and 5 are the same. 3, the centre, is a six-point star burst that
-     flies further and bursts a second time. */
+  // Colour sets for the fireworks, as lists of hues. `white` is the share of
+  // sparks drawn white instead.
+  var COLORS = {
+    red:  { hues: [357, 352, 2], white: 0 },
+    gold: { hues: [46, 51, 58], white: 0 },
+    mix:  { hues: [357, 352, 46, 58], white: 0.33 }
+  };
+
+  // Size of each of the five fireworks, 1 to 5 left to right. Scales how far
+  // the sparks fly, their thickness, the rocket and the flash together.
+  var FIREWORK_SIZE = { 1: 4.4, 2: 4.4, 3: 5, 4: 4.4, 5: 4.4 };
+
+  /* How each firework throws its sparks. 1, 2, 4 and 5 are the same. 3, the
+     centre, is a six-point star burst that flies further and bursts a second
+     time. */
   var SIDE_LOOK = {
     count: 200,             // sparks
     explosionSize: 10,      // how far they fly
@@ -555,7 +564,7 @@
     jitterSat: 10,
     jitterLight: 10,
     blast: { enabled: true, lead: 45 },           // flash, and ms before sparks
-    sub: { enabled: false, count: 6, delay: 0.7 } // second bursts
+    sub: { enabled: false }                       // no second bursts
   };
 
   var CENTRE_LOOK = {
@@ -575,243 +584,129 @@
 
   var FIREWORK_LOOK = { 1: SIDE_LOOK, 2: SIDE_LOOK, 3: CENTRE_LOOK, 4: SIDE_LOOK, 5: SIDE_LOOK };
 
-  /* ---- Fireworks settings ---------------------------------------------------
-     The settings for the main show's fireworks. Keys the engine knows and
-     this object leaves out take the engine's defaults. The engine reads these
-     live, so changing one while the show runs takes effect at once.
+  /* The launch order. The centre goes first, then the pair either side, then
+     the outer pair, 0.5s apart.
+     x: across the screen, 0 left to 1 right.   at: ms after the star is full.
+     color: a set from COLORS.                  n: which firework, 1-5. */
+  var LAUNCHES = [
+    { x: 0.50, at: 0,    color: 'mix',  n: 3 },
+    { x: 0.30, at: 500,  color: 'gold', n: 2 },
+    { x: 0.70, at: 500,  color: 'gold', n: 4 },
+    { x: 0.10, at: 1000, color: 'red',  n: 1 },
+    { x: 0.90, at: 1000, color: 'red',  n: 5 }
+  ];
 
-     These values are final. */
+  // Burst height as a share of the screen height. Only used if the medal's
+  // number cannot be found; normally the fireworks burst on it (burstY()).
+  var FALLBACK_BURST_HEIGHT = 0.5;
 
-  var cfg = {
-    // Size for a firework set off by clicking the canvas. The five show
-    // fireworks use their own sizes (fireworkSize below) instead.
-    scale: 1.55,
+  /* The main show's engine settings. The flash, trail, glow and physics apply
+     to all five fireworks. The spark values (explosionSize to jitterLight)
+     are for the rocket's colour and for second-burst sparks; each firework's
+     own sparks use its look above. */
+  var MAIN_FX = {
+    poolMax: 2000,          // most sparks alive at once
 
-    /* Grow the fireworks with the screen, so a burst takes up about the same
-       share of a small or a large screen. At `reference` px (the screen's
-       shorter side) the numbers here mean exactly what they say.
-       Only how far sparks fly and the flash size are scaled; spark thickness
-       and the rocket head stay the same. */
-    scaleToScreen: {
-      enabled: true,
-      reference: 900
-    },
-
-    // No background fill, so the page shows through the canvas. Required for
-    // an overlay.
-    background: null,
-
-
-    // The burst
-    count: 200,             // sparkles per burst
-    explosionSize: 10,
-    poolMax: 2000,
-
-    // Physics — per-frame values, reference runs at 30fps
+    // Physics, per frame at 30fps (see the engine's header)
     gravity: 0.2,
     drag: 0.9,
-    lifeDecay: 0.01,
-    lifeSpread: 0.35,       // ± fraction of life, per sparkle
 
-    // The sparks
-    size: 1.6,              // px stroke width
-    sizeSpread: 0.5,        // ± fraction of it, per sparkle
-
-    // Trail & glow
+    // Trail and glow
     trailFade: 0.27,
     trailAlpha: 0.6,
     glowDownscale: 4,
     glowAlpha: 0.35,
 
-    // Colour jitter
+    // Rocket colour and second-burst sparks
+    explosionSize: 10,
+    lifeDecay: 0.01,
+    lifeSpread: 0.35,
+    size: 1.6,              // px
+    sizeSpread: 0.5,
     jitterHue: 5,
     jitterSat: 10,
     jitterLight: 10,
 
-    // rAF delta clamp, so a stalled tab resumes rather than teleports
-    deltaCap: 0.064,
-
-    /* ---- The flash --------------------------------------------------------
-       A flash of light at the burst point, `lead` ms before the sparks fly.
-       `stack` draws it several times over for a bright white core; 1 is a
-       plain flash. These values apply to every firework. */
+    /* The flash at the burst point. `stack` draws it several times over for a
+       bright white core. `enabled` here is for second bursts. */
     blast: {
       enabled: true,
-      lead: 60,             // ms
-
-      // Flash radius in px, multiplied by each firework's fireworkSize.
-      radius: 100,
+      radius: 100,          // px, times the firework's size
       peak: 0.6,
       rise: 0.06,           // s
       hold: 0.15,
       decay: 1.8,
-      growth: 1.1,          // end radius as a multiple of the ignition radius
+      growth: 1.1,          // end radius as a multiple of the start radius
       stack: 2
     },
 
-    /* ---- The rocket -------------------------------------------------------
-       The dot that flies up before a burst. */
+    // The dot that flies up before a burst.
     rocket: {
       size: 2,              // px
-      launchY: 1.0,         // launches from this fraction of canvas height
-      light: 88             // hotter than a sparkle's base lightness
+      launchY: 1.0,         // launches from this share of the screen height
+      light: 88             // brighter than a spark
     },
 
-    /* ---- Second bursts -----------------------------------------------------
-       Some sparks burst again when they die. Only the centre firework does
-       (see CENTRE_LOOK). `particles`, `scale` and `glow` here apply to it. */
+    // Second bursts (the centre firework only).
     sub: {
-      enabled: false,
-      count: 6,
-      delay: 0.7,
-      particles: 30,
-      scale: 0.3,
-      glow: true
-    },
-
-    /* ---- Burst shape --------------------------------------------------------
-       Not used by the show: each firework has its own shape (FIREWORK_LOOK). */
-    shape: {
-      type: 'normal',       // normal | ring | star burst | concentric
-      starPoints: 5,
-      starInner: 0.3,
-      rings: 3,
-      ringWidth: 0.04,
-      ringThickness: 0.08
-    },
-
-    /* ---- The show's own settings ---------------------------------------------
-       Everything from here down is used by this file, not the engine.
-
-       goColors: colour sets for the fireworks, as lists of hues. `white` is
-       the share of sparks drawn white instead. */
-    goColors: {
-      red:  { hues: [357, 352, 2], white: 0 },
-      gold: { hues: [46, 51, 58], white: 0 },
-      mix:  { hues: [357, 352, 46, 58], white: 0.33 }
-    },
-
-    /* Size of each of the five fireworks, left to right. It scales the burst
-       spread, spark size and rocket size together. */
-    fireworkSize: {
-      1: 4.4,               // far left
-      2: 4.4,               // left
-      3: 5,                 // centre, the biggest
-      4: 4.4,               // right
-      5: 4.4                // far right
-    },
-
-    /* Burst height as a share of the screen height (0.5 = the middle). Only
-       used if the medal's number cannot be found; normally the fireworks
-       burst on the number itself (see burstY()). */
-    goHeight: 0.5,
-
-    /* The launch order. The centre goes first, then the pair either side,
-       then the outer pair, 0.5s apart.
-       x: across the screen, 0 left to 1 right.
-       at: ms after the star is full.
-       color: a set from goColors.
-       n: which firework, 1-5 left to right (its size and look). */
-    goSequence: [
-      { x: 0.50, at: 0,    color: 'mix',  n: 3 },
-      { x: 0.30, at: 500,  color: 'gold', n: 2 },
-      { x: 0.70, at: 500,  color: 'gold', n: 4 },
-      { x: 0.10, at: 1000, color: 'red',  n: 1 },
-      { x: 0.90, at: 1000, color: 'red',  n: 5 }
-    ],
-
-    /* ---- Background fireworks: when and where ------------------------------
-       They start once the card is revealed and run until close. */
-    ambient: {
-      enabled: true,
-      every: 1.4,           // s, average gap between bursts
-      vary: 0.6,            // +/- share of that gap, so the timing is uneven
-      top: 0.12,            // highest burst, as a share of screen height
-      bottom: 0.55,         // lowest burst, as a share of screen height
-      margin: 0.08          // keep bursts this share of the width from the edges
-    },
-
-    /* ---- Background fireworks: how they look -------------------------------
-       The full settings for the second engine that draws the background
-       fireworks. It is separate from the main show, so changing these does
-       not affect the five fireworks in front.
-
-       Seen through the blue veil, so everything here looks softer and dimmer
-       than the same numbers on the main canvas. */
-    ambientLook: {
-      background: null,
-
-
-      scale: 3,
-
-      scaleToScreen: {
-        enabled: true,
-        reference: 900
-      },
-
-      count: 120,
-      explosionSize: 9,
-      poolMax: 1200,
-
-      gravity: 0.2,
-      drag: 0.9,
-      lifeDecay: 0.02,
-      lifeSpread: 0.35,
-
-      size: 0.9,
-      sizeSpread: 0.5,
-
-      trailFade: 0.14,
-      trailAlpha: 0.7,
-      glowDownscale: 4,
-      glowAlpha: 0.5,
-
-      // All zero, so every spark in a burst is exactly the same colour.
-      jitterHue: 0,
-      jitterSat: 0,
-      jitterLight: 0,
-
-      blast: {
-        enabled: true,
-        lead: 45,
-        radius: 70,
-        peak: 0.6,
-        rise: 0.06,
-        hold: 0.15,
-        decay: 1.8,
-        growth: 1.1,
-        stack: 1
-      },
-
-      /* Engine defaults. None of these has an effect here: the bursts are plain spheres, no rocket is
-         launched (bursts appear in place), second bursts are off, and the
-         frame-time cap comes from the main config. */
-      shape: {
-        type: 'normal',
-        starPoints: 5,
-        starInner: 0.3,
-        rings: 3,
-        ringWidth: 0.04,
-        ringThickness: 0.08
-      },
-
-      deltaCap: 0.064,
-
-      rocket: {
-        size: 4,
-        launchY: 1,
-        light: 88
-      },
-
-      sub: {
-        enabled: false,
-        count: 6,
-        delay: 0.7,
-        particles: 30,
-        scale: 0.3,
-        glow: true
-      }
+      particles: 30,        // sparks each one throws
+      scale: 0.3,           // its size, against its parent firework
+      glow: true            // a small flash too
     }
+  };
+
+  /* Background fireworks: when and where. They start once the card is
+     revealed and run until close. */
+  var BACKGROUND_TIMING = {
+    every: 1.4,             // s, average gap between bursts
+    vary: 0.6,              // +/- share of that gap, so the timing is uneven
+    top: 0.12,              // highest burst, as a share of screen height
+    bottom: 0.55,           // lowest burst, as a share of screen height
+    margin: 0.08            // keep bursts this share of the width from the edges
+  };
+
+  /* Background fireworks: how they look. A second engine with its own
+     settings. Seen through the blue veil, so they look softer and dimmer
+     than the same numbers would on the main canvas. */
+  var BACKGROUND_FX = {
+    scale: 3,
+    count: 120,
+    explosionSize: 9,
+    poolMax: 1200,
+
+    gravity: 0.2,
+    drag: 0.9,
+    lifeDecay: 0.02,
+    lifeSpread: 0.35,
+
+    size: 0.9,
+    sizeSpread: 0.5,
+
+    trailFade: 0.14,
+    trailAlpha: 0.7,
+    glowDownscale: 4,
+    glowAlpha: 0.5,
+
+    // All zero, so every spark in a burst is exactly the same colour.
+    jitterHue: 0,
+    jitterSat: 0,
+    jitterLight: 0,
+
+    shape: { type: 'normal' },
+
+    blast: {
+      enabled: true,
+      lead: 45,
+      radius: 70,
+      peak: 0.6,
+      rise: 0.06,
+      hold: 0.15,
+      decay: 1.8,
+      growth: 1.1,
+      stack: 1
+    },
+
+    sub: { enabled: false }
   };
 
   /* ==========================================================================
@@ -845,9 +740,8 @@
      --------------------------------------------------------------------------
      USAGE
 
-       var fw = Fireworks2(canvasElement, config);
+       var fw = Fireworks2(canvasElement, settings);
 
-       fw.cfg                the engine's copy of the config
        fw.burst(x, y, spec)  a burst where it stands (background fireworks)
        fw.launch(x, y, spec) a rocket that flies up and bursts at y (the show)
        fw.update(dt)         move everything forward dt seconds
@@ -882,102 +776,8 @@
     var BASE_LIGHT = 62;
 
     var DITHER_PHASES = 12;   // see getDitherMasks()
+    var SCREEN_REFERENCE = 900; // px (screen's shorter side) where sizes are as set
     var TRAIL_FADEOUT = 0.6;  // seconds the trail takes to empty once idle
-
-    // Every setting and its default. A caller's config fills in on top of these.
-    var DEFAULTS = {
-      // Colour painted under everything. null = see-through, which an overlay
-      // on a live page needs.
-      background: '#050a18',
-
-      palette: 'fire',        // fire | blue | purple | random
-      scale: 1,               // overall size: spread and spark size together
-
-      /* Grow fireworks with the canvas, so a burst fills about the same share
-         of a small or large screen. Based on the canvas's shorter side; at
-         `reference` px the factor is 1. Off by default so lab sliders mean the
-         same thing at any window size; the overlay turns it on. */
-      scaleToScreen: {
-        enabled: false,
-        reference: 900        // px on the smaller side
-      },
-
-      count: 200,             // sparkles per burst
-      explosionSize: 10,      // per-frame speed -> x FPS_REF -> px/s
-      poolMax: 2000,          // hard cap on live sparkles
-
-      gravity: 0.2,           // per frame^2
-      drag: 0.9,              // per frame
-      lifeDecay: 0.01,        // per frame -> 3.33 s base life
-      lifeSpread: 0.35,       // +-fraction of life, per sparkle
-
-      size: 1.6,              // px stroke width of a sparkle
-      sizeSpread: 0.5,        // +-fraction of size, per sparkle
-
-      trailFade: 0.05,        // per frame erase rate of the trail buffer
-      trailAlpha: 0.6,        // how strongly particles stamp into the trail
-      glowDownscale: 4,       // bigger = coarser, brighter twinkle
-      glowAlpha: 1,           // how hard the glow is added back on top
-
-      jitterHue: 5,
-      jitterSat: 10,
-      jitterLight: 10,
-
-      /* The burst shape: only changes the direction and speed each spark
-         starts with. `normal` is an even disc.
-         ringThickness: how deep the `ring` shape is.
-         starPoints, starInner: points and waist of `star burst`.
-         rings, ringWidth: number and spread of `concentric` bands. */
-      shape: {
-        type: 'normal',       // normal | ring | star burst | concentric
-        starPoints: 5,
-        starInner: 0.3,
-        rings: 3,
-        ringWidth: 0.04,
-        ringThickness: 0.08
-      },
-
-      deltaCap: 0.064,        // longest frame step, so a paused tab does not jump
-
-      // The dot that flies up before a burst.
-      rocket: {
-        size: 4,              // px — a sparkle is ~1-2
-        launchY: 1.0,         // launch height as a fraction of canvas height
-        light: 88             // hotter than a sparkle's BASE_LIGHT
-      },
-
-      // The flash: a glow of light at the burst point, which makes it read as
-      // an explosion.
-      blast: {
-        enabled: true,
-        lead: 60,             // ms the light arrives BEFORE its own debris
-        radius: 140,          // px at ignition, before growth
-        peak: 0.55,           // brightest alpha it reaches
-        rise: 0.06,           // s to ignite
-        hold: 0.15,           // s at full brightness
-        decay: 1.8,           // s fading out
-
-        // End radius as a multiple of the start radius. Growing as it fades
-        // looks like light spreading out; a fixed radius looks like it shrinks.
-        growth: 1.6,
-
-        // How many times the flash is drawn on itself. 1 is a plain flash;
-        // more gives a bright white core. Raising `peak` stops helping above
-        // about 2.75, so use this for more.
-        stack: 1
-      },
-
-      /* Second bursts: some sparks burst again when they die. A shell is a
-         normal spark whose life is its fuse. */
-      sub: {
-        enabled: false,
-        count: 6,             // how many of the burst's sparkles are shells
-        delay: 0.7,           // s fuse, +/-15% per shell
-        particles: 30,        // sparkles each shell throws
-        scale: 0.3,           // size of each secondary burst, vs its parent
-        glow: true            // flash at each secondary break
-      }
-    };
 
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -1004,19 +804,6 @@
       // `normal`: an even disc. The square root spreads sparks evenly over the
       // area instead of bunching them in the middle.
       return [Math.random() * TAU, Math.sqrt(Math.random())];
-    }
-
-    // Fill in every key the caller left out, one level into objects.
-    function fill(dst, src) {
-      for (var k in src) {
-        if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
-        if (src[k] && typeof src[k] === 'object' && !Array.isArray(src[k])) {
-          dst[k] = fill(dst[k] && typeof dst[k] === 'object' ? dst[k] : {}, src[k]);
-        } else if (dst[k] === undefined) {
-          dst[k] = src[k];
-        }
-      }
-      return dst;
     }
 
     /* ---- Fading the trail ---------------------------------------------------
@@ -1059,11 +846,9 @@
 
     /* ====================================================================== */
 
-    /* Makes one engine for one canvas. The config passed in is COPIED, then
-       missing values are filled from DEFAULTS. Use the returned `cfg` to change
-       settings later, not the object you passed in. */
-    function createFireworks2(canvas, userCfg) {
-      var cfg = fill(userCfg ? JSON.parse(JSON.stringify(userCfg)) : {}, DEFAULTS);
+    // Makes one engine for one canvas, with its settings (MAIN_FX or
+    // BACKGROUND_FX).
+    function createFireworks2(canvas, cfg) {
       var ctx = canvas.getContext('2d');
 
       var w = 0, h = 0, dpr = 1;
@@ -1112,13 +897,12 @@
         return (spec && spec.scale) || cfg.scale;
       }
 
-      /* The screen-size factor from cfg.scaleToScreen (1 when off). Applied
-         only to how far sparks fly and the flash size, NOT to spark thickness
-         or the rocket, so do not fold it into scaleOf(). */
+      /* Grows fireworks with the screen, so a burst fills about the same share
+         of a small or a large screen: 1 when the shorter side is
+         SCREEN_REFERENCE px. Applied only to how far sparks fly and the flash
+         size, NOT to spark thickness or the rocket. */
       function screenScale() {
-        var S = cfg.scaleToScreen;
-        if (!S || !S.enabled) return 1;
-        return Math.min(w, h) / Math.max(1, S.reference);
+        return Math.min(w, h) / SCREEN_REFERENCE;
       }
 
       // The values that shape a firework's own sparks: spec.look if the show
@@ -1353,8 +1137,7 @@
          again at the end. */
 
       function update(dt) {
-        dt = Math.min(dt || 0, cfg.deltaCap);
-        if (dt <= 0) return;
+        if (!(dt > 0)) return;
 
         var gravity = cfg.gravity * FPS_REF * FPS_REF;
         var damp = Math.pow(cfg.drag, dt * FPS_REF);
@@ -1427,7 +1210,6 @@
 
       // Draws one frame, in five steps (numbered below).
       function draw(dt) {
-        dt = Math.min(dt === undefined ? 1 / 60 : dt, cfg.deltaCap);
 
         var pc = particleBuf.ctx, tc = trailBuf.ctx, gc = glowBuf.ctx;
         var i;
@@ -1516,7 +1298,6 @@
       // What the caller gets back. Kept in a variable so update() can call
       // api.onBurst, which the caller sets later.
       var api = {
-        cfg: cfg,
         burst: burst,
         launch: launch,
         update: update,
@@ -1542,15 +1323,11 @@
      The engine draws on the canvas and handles its own resizing. It does not
      run its own loop; this file runs it (see tick()) so teardown can stop it. */
 
-  var fw = Fireworks2(canvas, cfg);
+  var fw = Fireworks2(canvas, MAIN_FX);
 
-  // REQUIRED. The engine made its own copy of cfg, so point cfg at that copy.
-  cfg = fw.cfg;
-
-  /* The background fireworks get their own engine on their own canvas, so
-     they can sit behind the blue veil. Same copy rule as above. */
-  var amb = Fireworks2(ambCanvas, cfg.ambientLook);
-  cfg.ambientLook = amb.cfg;
+  // The background fireworks get their own engine on their own canvas, so
+  // they can sit behind the blue veil.
+  var amb = Fireworks2(ambCanvas, BACKGROUND_FX);
 
   /* ---- The show's timing ----------------------------------------------------
      The launches are timed on the animation loop (not setTimeout), so they
@@ -1615,20 +1392,20 @@
 
   /* The height the fireworks burst at: the medal's number. Read when the
      show starts, so it is right for the current window size. If the number
-     cannot be found, falls back to cfg.goHeight. */
+     cannot be found, falls back to FALLBACK_BURST_HEIGHT. */
   function burstY() {
     var y = medalNumberY();
-    return (y === null || !isFinite(y)) ? canvas.clientHeight * cfg.goHeight : y;
+    return (y === null || !isFinite(y)) ? canvas.clientHeight * FALLBACK_BURST_HEIGHT : y;
   }
 
-  // Queues the five launches from cfg.goSequence. updateSequence() fires them.
+  // Queues the five launches from LAUNCHES. updateSequence() fires them.
   function runSequence() {
     var w = canvas.clientWidth;
     var y = burstY();
 
     scheduled.length = 0;
-    cfg.goSequence.forEach(function (row) {
-      var c = cfg.goColors[row.color];
+    LAUNCHES.forEach(function (row) {
+      var c = COLORS[row.color];
       scheduled.push({
         t: row.at / 1000,
         x: row.x * w,
@@ -1638,7 +1415,7 @@
         spec: {
           hues: c.hues,
           white: c.white,
-          scale: cfg.fireworkSize[row.n],
+          scale: FIREWORK_SIZE[row.n],
           n: row.n,
           look: FIREWORK_LOOK[row.n]
         }
@@ -1966,7 +1743,7 @@
   var SPARK_SHAPE_CENTER = 7.44;
 
   // The colours, built once rather than for every spark.
-  var SPARK_COLORS = cfg.goColors.mix.hues.map(function (h) {
+  var SPARK_COLORS = COLORS.mix.hues.map(function (h) {
     return 'hsl(' + h + ', 90%, 62%)';
   }).concat(['#FFF6D6']);
 
@@ -2089,17 +1866,17 @@
      The first one goes off straight away. */
   var ambNext = 0;        // seconds until the next background burst
 
-  // A random gap before the next burst, around cfg.ambient.every.
+  // A random gap before the next burst, around BACKGROUND_TIMING.every.
   function ambientGap() {
-    var A = cfg.ambient;
+    var A = BACKGROUND_TIMING;
     // Never below 0.05s, or it would burst every frame.
     return Math.max(0.05, A.every * (1 + (Math.random() * 2 - 1) * A.vary));
   }
 
   // Runs every frame. When the gap is up, sets off one background burst.
   function ambientTick(dt) {
-    var A = cfg.ambient;
-    if (!A.enabled || revealed < REVEAL_STEPS.length) return;
+    var A = BACKGROUND_TIMING;
+    if (revealed < REVEAL_STEPS.length) return;
 
     ambNext -= dt;
     if (ambNext > 0) return;
@@ -2108,7 +1885,7 @@
        already in the sky.
 
        One random colour for the whole burst, passed as a one-item `hues` list.
-       No `scale` here, so ambientLook.scale still controls the size. */
+       No `scale` here, so BACKGROUND_FX.scale sets the size. */
     var w = ambCanvas.clientWidth;
     var h = ambCanvas.clientHeight;
     var m = A.margin * w;
@@ -2123,12 +1900,13 @@
 
   /* ---- The animation loop ------------------------------------------------------
      One requestAnimationFrame loop runs everything. teardown() cancels it. */
+  var MAX_FRAME = 0.064;  // s, longest step, so a paused tab does not jump
   var last = performance.now();
   var rafId = requestAnimationFrame(tick);
 
   function tick(now) {
     // Seconds since the last frame, capped so a paused tab does not jump.
-    var dt = Math.min((now - last) / 1000, cfg.deltaCap);
+    var dt = Math.min((now - last) / 1000, MAX_FRAME);
     last = now;
     frame(dt);
     rafId = requestAnimationFrame(tick);
