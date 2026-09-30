@@ -1,60 +1,43 @@
 /* ==========================================================================
-   Long Service Award — 5 Year Milestone Overlay
-   Stylesheet for an overlay that shares the live Liferay intranet page.
+   Long Service Award — Milestone Overlay
+   Styles for the overlay that plays on top of the live Liferay intranet page.
    --------------------------------------------------------------------------
-   NAMESPACING CONTRACT — do not break these rules:
+   RULES FOR THIS FILE — they keep it from touching Liferay's own page:
 
-   1. Every class and id in this file MUST start with "lsa-".
-   2. Every rule MUST be scoped beneath the single root container
-      (.lsa-root), so nothing can apply to Liferay markup.
-   3. NO bare tag selectors. Never style body, div, h1, canvas, button, etc.
-      without a prefixed ancestor or a prefixed class of their own.
-   4. Nothing in here may modify, reset, or override Liferay's own styles.
+   1. Every class starts with "lsa-".
+   2. Every rule sits under .lsa-root, the overlay's one container.
+   3. No bare tag selectors (body, div, button...).
+   4. Nothing here changes Liferay's own styles.
+   5. This file loads nothing (no url()). Every image is set from
+      lsa-experience.js, so this file can be hosted anywhere.
 
-   Scope: desktop only, viewport width >= 1024px. The JavaScript refuses to
-   mount below that width, so no responsive rules below 1024px belong here.
+   Desktop only. The script does not run below 1024px wide, so there are no
+   small-screen rules.
+
+   LAYERS, back to front (z-index inside .lsa-root):
+     -1  .lsa-ambient   background fireworks, seen through the blue veil
+      0  .lsa-backdrop  blurred blue veil over the page
+      1  .lsa-card      the card with the medal and the sentence
+      2  .lsa-black     black cover, cleared by the fireworks
+      3  .lsa-canvas    the main fireworks
+      4  buttons        the star, the counter, close, dev panel
+      5  .lsa-spark     the spark cursor
+      6  .lsa-galaxy    galaxy photo that lights up the counter
    ========================================================================== */
 
+/* The overlay's container. Fixed over the whole window, above the page.
+
+   isolation: isolate is REQUIRED. .lsa-galaxy uses a blend mode, and without
+   this the blend would reach through to the Liferay page behind. */
 .lsa-root {
   position: fixed;
   inset: 0;
   z-index: 999999;
-
-  /* SEALS THE BLEND IN. .lsa-galaxy sits at the top of this stack on
-     mix-blend-mode: color-dodge, which by default would blend with everything
-     painted beneath it — including the live Liferay page behind the overlay.
-     isolate makes this element the blend's backdrop, so the dodge can reach
-     the overlay's own layers and stops there.
-
-     Load-bearing for the namespacing contract as much as for the effect: a
-     blend mode is the one way a scoped stylesheet can still change how the
-     host page looks. */
   isolation: isolate;
 }
 
-/* Stacking order inside .lsa-root, back to front:
-     -1 ambient  <  0 backdrop (blue)  <  1 card  <  2 black  <  3 canvas
-     <  4 buttons  <  5 spark  <  6 galaxy                                   */
-
-/* The background fireworks, BEHIND the blue veil.
-
-   Negative z-index, which keeps it inside .lsa-root's own stacking context —
-   the root's z-index creates one — rather than escaping behind the live page.
-   It paints under .lsa-backdrop, so everything drawn here is seen THROUGH that
-   veil: blurred by its backdrop-filter and muted by its 60% gradient. That is
-   the whole intent. These are distant fireworks, not a second show competing
-   with the one in front.
-
-   THE CONSEQUENCE TO KNOW ABOUT: they are heavily damped by the time they
-   reach the eye, so values that read fine on the main canvas can be close to
-   invisible here. Size and brightness are the two to reach for first.
-
-   To put them in FRONT of the blue veil instead — sharp, undimmed, still
-   behind the card — this z-index becomes 1 and the card, black and canvas
-   each go up by one. That is the only change it takes.
-
-   No pointer events. The main canvas takes clicks; this one is scenery and
-   must never intercept anything. */
+/* Background fireworks canvas. It sits behind the blue veil, so these read
+   as soft and far away. Never takes clicks. */
 .lsa-ambient {
   position: absolute;
   inset: 0;
@@ -65,6 +48,8 @@
   pointer-events: none;
 }
 
+/* Blue veil over the page. Blurs and tints it, and blocks clicks to it while
+   the overlay is open. Stays the same for the whole show. */
 .lsa-backdrop {
   position: absolute;
   inset: 0;
@@ -75,40 +60,15 @@
   pointer-events: auto;
 }
 
-/* This veil used to pull back to 60% at the first burst, fading its own blur
-   along with the gradient. That is GONE: the black layer above is now the one
-   thing that changes during the show, and two veils moving at once was one too
-   many. The blue is constant from mount to teardown. */
+/* ---- The counter ----------------------------------------------------------
 
-/* ---- The charge button, and the counter -----------------------------------
-
-   Replaced the old GO press. The cursor is HELD on the button; sparks fill it
-   from the bottom and the years count up.
-
-   THE TWO ARE NO LONGER STACKED. The button stays at the bottom of the stage,
-   where the show launches from; the counter has moved to DEAD CENTRE, where it
-   is the only thing on an otherwise black screen for the whole charge.
-
-   It lands exactly on the medallion's footprint, which is deliberate and costs
-   0.7 seconds of overlap — the counter fades on the first burst and the veil
-   starts lifting on that same burst, so for that one beat the number is over
-   the medallion it is about to be replaced by.
-
-   The counter is the thing being watched, so it is much the larger of the two.
-   The button is only where the filling happens, and is deliberately quieter
-   than the old gold GO pill was: it is a vessel, not a call to action. */
-
+   The number that counts up to the milestone while the user holds the spark
+   on the star. It sits over the middle of the screen, and at a full charge
+   it lands exactly on top of the number on the medal. */
 .lsa-count {
-  /* How far the counter sits off the viewport's centre, so that at a FULL
-     charge its digits land exactly on .lsa-medal-number's. Written once by
-     aimCounterAtMedal() in lsa-experience.js; the value is derived from the
-     medal's own layout, never typed in here.
-
-     It is a viewport-independent number, which is why nothing recomputes it on
-     resize: this element and .lsa-card are both centred on the same point, and
-     the medal's offset inside the card is set by the card's own layout. Only a
-     change to that layout moves it — which is why setYears() re-aims, since a
-     longer sentence can reflow the card. */
+  /* How far the counter sits above screen centre so it lines up with the
+     medal's number. Set by aimCounterAtMedal() in lsa-experience.js. Do not
+     type a value here. */
   --lsa-count-y: 0px;
 
   position: absolute;
@@ -116,93 +76,55 @@
   left: 50%;
   z-index: 4;
   transform: translate(-50%, -50%) translateY(var(--lsa-count-y));
-  color: #ffffff;
-  /* Aleo, a slab serif, since 2026-09-07 — the counter is the only thing on the
-     stage for the whole charge and the system sans read as UI chrome rather
-     than as the subject.
 
-     THE FONT IS LOADED FROM GOOGLE FONTS, not from assets/. It is the one
-     exception to this project's no-CDN rule, and it is deliberate: see the
-     <link> in lsa-mount.html. If Liferay's CSP blocks fonts.googleapis.com the
-     stack below is what shows, and the counter falls back to the sans it used
-     before rather than to a default serif. */
+  /* Must stay pure white. The galaxy's blend needs white to light it up. */
+  color: #ffffff;
+
+  /* Aleo from Google Fonts. If the page blocks Google Fonts, the system font
+     shows instead and nothing breaks. */
   font-family: Aleo, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  /* 88, not the old 72. The lab tuned every size multiplier against this
-     number, so porting the scale range without the base would land the whole
-     counter ~18% small. */
+
+  /* Base size. The script scales the number from 0.30x to its final size, and
+     the final size is worked out to match the medal's number. */
   font-size: 88px;
 
-  /* ITALIC 700, TO MATCH THE MEDAL. The counter ends the charge sitting exactly
-     where .lsa-medal-number is about to appear, so the two have to be the same
-     face at the same weight or the handoff reads as two different numbers.
-     Aleo 700 italic is what the artwork's digit was set in — confirmed by
-     measurement, not by eye. Change one of these and change the other.
-
-     THIS IS NOT SEMIBOLD. 600 was asked for first and 700 is what the medal
-     uses; a half-step lighter is visible at 91px against the artwork. */
+  /* Same face, weight and slant as .lsa-medal-number. Change one, change
+     both, or the counter will not match the medal. */
   font-style: italic;
   font-weight: 700;
-
   line-height: 1;
 
-  /* NO letter-spacing, and it used to be -0.02em. The counter has to superimpose
-     on .lsa-medal-number, which has none, and at these sizes the difference is
-     real: "50" comes out 3.5px narrower with it, which is a 1.8px sideways slip
-     once both boxes are centred. The old value was tuned against the system
-     sans this no longer uses. */
+  /* The medal's number has no letter spacing, so neither does this. */
   letter-spacing: normal;
 
   pointer-events: none;
-  /* Tabular figures so the number does not jitter sideways as it climbs —
-     proportional digits are different widths and at 17 changes a second that
-     reads as the whole counter twitching. Inert with Aleo, whose figures are
-     the same width either way — measured, not assumed — so it costs nothing and
-     still guards a future typeface change. */
+
+  /* Even-width digits so the number does not jiggle as it changes. */
   font-variant-numeric: tabular-nums;
 
-  /* NO text-shadow, and removing it was not tidying. There was a 24px gold
-     glow here at 45% alpha, and under .lsa-galaxy's color-dodge that glow is
-     the worst possible thing to put around the number.
-
-     Dodge is a volume knob on what is already painted. Pure white is at the
-     top of it, so a fully lit white letter shows no galaxy at all — which is
-     the point, the image ignites the letter on the way in and then gets out of
-     the way. A MID-TONE dodges hardest. A semi-transparent gold halo is
-     exactly a mid-tone, so the galaxy would have come up brightest in the ring
-     AROUND the number rather than in the number, which inverts the whole
-     effect. Same failure as setting the text mid-grey, which was built and
-     rejected. */
+  /* NO text-shadow. A soft glow would make the galaxy light up around the
+     number instead of in it. */
 }
 
-/* The digits themselves, and the only element the frame loop writes to.
-
-   IT EXISTS TO CARRY A TRANSFORM. The counter grows as the spark fills, and a
-   changing font-size would relayout the line on every step; a transform is
-   painted rather than laid out, so the number swells in place. It cannot go on
-   .lsa-count itself — that one already spends its transform on the
-   translate(-50%, -50%) that centres it, and `transform` is one property, not
-   two.
-
-   inline-block because a transform does nothing at all to a plain inline box.
-
-   ONE WRITER PER PROPERTY. `transform` is written here from the fill; `filter`
-   is written here by the number swap. Neither gets a CSS transition — the loop
-   already writes both every frame, and a transition would be a second writer
-   easing toward values that have already moved on. */
+/* The digits inside the counter. The script grows them with a transform and
+   blurs them with a filter on every frame, so neither gets a CSS transition. */
 .lsa-count-value {
   display: inline-block;
   transform-origin: 50% 50%;
   will-change: transform;
 }
 
+/* ---- The star button ------------------------------------------------------
+
+   The user holds the cursor here to charge the show. The circle is the target;
+   the star inside it is the art. */
 .lsa-charge {
-  /* How close the spark is, 0 to 1, written from the frame loop. Nothing here
-     is a :hover state on purpose — by the time the cursor is on the button the
-     invitation has already had to work. */
+  /* How close the cursor is, 0 to 1. Written by the script. Nothing reads it
+     right now. */
   --lsa-near: 0;
 
-  /* How full it is, 0 to 1, written from the frame loop. The outline reads it
-     so the dormant gold warms up with the light inside the shape. */
+  /* How full the star is, 0 to 1. Written by the script. The outline uses it
+     to brighten as the star fills. */
   --lsa-fill: 0;
 
   position: absolute;
@@ -211,15 +133,8 @@
   z-index: 4;
   transform: translateX(-50%);
 
-  /* THE HIT AREA IS THE CIRCLE, NOT THE STAR. Asking anyone to hover the
-     actual outline of a thin four-point shape would be a precision task, and
-     this interaction then asks them to HOLD there for between 4 and 14
-     seconds. So the target is the generous circle the star sits inside: the
-     visible shape is the feedback, this is what you are aiming at.
-
-     AND IT NEVER CHANGES SIZE. The art inside grows to 1.65x; this box does
-     not move by a pixel, because it is the thing a held cursor has to stay
-     within. See where CHARGE_SWELL used to be in lsa-experience.js. */
+  /* The target never changes size, so a held cursor never falls off it. Only
+     the star art inside grows. */
   width: 140px;
   height: 140px;
   padding: 0;
@@ -229,30 +144,14 @@
   cursor: pointer;
   pointer-events: auto;
 
-  /* NOT overflow: hidden. The star deliberately grows past this box — 231px of
-     art in a 140px button at a full charge — and clipping would saw its arms
-     off at the exact moment it is brightest. */
+  /* The star grows past this box at full charge, so nothing is clipped. */
   overflow: visible;
 
-  /* NO box-shadow, and no border. Both went with the pill.
-
-     They were the proximity glow — the control answering the cursor from a
-     distance, which is what made a hold-to-charge gesture discoverable in the
-     first place. On a 232x52 capsule that worked: it had a rim and a surface,
-     and the glow sat on its own edge.
-
-     On a transparent circle it is a round gold blob behind a star-shaped
-     object. The shapes disagree, and the star's own halo is already doing that
-     job from inside the shape rather than around a box it happens to sit in.
-
-     ⚠ --lsa-near is still written every frame by proximityTick() and nothing
-     reads it now. Left in place deliberately: the approach signal is worth
-     having, and the star is where it should live if it comes back. */
+  /* No box-shadow and no border. A round glow behind a four-point star looks
+     wrong, and under the galaxy it shows as a black disc. */
 }
 
-/* The art. Scaled from the loop — never .lsa-charge itself — with the origin
-   at the centre so it swells in place. overflow visible so the arms can pass
-   outside the 140px box without being clipped. */
+/* The star's SVG. The script scales it from 0.65x to 1.65x around its centre. */
 .lsa-charge .lsa-spark-art {
   display: block;
   width: 100%;
@@ -262,18 +161,7 @@
   will-change: transform;
 }
 
-/* THE EMPTY STATE: an outline with nothing in it. This is what "dormant" looks
-   like — the shape fully present, with no light in it yet.
-
-   GOLD, NOT WHITE. A cool white hairline around warm gold light reads as two
-   different materials, a wireframe somebody poured light into. The dormant
-   spark should be the same substance as the lit one, only unlit, so this is
-   the fill's own gold at low alpha — and it warms as the shape fills, because
-   the alpha climbs with --lsa-fill. A constant frame around a changing picture
-   was the version that got rejected.
-
-   The hairline weight is deliberate. It was doubled once, which was the wrong
-   read of the complaint: the weight was never the problem, the colour was. */
+/* The star's thin gold outline. It brightens as the star fills. */
 .lsa-charge .lsa-spark-track {
   fill: none;
   stroke: rgba(240, 194, 75, calc(0.34 + 0.46 * var(--lsa-fill)));
@@ -281,64 +169,24 @@
   stroke-linejoin: round;
 }
 
-/* The same path over the outline, filled by the radial gradient. NOT blurred —
-   see the note in lsa-experience.js for why a blur here produces an emboss. */
+/* The light that fills the star from the centre out. Its gradient is driven
+   by the script. */
 .lsa-charge .lsa-spark-fill {
   stroke: none;
 }
 
-/* Opacity and brightness are both written from the loop, so no transition
-   here. Starts at 0 because an empty spark must not glow at all. */
+/* A blurred copy of the star behind it, for the glow. The script sets its
+   opacity and brightness. Starts hidden. */
 .lsa-charge .lsa-spark-halo {
   stroke: none;
   opacity: 0;
 }
 
-/* The charged beat: one flash of white.
+/* A white flash when the star is full.
 
-   ⚠ OFF BY DEFAULT SINCE 2026-09-05. It is still here, still on the dev
-   panel's switch, and it must not be turned back on in this form. Under the
-   galaxy it renders as a BLACK DISC, not a flash.
-
-   Why, and it is ordinary CSS rather than anything exotic: an outer box-shadow
-   is clipped so that it never paints inside the element's own border box. On
-   an opaque control nobody notices, because the control fills that gap. This
-   button is transparent and 140px wide, so the shadow becomes a gold RING with
-   a hole in it. color-dodge then multiplies the ring into bright nebula while
-   the hole stays pure black, and the eye reads the hole as an object.
-
-   It cost most of a day to find, because nothing in the DOM is painting
-   anything dark — every computed style on this element is transparent. It was
-   found by removing the shadow and taking two screenshots.
-
-   ANY REPLACEMENT MUST COME FROM THE STAR'S OWN SHAPE, not from a box on the
-   element. That was already true before this — a round shadow on a four-point
-   star is the same mismatch that got the proximity glow deleted on 09-04 — and
-   it has now caused two separate bugs. The halo path is where it belongs.
-
-   This is the only moment in the interaction that should feel like a physical
-   event rather than a smooth progression. Everything up to here has been
-   gradual, so a sharp arrival is what marks it as finished — and without it,
-   full and nearly-full look the same and you keep holding. So it is worth
-   rebuilding, just not out of a box-shadow.
-
-   ⚠ THIS KEYFRAME WAS SILENTLY MISSING. An unbalanced comment directly above
-   it — a block that closed, then ran on for three more lines and closed again
-   — made the CSS parser read the prose as a selector and swallow the whole
-   @keyframes block as its body. `.lsa-charge--pop` was applying an animation
-   that did not exist, so the snap had never once played. Found and fixed
-   2026-09-04 by listing the parsed rules in a browser, not by reading.
-
-   NO SCALE ANY MORE. It used to overshoot the button's size as well, from the
-   6% CHARGE_SWELL had left it at to 13% and back. That made sense against a
-   button that had barely moved; the star now grows 154% over the hold, so
-   another 13% at the end is invisible. The light is the only part of this beat
-   anyone can see, so the light is all that is left of it.
-
-   Dropping the transform also removes a trap: this element carries the
-   translateX(-50%) that centres it, and any keyframe touching `transform`
-   would have had to restate that on every stop or the button would jump to the
-   left edge for the length of the animation. */
+   OFF (chargeTune.pop is false). Do not turn it back on as it is: under the
+   galaxy it shows as a black disc behind the star. A replacement should be
+   drawn from the star's own shape, not from a box-shadow. */
 @keyframes lsa-charge-pop {
   0% {
     box-shadow: 0 0 18px rgba(240, 194, 75, 0.5);
@@ -355,15 +203,8 @@
   animation: lsa-charge-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
-/* The button and the counter leaving, on the first burst.
-
-   Slower than they arrived — 0.7s against a 0.28s snap — because this is them
-   getting out of the way rather than an event in its own right. The veil is
-   lifting over the same moment and that is what should be watched.
-
-   pointer-events go too: a button at zero opacity is still hoverable, and a
-   cursor resting where it used to be would sit there charging something
-   invisible. */
+/* When the first firework bursts, the counter and the star fade out and stop
+   taking the cursor. */
 .lsa-root--fired .lsa-count,
 .lsa-root--fired .lsa-charge {
   opacity: 0;
@@ -375,14 +216,7 @@
   transition: opacity 0.7s ease;
 }
 
-/* BELOW THE STAR, not across it. On the pill this sat over the middle on
-   mix-blend-mode: difference, inverting against the gold as the fill rose past
-   it — clever, and it needs a filled surface to invert against. There is none
-   here, so the label steps out of the way and just sits underneath.
-
-   18px clear of the box, which the star's arms do reach into at a full charge.
-   That overlap is in the design as built: a four-point star is mostly empty
-   space and its lower arm passes through the label rather than covering it. */
+/* "HOLD YOUR SPARK HERE", under the star. */
 .lsa-charge-label {
   position: absolute;
   top: calc(100% + 18px);
@@ -399,13 +233,7 @@
   pointer-events: none;
 }
 
-/* Puts the stage back to how it opened. Secondary by design — outlined rather
-   than filled, so the charge button stays the one obvious thing to reach for.
-
-   Positioned from the centre, past the charge button's right edge: that one is
-   232px wide, so half of it is 116px and this clears it by 24px. Change the
-   button's width and this number moves with it. Its vertical padding is set so
-   both pills come out the same 52px height, since they share a bottom edge. */
+/* UNUSED. The reset button was removed and nothing builds it now. */
 .lsa-reset {
   position: absolute;
   bottom: 64px;
@@ -430,23 +258,10 @@
   border-color: rgba(255, 255, 255, 0.85);
 }
 
-/* Layer 2 — the black veil the card is revealed from behind.
+/* ---- The black cover ------------------------------------------------------
 
-   ABOVE the card and BELOW the canvas, which is the whole point: the fireworks
-   are in front of it and burn at full brightness against it, while the card
-   behind it is hidden completely until it clears.
-
-   Opaque, not translucent. At full strength the stage is genuinely black and
-   the fireworks are the only thing on screen.
-
-   No backdrop-filter here on purpose. The blue veil below already blurs the
-   page, and a second filtered layer would cost real frame time to change
-   nothing that can be seen through solid black anyway.
-
-   It clears by FADING, over the whole stage at once. A circular version was
-   tried — a masked disc collapsing toward the centre so the medallion was
-   uncovered last, softened by a blur on a wrapper element — and rejected on
-   sight. Do not rebuild it without being asked. */
+   Solid black over the card. The fireworks are drawn in front of it, so they
+   burn bright while the card stays hidden. Each burst clears a third of it. */
 .lsa-black {
   position: absolute;
   inset: 0;
@@ -457,20 +272,9 @@
   transition: opacity 0.9s ease;
 }
 
-/* One step per BURST MOMENT — three of them, not five: goSequence launches in
-   pairs (1+5, then 2+4, then 3 alone) and every rocket rises the same height,
-   so each pair breaks on the same frame.
-
-   Each burst clears a third of the veil, and the third takes it to nothing.
-   Bursts are ~0.5s apart and the transition is 0.9s, so the three overlap into
-   something closer to a continuous fade than to three visible jumps.
-
-   Cumulative — each class is added on top of the last, and within a run none
-   is ever removed. All three are single-class selectors, so SOURCE ORDER is
-   what decides which opacity wins. Do not reorder them.
-
-   RESET takes all three off at once, which fades the veil back to opaque over
-   the same 0.9s transition. */
+/* The three steps, one per burst. The script adds them one by one and never
+   removes one mid-show. They depend on source order, so keep them in this
+   order. */
 .lsa-black--r1 {
   opacity: 0.66;
 }
@@ -483,8 +287,7 @@
   opacity: 0;
 }
 
-/* The fireworks stage. Takes pointer events so a click can set off a burst,
-   as it does in the lab. */
+/* The main fireworks canvas. */
 .lsa-canvas {
   position: absolute;
   inset: 0;
@@ -495,29 +298,16 @@
   pointer-events: auto;
 }
 
-/* The spark cursor's canvas. z 5 — above the buttons, above everything. It is
-   the pointer, so nothing is allowed to cover it, and embers vanishing behind
-   the charge button would be worst at the moment they matter most.
+/* ---- The galaxy -----------------------------------------------------------
 
-   Never takes pointer events: it lies over the whole stage, so the smallest
-   slip here would make the entire overlay unclickable. */
-/* ---- The galaxy, over everything -----------------------------------------
+   A galaxy photo over everything, blended with color-dodge. On a black
+   screen it is invisible, except where something bright is drawn: the
+   counter, the star and the cursor. That makes the numbers look like they
+   light up in patches.
 
-   z 6, above even the cursor. color-dodge cannot lift black, so on a stage
-   that is opaque black during the charge this image is invisible except where
-   something bright is painted — the counter, the star, the cursor sparks. No
-   mask, no clip-path, nothing cut to the shape of the text.
-
-   object-fit: cover so the photograph fills any viewport without stretching.
-
-   pointer-events: none, or a full-screen image at the top of the stack would
-   eat every click and hover in the overlay, the charge button included.
-
-   ⚠ Do NOT give this element, or anything between it and .lsa-black, a
-   transform, a filter, will-change, or an opacity below 1 — except the
-   deliberate opacity fade below, which is on the image itself. Any of those on
-   a WRAPPER seals the blend inside it and the effect dies for a reason that
-   looks nothing to do with whatever was changed. */
+   DO NOT add a transform, filter, will-change or opacity below 1 to any
+   element between this and .lsa-black. Any of those silently stops the
+   blend from working. */
 .lsa-galaxy {
   position: absolute;
   inset: 0;
@@ -529,21 +319,9 @@
   pointer-events: none;
 }
 
-/* Gone by the time a rocket breaks.
-
-   Starts at the release, which buys the whole ascent before the first burst.
-   From that burst on, the fireworks are the brightest thing on the stage and
-   dodging them would blow them out, and then the medallion behind them.
-
-   THE DURATION COMES FROM THE SCRIPT, written once at the release from
-   chargeTune.galaxyFade so it has a dev-panel slider. The 0.5s here is the
-   fallback and the original value: at that speed the image is gone almost
-   immediately and the charge ends on a hard cut. Longer fades it across the
-   rockets' climb instead, which is what the variable exists to let you judge.
-
-   The fallback is deliberately the OLD value, so if the custom property ever
-   fails to arrive the behaviour is the one that was already shipped rather
-   than an untested one. */
+/* The galaxy fades out when the star is full, before the fireworks burst.
+   The fade time comes from the script (chargeTune.galaxyFade); 0.5s is the
+   fallback. */
 .lsa-galaxy {
   transition: opacity var(--lsa-galaxy-fade, 0.5s) ease;
 }
@@ -552,6 +330,8 @@
   opacity: 0;
 }
 
+/* The spark cursor's canvas. Above the buttons so nothing covers it. Never
+   takes clicks. */
 .lsa-spark {
   position: absolute;
   inset: 0;
@@ -562,44 +342,24 @@
   pointer-events: none;
 }
 
-/* The native cursor is hidden across the whole overlay, because the spark
-   drawn above IS the cursor. Set on the root and inherited, so a child that
-   asks for its own pointer or crosshair does not punch a hole in it — the
-   canvas used to ask for crosshair and the buttons still ask for pointer.
-
-   THERE IS NO FALLBACK, and that was a decision rather than an oversight: a
-   click-to-skip path was specified, then dropped on 2026-09-01. So holding the
-   spark on the button is the only way through, and someone who cannot make out
-   the spark has no pointer and no route. If that ever needs answering, the
-   place to start is here — restoring a visible cursor costs one rule. */
+/* Hides the normal cursor everywhere in the overlay, because the spark is
+   the cursor. There is no fallback cursor, by decision. */
 .lsa-root,
 .lsa-root * {
   cursor: none;
 }
 
-/* ---- The congratulation card --------------------------------------------
+/* ---- The card -------------------------------------------------------------
 
-   Layer 3 of five. Under the black veil, which is what hides it until the
-   fireworks clear that away; under the canvas, so the fireworks burst OVER it
-   rather than behind it; and above the blue backdrop.
+   Holds the medal and the sentence, centred on screen. The black cover hides
+   it until the fireworks clear it. The card itself never fades.
 
-   THE CARD HAS NO SURFACE OF ITS OWN — no background, no shadow. It is a
-   transparent box that positions the medallion and the message, so what shows
-   through behind them is the black veil, and then the blue backdrop as that
-   clears.
+   The plate image (card-Back-l.png) is set from lsa-experience.js, not here,
+   so this file loads nothing.
 
-   Two layers sit between this and the cursor, so the card receives no pointer
-   events at all — which is why the medallion's tilt is driven from the
-   cursor's POSITION rather than from hovering the element. See onStageMove()
-   in lsa-experience.js. Nothing here is clickable, so nothing is lost.
-
-   THE CARD ITSELF NEVER FADES. It is fully opaque from the moment it is
-   built, and the reveal is done entirely by the black veil above it clearing.
-   Fading both would compound — a third-opacity card behind a two-thirds-black
-   veil is far darker than either number suggests, and the medallion never
-   lands clean. If a fade is ever wanted here again, put it on this element and not
-   on .lsa-medal-scene: that one carries preserve-3d, and fading it flattens
-   its 3D context and collapses the medallion into a flat image mid-fade. */
+   The size is FIXED at 800 x 540, the plate's own shape. Content that grows
+   taller than the box spills over the edge with no warning. Today there is
+   about 80px to spare. */
 .lsa-card {
   position: absolute;
   top: 50%;
@@ -609,114 +369,41 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* The box is taller than the content now — see the ratio note below — so the
-     column has to be centred in it or the medallion sits high with a band of
-     bare plate under the sentence. */
   justify-content: center;
   gap: 32px;
   box-sizing: border-box;
   padding: 24px;
-
-  /* ---- THE PLATE'S OWN PROPORTIONS, since 2026-09-21 --------------------
-     card-back.png is 3200x2160, a landscape 1.4815. The card used to size
-     itself from its contents — 464 x 566, a PORTRAIT 0.82 — and
-     background-size: 100% 100% stretched the artwork across that, squashing it
-     to 1.8x taller than it was drawn. The 16px rim came out ~2.3px at the
-     sides and ~4.2px top and bottom.
-
-     Now the box carries the ratio, so the artwork lands undistorted and the
-     16px rim is even all the way round. 800 x 540 is the plate's own 1.4815 to
-     four decimal places, so height is written out rather than derived — an
-     aspect-ratio here would compute the same number and hide the pairing.
-
-     ** THE BOX MUST STAY TALLER THAN WHAT IS INSIDE IT. ** A fixed height
-     means content that outgrows it OVERFLOWS rather than pushing the box, so
-     the rim would end up crossing the sentence with nothing to warn you.
-     Measured at 24px padding and 20px type: the column is 404px tall with the
-     usual two-line sentence and 432px when a long name pushes it to three. 540
-     clears both. Re-measure if the padding, the gap, the medallion or the
-     sentence's 420px measure ever move.
-
-     background-size: 100% 100% now means the same thing as `contain`, since the
-     box and the image agree. It is left as 100% 100% so a future change to the
-     ratio shows up as a stretch rather than as bare card down the sides. */
   width: 800px;
   height: 540px;
 
-  /* A REAL SURFACE, since 2026-09-10: white first, then the card-back.png
-     artwork on 2026-09-11. The card was transparent over black from 08-30
-     until now, so this padding boxed nothing you could see; it is the
-     container's inset now.
-
-     THE url() IS NOT HERE, IT IS IN lsa-experience.js. This stylesheet has
-     loaded nothing since the shimmer went on 09-07, and that is the reason the
-     CSS file no longer has to sit next to assets/ on Liferay. Putting the
-     plate's url() here would hand that constraint straight back. It goes
-     through ASSET_PATH with every other image instead — see the card block in
-     lsa-experience.js.
-
-     NO background-color BEHIND IT and NO border-radius. The artwork carries its
-     own rounded corners in its alpha, so a colour would square them off again
-     and a radius would be a second, disagreeing rounding on top of the first.
-     The cost is that a failed load leaves the card transparent with dark text
-     on it, the same bet the medallion's own images already take.
-
-     Individual properties, never the `background` shorthand: the shorthand
-     also resets background-clip, which is the exact way the count-up's gradient
-     text was broken once already.
-
-     Note the medallion's own artwork was judged against black. Its cream face
-     and gold rim now sit on this cream plate, which is a by-eye call nobody has
-     made. */
+  /* The plate's rounded corners are in the image, so no background colour
+     and no border-radius. Use these single properties, never the
+     `background` shorthand. */
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
 
-  /* Inert for good: the card sits under the canvas, which takes the pointer
-     events, so this only makes explicit what the stacking already decides. */
   pointer-events: none;
 }
 
-/* The perspective root, and the rigid body the tilt rotates. Turning THIS
-   element is what makes the stack read as a physical object under a fixed
-   perspective rather than as a rotating picture.
+/* ---- The medal ------------------------------------------------------------
 
-   ** NEVER add a transform to this rule. ** lsa-experience.js writes
-   style.transform here on every mousemove; a transform in the stylesheet would
-   fight it. One writer per element. */
+   A 3D coin. The script tilts .lsa-medal-scene toward the cursor on every
+   mouse move, so never put a transform on it here. */
 .lsa-medal-scene {
-  /* ONE SOURCE FOR THE MEDAL'S SIZE. The number drawn on the face sizes itself
-     off this, and so does the count-up that has to land on it, so a medallion
-     that grows takes both with it. Change it here and nowhere else. */
-  /* 320 x 321 — the height is the width carried through the artwork's 563x565
-     viewBox, which is why it is not square on the nose.
-
-     It was briefly 374 x 375 earlier on 2026-09-21, sized to fill the 800 x 540
-     card's inner box with one pixel to spare. Called back to 320 the same day.
-     At this size the column is 409px in a 492px box, so there is 83px of
-     headroom with the usual two-line sentence and 55px when a long name pushes
-     it to three. ** .lsa-card's height is FIXED **, so content that outgrows it
-     overflows and crosses the rim with nothing to warn you — that headroom is
-     the only thing between here and that. */
+  /* The medal's width. The number on the medal and the counter both size
+     themselves from this. Change the size here and nowhere else. */
   --lsa-medal-w: 320px;
 
   width: var(--lsa-medal-w);
-  height: 321px;          /* the artwork's 563x565 viewBox, to scale */
+  height: 321px;          /* the artwork's 563x565 shape, to scale */
   perspective: 1000px;
   transform-style: preserve-3d;
   transition: transform 0.15s ease-out;   /* the tilt's lag and weight */
 }
 
-/* Two inert 3D wrappers. NOTHING writes a transform to either any more.
-
-   They carried the click-to-flip until 2026-09-21: .lsa-medal-coin took the
-   180-degree turn on a 0.9s ease-in-out, and .lsa-medal-depth took a keyframed
-   scaleZ squeeze that collapsed the rim while it turned. Both are kept because
-   the whole coin hangs off them and they are where the flip goes if it comes
-   back. Full rules in lab/medal-flip.reference.md.
-
-   preserve-3d on both is load-bearing — it is what keeps the edge stack's Z
-   offsets in one space rather than flattening them into the parent. */
+/* Two wrappers that keep the coin in 3D. Nothing moves them now. They are
+   where the old click-to-flip lived (see lab/medal-flip.reference.md). */
 .lsa-medal-coin {
   position: relative;
   width: 100%;
@@ -730,27 +417,20 @@
   transform-style: preserve-3d;
 }
 
-/* No backface-visibility, since 2026-09-21. It was here to swap the front and
-   back caps over as the coin flipped; there is no back cap now, and the tilt
-   never takes the face past 25 degrees, so nothing ever turns away. */
+/* The medal's front face. */
 .lsa-medal-face {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
 }
 
-/* Placeholder only. The edge builder in lsa-experience.js overwrites this with
-   an offset DERIVED from the layer count and spacing, so the face always caps
-   the stack no matter what those constants are set to. */
+/* Placeholder. The script replaces this so the face sits on top of the rim. */
 .lsa-coin-front {
   transform: translateZ(1px);
 }
 
-/* Thickness is faked by stacking copies of the textless silhouette along Z.
-
-   NO backface-visibility here, deliberately: the rim has to stay visible from
-   every angle, and hiding the away-facing half would make it disappear as the
-   coin tilts. It should not be "fixed". */
+/* The rim. The coin's thickness is faked with 68 copies of Stack.png stacked
+   one behind the other. Must stay visible from every angle. */
 .lsa-coin-edge {
   position: absolute;
   inset: 0;
@@ -759,8 +439,6 @@
   pointer-events: none;
 }
 
-/* Fully opaque: the stacked copies have to read as one solid mass, and the
-   SVG's own transparent background is what preserves the silhouette. */
 .lsa-coin-edge img {
   display: block;
   width: 100%;
@@ -768,6 +446,7 @@
   opacity: 1;
 }
 
+/* Holds medal.svg, which the script loads and puts straight into the page. */
 .lsa-medal-img {
   display: block;
   width: 100%;
@@ -777,22 +456,15 @@
   user-select: none;
 }
 
-/* medal.svg is inlined into .lsa-medal-img since 2026-09-30. */
 .lsa-medal-img svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-/* The medal's "image" layer: the round brushed-metal texture in the middle of
-   the face. Tagged from lsa-experience.js once the SVG is inlined.
-
-   JS writes a rotate() here on every mousemove. It turns about its own
-   centre, and the circle shape means only the texture appears to move.
-   Same 0.15s lag as the tilt so the two move together.
-
-   JS also writes its opacity, from the tilt strength. That overrides the
-   file's own opacity="0.7". Starts at 0 until the cursor moves. */
+/* The round brushed-metal texture inside medal.svg. The script turns it
+   toward the cursor and fades it in with the tilt. Hidden until the cursor
+   moves. */
 .lsa-medal-image {
   opacity: 0;
   transform-box: fill-box;
@@ -800,8 +472,8 @@
   transition: transform 0.15s ease-out, opacity 0.15s ease-out;
 }
 
-/* The diamonds on the ring, one per 5 years. lsa-experience.js places each
-   one by its centre, in percentages of the medal; see drawDiamonds(). */
+/* The diamonds on the ring, one per 5 years. The script places each one;
+   see drawDiamonds(). */
 .lsa-medal-diamonds {
   position: absolute;
   inset: 0;
@@ -816,32 +488,15 @@
   user-select: none;
 }
 
-/* THE MILESTONE ON THE FACE, since 2026-09-07.
+/* The milestone number on the medal ("5", "10", ...). The medal art has no
+   number, so this draws it.
 
-   It used to be part of the artwork, which meant ten milestones needed ten
-   2.3 MB faces and a 20-year award showed a medal reading 5. The face is blank
-   now and this draws the digits over it.
+   Position and size are fractions of the medal, measured from the original
+   artwork, so they follow the medal if it is resized. The 0.055em nudge
+   centres Aleo's digits by their ink, not their box. Re-measure it if the
+   font ever changes.
 
-   EVERY NUMBER BELOW WAS MEASURED, NOT CHOSEN. The old face and the blank one
-   are the same artwork at the same size, so subtracting one from the other
-   gives the digit's exact box: x 948-1296, y 774-1256 in a 2250x2260 export.
-   As fractions of the medal that is centre 0.4989 / 0.4493 and an ink height of
-   0.2137. Those fractions are what survive the medallion ever being resized.
-
-   FONT-SIZE IS A FRACTION OF THE MEDAL, not a fixed pixel value: 161/563, the
-   design's own size over the artwork's viewBox. Confirmed against the
-   measurement — Aleo 700 italic digits are 0.74em of ink, and 161 x 0.74 is
-   119, against 117-121 measured off the pixels. The two agree, so this is the
-   real typeface and the real size rather than a match by eye.
-
-   THE 0.055em NUDGE IS NOT A FUDGE. Centring puts the element's BOX on the
-   target; what has to land there is the INK. Aleo sits its digits' ink centre
-   0.055em above the box centre, so the box goes down by that much to bring the
-   ink up to the mark. It is independent of line-height. Re-measure it if the
-   typeface ever changes; do not carry it over.
-
-   Shadow in em, so it scales with the medal instead of staying 2px while the
-   digit grows. 0.0124em is the design's 2px over its 161px. */
+   Must match .lsa-count in font, weight and slant. */
 .lsa-medal-number {
   position: absolute;
   left: 50%;
@@ -855,36 +510,9 @@
   line-height: normal;
   white-space: nowrap;
 
-  /* The engraved brown, LEVELLED TO THE ARTWORK on 2026-09-07.
-
-     The design spec was `#A18D7E 19.49%, #998474 80.64%` and it rendered
-     visibly darker than the digit it replaced. Measured rather than argued
-     about: sampling the old face against the blank one at the shipped 320px
-     size, the printed digit's body averages **#A69384** and averages **#AB9A8A**
-     once its antialiased edges are counted, while those two stops average
-     #9D8879 — about ten levels per channel too dark in every channel.
-
-     Both stops are shifted up by that difference and then one step further, to
-     the SOFT mean rather than the body mean — chosen by eye against the old
-     face, and it is the right target: what reads as the digit's colour is the
-     average the eye takes over the whole glyph, antialiased edges included, not
-     the colour of its solid interior. The straight body match, `#AA9889` /
-     `#A28F7F`, still looked heavy next to the artwork.
-
-     The ANGLE, the STOP POSITIONS and the SPREAD between them are the spec's,
-     untouched. Only the level moved.
-
-     BACKGROUND-IMAGE, NOT THE `background` SHORTHAND. The shorthand resets
-     `background-clip` to `border-box`, so a `background:` written after the
-     clip below silently un-clips the gradient and paints a filled rectangle
-     behind the digit. Using the longhand means the order cannot matter.
-
-     background-clip: text needs a transparent fill to show through; the
-     text-shadow still paints, because it is drawn from the glyph shape rather
-     than from the fill colour. */
-  /* SILVER since 2026-09-30, when Front.png replaced the brown face. Levelled
-     to that face's own "Years", sampled at #949494 to #9D9D9D. The brown
-     stops above were #AE9C8D / #A69384. */
+  /* Silver gradient inside the digits, matched to "Years" on the medal. Use
+     background-image, never the `background` shorthand: the shorthand would
+     undo the clip and paint a grey box behind the number. */
   background-image: linear-gradient(166deg, #A0A0A0 19.49%, #949494 80.64%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -897,35 +525,15 @@
   user-select: none;
 }
 
-/* The cursor-tracking shimmer was REMOVED on 2026-09-07. It was a warm gradient
-   masked by assets/shimmer.png, swept across the medal by --lsa-sx / --lsa-sy.
-   It was not earning its place, and the mask was a 542 KB PNG of which only the
-   alpha channel was ever read — the heaviest asset in the project for an effect
-   nobody was sure they could see. The medal's 3D tilt is untouched.
+/* The sentence under the medal ("Congratulations Akhil on completing...").
 
-   This was also the ONE url() in this stylesheet, and the only reason the CSS
-   file and assets/ had to stay siblings on Liferay. That constraint is gone. */
-
-/* THE INK FOLLOWED THE SURFACE. This was #ffffff for as long as the card was
-   transparent over black; the white container on 2026-09-10 would have made it
-   invisible, so it is dark slate now. #1b2733 is the dark already used by the
-   lab pages rather than a new colour, and it is a GUESS at the brand ink — see
-   open question K, which is still unanswered for the blue. */
+   Public Sans 600 from Google Fonts. Only weight 600 is loaded; to use
+   another weight, add it to the font link in lsa-mount.html and
+   lsa-demo.html too. */
 .lsa-card-text {
   max-width: 420px;
   margin: 0;
   color: #1b2733;
-
-  /* PUBLIC SANS, from Google Fonts — the SECOND CDN font in this project, after
-     Aleo on the count-up. It rides the same css2 request as Aleo, so it is one
-     more family on a link that was already there, not a second round trip.
-
-     Only wght 600 is fetched, which is the weight below. Changing font-weight
-     here without adding that weight to the request in lsa-demo.html AND
-     lsa-mount.html gets you a browser-synthesised fake, not Public Sans.
-
-     The system stack stays behind it. If the CDN is blocked by the page's CSP
-     the sentence falls back to it and nothing breaks, same as .lsa-count. */
   font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 20px;
   font-weight: 600;
@@ -934,10 +542,11 @@
   text-align: center;
 }
 
-/* ---- Dev control panel --------------------------------------------------
-   Only ever built when the page sets data-lsa-dev, so these rules match
-   nothing in the Liferay fragment. Sits below the close button so the two
-   never overlap. */
+/* ---- Dev panel ------------------------------------------------------------
+
+   Tuning sliders for the demo page only. Built only when the page has
+   data-lsa-dev, which Liferay never sets, so none of these rules match
+   anything on the intranet. */
 
 .lsa-panel {
   position: absolute;
@@ -969,7 +578,7 @@
   text-transform: uppercase;
 }
 
-/* One tab per firework, numbered left to right across the stage. */
+/* One tab per firework, left to right. */
 .lsa-panel-tabs {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -995,7 +604,7 @@
   color: #ffffff;
 }
 
-/* Section heading inside the panel body. */
+/* Section heading inside the panel. */
 .lsa-panel-head {
   margin: 16px 0 10px;
   padding-top: 10px;
@@ -1043,22 +652,13 @@
   cursor: pointer;
 }
 
-/* Unused since the move to engine 2, which has no burst patterns and so no
-   rows that stop applying. Kept because the panel's row-hiding is one class
-   away if anything ever needs it again.
-
-   Declared AFTER .lsa-panel-row on purpose: both are single-class selectors, so
-   source order is what decides, and above the row rule this would lose to its
-   `display: grid`. */
+/* UNUSED. Hides a panel row. Must stay after .lsa-panel-row to win. */
 .lsa-panel-off {
   display: none;
 }
 
-/* The scratch textarea Copy config falls back to when navigator.clipboard is
-   unavailable. It has to be in the document and selectable for execCommand to
-   see it, so it cannot be display:none — parked off-screen instead. Lives here
-   rather than as an inline style only to keep to the project's no-inline-style
-   rule; this panel never ships. */
+/* Hidden text box that "Copy config" uses when the clipboard API is not
+   available. Parked off screen. */
 .lsa-panel-clip {
   position: fixed;
   top: -1000px;
@@ -1083,7 +683,7 @@
   cursor: pointer;
 }
 
-/* Sends whatever has just been tuned here back to the lab. */
+/* The panel's buttons ("Copy config", "Play show"). */
 .lsa-panel-copy {
   width: 100%;
   margin-top: 4px;
@@ -1102,6 +702,7 @@
   border-color: rgba(212, 175, 55, 0.7);
 }
 
+/* The close button, top right. Closing removes the whole overlay. */
 .lsa-close {
   position: absolute;
   top: 40px;

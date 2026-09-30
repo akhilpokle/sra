@@ -1,54 +1,30 @@
 /* ==========================================================================
-   Fireworks engine 2 — the light one.
+   Fireworks engine 2
    --------------------------------------------------------------------------
-   A standalone, minimal port of Hanabi (https://avanderw.co.za/hanabi/,
-   github.com/avanderw/hanabi — itself a conversion of a Flash/AS3 effect).
-   It shares NO code with `fireworks-engine.js` and neither knows about the
-   other; both can be loaded on the same page.
+   Draws fireworks on one canvas. Used by the overlay (lsa-experience.js) and
+   by lab/fireworks-lab-2.html. Based on Hanabi
+   (https://avanderw.co.za/hanabi/, github.com/avanderw/hanabi).
 
-   WHY A SECOND ENGINE. Engine 1 grew a large feature surface — burst shapes,
-   sub-blasts, stamps, the blast bloom, smoke, layer isolation, a config
-   serialiser. This one keeps only what makes a firework look like a firework
-   and drops the rest, so it stays small enough to read in one sitting.
+   HOW IT DRAWS: three offscreen buffers, combined onto the canvas each frame.
+     particles  the sparks, crisp
+     trail      a fading copy of the sparks, for streaks
+     glow       the sparks shrunk to 1/4 size and scaled back up, added on
+                top. The twinkle comes from pixels lost in that shrink.
 
-   WHAT IS IN, straight from Hanabi:
+   WHAT A BURST DOES: throws `count` sparks out from a point. Each spark gets
+   a direction and speed from the burst shape, a colour from the palette, and
+   a life. Gravity pulls it down and drag slows it until it dies. Optional
+   extras: a flash of light at the burst point, and second bursts.
 
-     three buffers      particles (crisp) -> trail (persistent) -> glow (1/4
-                        res, smoothing off, scaled back up additively). The
-                        twinkle is pixels LOST in that downscale; nothing is
-                        animated to twinkle.
-     physics            gravity 0.2, drag 0.9, life -0.01, all per frame @30fps
-     explode            200 particles, radius = sqrt(random) * explosionSize,
-                        angle = random * 2pi  (sqrt = area-uniform disc)
-     palettes           fire / blue / purple / random, jittered +-5 hue,
-                        +-10 sat, +-10 light per sparkle
-     burst shapes       normal / ring / star burst / concentric, ported from
-                        engine 1 verbatim. A geometry answers exactly one
-                        question — for particle i, what angle and what fraction
-                        of maximum speed — so it costs one function and nothing
-                        else. `normal` is the original even disc unchanged.
-
-   WHAT IS OUT, deliberately: smoke (a 4th buffer plus a radial gradient per
-   puff — by far the biggest per-frame cost), mass/flutter variance, layer
-   isolation. If a show needs any of those, it wants engine 1.
-
-   `squiggle`, engine 1's fifth shape, is out with them: it is not a launch
-   geometry at all — it carries a per-particle field and a term in the
-   integration loop, so it is a physics change rather than one more case.
-
-   --------------------------------------------------------------------------
-   THE ONE CONVERSION THAT MATTERS. Hanabi's constants are PER FRAME at 30fps.
-   This loop is delta-time integrated in seconds, so every one of them is
-   converted at read time against FPS_REF = 30:
+   UNITS: Hanabi's numbers are per frame at 30fps. This engine runs on real
+   seconds, so each one is converted with FPS_REF = 30:
 
        gravity   0.2  /frame^2  ->  x FPS_REF^2  ->  180 px/s^2
        drag      0.9  /frame    ->  pow(drag, dt * FPS_REF)
        life      0.01 /frame    ->  1/(0.01 * FPS_REF) = 3.33 s
        speed     10   /frame    ->  x FPS_REF        ->  300 px/s
 
-   Using them raw in a 60fps loop makes everything fall twice too fast and die
-   three times too early. Sanity check: terminal fall lands at ~55 px/s and
-   must not change with framerate.
+   So it looks the same at any frame rate.
 
    --------------------------------------------------------------------------
    USAGE
@@ -75,27 +51,30 @@
        requestAnimationFrame(tick);
      })(0);
 
-   `spec` — the optional last argument to burst/launch — describes one
-   firework, so a scripted show can differ from a click:
+   `spec`, the optional last argument to burst/launch, describes one
+   firework:
 
-       { hues: [357, 352, 2], white: 0.33, scale: 1.5 }
+       { hues: [357, 352, 2], white: 0.33, scale: 1.5, settings: {...} }
 
-   Omit it and the burst falls back to cfg.palette and cfg.scale.
+   hues: colours to pick from. white: share of sparks drawn white.
+   scale: size. settings: config values for this firework only (see
+   withSettings()). Leave it out and cfg.palette and cfg.scale are used.
 
-   Classic script on purpose: no ES module, so it works off file:// and under
-   a CSP that forbids inline script.
+   fw.onBurst(x, y, spec), if set, is called each time a rocket bursts.
+
+   A plain script (not a module), so it works under a strict CSP. Adds one
+   global, Fireworks2.
    ========================================================================== */
 
 (function (global) {
   'use strict';
 
-  // Hanabi's constants are per-frame at this rate. See the header.
+  // The frame rate the config numbers are written for. See the header.
   var FPS_REF = 30;
   var TAU = Math.PI * 2;
 
-  // Hanabi's palettes as hue lists. Base saturation/lightness are a judgement
-  // call — only the jitter ranges were recoverable from the reference — picked
-  // to read as hot sparks rather than pastel.
+  // Colour sets, as lists of hues. Every spark uses the same base saturation
+  // and lightness, plus a little random jitter.
   var PALETTES = {
     fire:   [357, 58, 46, 9, 352],
     blue:   [220, 200, 240, 180, 210],
@@ -107,36 +86,19 @@
   var DITHER_PHASES = 12;   // see getDitherMasks()
   var TRAIL_FADEOUT = 0.6;  // seconds the trail takes to empty once idle
 
+  // Every setting and its default. A caller's config fills in on top of these.
   var DEFAULTS = {
-    // Opaque fill painted under everything. Additive blending needs real
-    // pixels to add to, so a stage wants a colour here. Set null to composite
-    // onto transparency instead — what an overlay over a live page needs.
+    // Colour painted under everything. null = see-through, which an overlay
+    // on a live page needs.
     background: '#050a18',
 
     palette: 'fire',        // fire | blue | purple | random
-    scale: 1,               // global size: spread and shard together
+    scale: 1,               // overall size: spread and spark size together
 
-    /* Grow a firework with the canvas it is drawn on.
-
-       Everything else in this config is an absolute number of CSS pixels, so
-       without this a burst is the SAME PHYSICAL SIZE on every display.
-       Measured on the overlay's own tuning: one firework spanned 783px at
-       1024x768 and 778px at 2560x1440 — identical, which is 76% of the width
-       on the small screen and 30% on the large one. It ran off both edges of
-       the first and looked lost on the second.
-
-       `reference` is the size at which the factor is exactly 1, so a config
-       tuned on a 900px-tall display keeps its look there and scales from it.
-
-       MEASURED ON THE SMALLER SIDE of the canvas, not the width and not the
-       diagonal. A burst grows in both directions from a point set at a
-       fraction of the height, so the short side is what it runs out of first;
-       scaling on width alone would make an ultrawide monitor throw fireworks
-       clean off the top.
-
-       OFF BY DEFAULT, deliberately. The lab is a tuning surface and a slider
-       there should mean one fixed thing, not one thing per window size. The
-       overlay turns it on; the lab leaves it alone. */
+    /* Grow fireworks with the canvas, so a burst fills about the same share
+       of a small or large screen. Based on the canvas's shorter side; at
+       `reference` px the factor is 1. Off by default so lab sliders mean the
+       same thing at any window size; the overlay turns it on. */
     scaleToScreen: {
       enabled: false,
       reference: 900        // px on the smaller side
@@ -163,17 +125,11 @@
     jitterSat: 10,
     jitterLight: 10,
 
-    /* How the sparkles LEAVE the burst. Ported from engine 1, values included.
-       Only the launch geometry — physics, colour, life and rendering are
-       identical whichever is chosen, which is why a shape costs one function.
-
-       `normal` is the original even disc and is byte-for-byte what this engine
-       did before shapes existed, so nothing changes until something asks.
-
-       The two ring knobs are DIFFERENT things on different shapes, and the
-       names are engine 1's: `ringThickness` is how deep the single `ring`
-       shell is, `ringWidth` is the +/- spread around each of `concentric`'s
-       several bands. */
+    /* The burst shape: only changes the direction and speed each spark
+       starts with. `normal` is an even disc.
+       ringThickness: how deep the `ring` shape is.
+       starPoints, starInner: points and waist of `star burst`.
+       rings, ringWidth: number and spread of `concentric` bands. */
     shape: {
       type: 'normal',       // normal | ring | star burst | concentric
       starPoints: 5,
@@ -183,17 +139,17 @@
       ringThickness: 0.08
     },
 
-    deltaCap: 0.064,        // clamp on dt, so a stalled tab resumes not teleports
+    deltaCap: 0.064,        // longest frame step, so a paused tab does not jump
 
+    // The dot that flies up before a burst.
     rocket: {
       size: 4,              // px — a sparkle is ~1-2
       launchY: 1.0,         // launch height as a fraction of canvas height
       light: 88             // hotter than a sparkle's BASE_LIGHT
     },
 
-    // The shell detonating. Hanabi has no equivalent — this is carried over
-    // from engine 1, where it was the one thing that made a break read as an
-    // explosion rather than as particles appearing.
+    // The flash: a glow of light at the burst point, which makes it read as
+    // an explosion.
     blast: {
       enabled: true,
       lead: 60,             // ms the light arrives BEFORE its own debris
@@ -203,40 +159,18 @@
       hold: 0.15,           // s at full brightness
       decay: 1.8,           // s fading out
 
-      // End radius as a multiple of the ignition radius.
-      //
-      // Without this the bloom holds ONE fixed radius for its whole life while
-      // its alpha falls, and a radial gradient fading at a fixed radius appears
-      // to COLLAPSE INWARD: the faint rim drops below the visible threshold
-      // first and the bright middle drops last, so the lit disc marches inward
-      // even though the geometry never moves. Expanding as it fades is what
-      // makes it read as light spreading out and dying.
+      // End radius as a multiple of the start radius. Growing as it fades
+      // looks like light spreading out; a fixed radius looks like it shrinks.
       growth: 1.6,
 
-      // How many times the bloom is drawn on top of itself. 1 is one draw —
-      // the plain flash. Higher is the big blown-out white core you otherwise
-      // only get by clicking the same spot over and over.
-      //
-      // It exists because `peak` cannot reach that. The bloom is a three-stop
-      // gradient and every stop's alpha clamps at 1, so raising `peak` saturates
-      // the stops one after another and then does nothing at all — measured in
-      // engine 1 on one burst: peak 1.0 lights 982 blown-out pixels, 2.75 lights
-      // 3941, and 5.0 lights the same 3941. That is simply the ceiling for one
-      // draw. Drawing AGAIN is not subject to it, because each fill adds to what
-      // is already on the canvas under the additive composite.
-      //
-      // One honest difference from really clicking repeatedly: those are separate
-      // blasts that each roll their own hue, so their halo is a blend. This
-      // repeats ONE blast, so the halo keeps that blast's single hue.
+      // How many times the flash is drawn on itself. 1 is a plain flash;
+      // more gives a bright white core. Raising `peak` stops helping above
+      // about 2.75, so use this for more.
       stack: 1
     },
 
-    /* Secondary bursts — some of the first burst's own sparkles break again.
-       Ported from engine 1, where it was built and tuned.
-
-       The whole mechanism is that a shell is an ORDINARY sparkle whose life IS
-       the fuse. It breaks when it dies, so the countdown needs no extra field
-       and the shard visibly dims on its way to its own break. */
+    /* Second bursts: some sparks burst again when they die. A shell is a
+       normal spark whose life is its fuse. */
     sub: {
       enabled: false,
       count: 6,             // how many of the burst's sparkles are shells
@@ -249,14 +183,9 @@
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-  /* ---- Dotted paths -----------------------------------------------------
-     'blast.lead' -> cfg.blast.lead. Used by the per-firework settings a spec
-     can carry (see withSettings below), so a caller can name any value in the
-     config with one flat string instead of a nested object.
-
-     Deliberately identical to the pair in lsa-experience.js. They are not
-     shared because neither file may depend on the other — the engine has to
-     stand alone, and the overlay's panel needs them before the engine exists. */
+  /* Read or write a nested config value by a dotted path, e.g. 'blast.lead'.
+     Used by withSettings(). lsa-experience.js has its own copy on purpose,
+     so neither file depends on the other. */
 
   function readPath(o, path) {
     var parts = path.split('.');
@@ -271,17 +200,11 @@
   }
 
   /* ---- Burst shapes -----------------------------------------------------
-     Ported from engine 1 unchanged, squiggle excepted — see the header.
+     A shape only decides, for spark `i`, its direction and its share of full
+     speed. Everything after that is the same for every shape. */
 
-     A shape answers ONE question and nothing else: for particle `i`, at what
-     angle does it leave, and at what fraction of maximum speed. Everything
-     downstream — drag, gravity, life, hue, how it is drawn — is identical
-     whatever comes back. That is the whole reason a new geometry is cheap:
-     it is a case in a switch, not a feature.
-
-     Both functions are pure, so they sit at module level and are shared by
-     every instance rather than being rebuilt per canvas. */
-
+  // How far out a star burst reaches at a given angle: 1 at a tip, `inner`
+  // between tips.
   function starRadius(angle, points, inner) {
     var seg = TAU / points;
     var t = (angle % seg) / seg;    // position within one point, 0..1
@@ -289,12 +212,10 @@
     return 1 - d * (1 - inner);
   }
 
+  // Returns [angle, speed share 0-1] for spark i.
   function shapePoint(i, S, type) {
     switch (type) {
-      // A hollow hoop: every spark starts at the outer edge, so the middle
-      // stays empty instead of filling in. `concentric` with one ring is a
-      // near neighbour, but this is the shape people actually reach for and
-      // it should not need discovering.
+      // A hollow ring: every spark near full speed, so the middle stays empty.
       case 'ring':
         return [Math.random() * TAU, 1 - Math.random() * S.ringThickness];
 
@@ -304,17 +225,14 @@
       }
 
       case 'concentric': {
-        // i % rings rather than a random ring: interleaving fills every ring
-        // evenly instead of leaving the count to chance.
+        // Sparks take turns between bands, so every band gets the same number.
         var rings = Math.round(S.rings);
         var band = ((i % rings) + 1) / rings;
         return [Math.random() * TAU, band + (Math.random() - 0.5) * 2 * S.ringWidth];
       }
 
-      // sqrt gives uniform density per unit AREA. A plain uniform radius piles
-      // particles toward the centre and reads as a hollow-cored blob; this
-      // fills the disc evenly. This is exactly what spawnSparkles() did before
-      // shapes existed, which is what makes `normal` a no-op.
+      // `normal`: an even disc. The square root spreads sparks evenly over the
+      // area instead of bunching them in the middle.
       default:
         return [Math.random() * TAU, Math.sqrt(Math.random())];
     }
@@ -333,22 +251,16 @@
     return dst;
   }
 
-  /* ---- The dithered trail erase -----------------------------------------
-     A proportional erase can never reach zero on an 8-bit canvas: once
-     alpha*fade < 0.5 it rounds back up, stranding every touched pixel at
-     ~0.5/fade and leaving a permanent ghost of the burst.
+  /* ---- Fading the trail ---------------------------------------------------
+     Fading a canvas a little each frame never reaches zero (the colour
+     values round back up), so a faint ghost would stay forever.
 
-     So the strong erase is scattered SPATIALLY. Each frame one mask's worth
-     of pixels is erased hard enough to round to zero and the rest are left
-     alone; averaged over a cycle every pixel decays at the same rate, but no
-     single frame changes the whole image, so there is nothing to flicker.
-
-     The masks PARTITION the pixels rather than sampling them randomly — each
-     pixel belongs to exactly one mask, so a full cycle erases every pixel
-     exactly once. Random selection leaves some pixels untouched for long
-     stretches and those linger as bright speckle.                          */
+     Instead, each frame fully erases one of 12 random pixel masks. Every
+     pixel is in exactly one mask, so over 12 frames every pixel is erased
+     once, and the trail fades out evenly with no ghost and no flicker. */
   var ditherMasks = null;
 
+  // Builds the 12 masks once (128x128 tiles), shared by every engine.
   function getDitherMasks() {
     if (ditherMasks) return ditherMasks;
     var size = 128, masks = [], imgs = [], k;
@@ -359,7 +271,7 @@
       imgs.push(c.getContext('2d').createImageData(size, size));
     }
     for (var i = 0; i < size * size; i++) {
-      // Only alpha matters — destination-out reads nothing else.
+      // Give each pixel to one random mask. Only alpha matters.
       imgs[Math.floor(Math.random() * DITHER_PHASES)].data[i * 4 + 3] = 255;
     }
     for (k = 0; k < DITHER_PHASES; k++) masks[k].getContext('2d').putImageData(imgs[k], 0, 0);
@@ -367,6 +279,7 @@
     return ditherMasks;
   }
 
+  // Makes an offscreen canvas.
   function buffer(w, h, smoothing) {
     var c = document.createElement('canvas');
     c.width = Math.max(1, w);
@@ -378,6 +291,9 @@
 
   /* ====================================================================== */
 
+  /* Makes one engine for one canvas. The config passed in is COPIED, then
+     missing values are filled from DEFAULTS. Use the returned `cfg` to change
+     settings later, not the object you passed in. */
   function createFireworks2(canvas, userCfg) {
     var cfg = fill(userCfg ? JSON.parse(JSON.stringify(userCfg)) : {}, DEFAULTS);
     var ctx = canvas.getContext('2d');
@@ -387,16 +303,14 @@
     var particleBuf, trailBuf, glowBuf;
 
     /* ---- Size -------------------------------------------------------------
-       Buffers are allocated in DEVICE pixels and every context is scaled by
-       dpr, so all the maths below is in CSS pixels and reads the same on a
-       retina display as on a plain one. */
+       Matches the canvas and buffers to the window and screen density. The
+       buffers are in device pixels, but all drawing is in CSS pixels, so it
+       looks the same on a retina screen. Does nothing if nothing changed. */
     function resize() {
       var nw = canvas.clientWidth || canvas.width || 1;
       var nh = canvas.clientHeight || canvas.height || 1;
       var ndpr = window.devicePixelRatio || 1;
-      // glowDownscale is checked here too, so changing it at runtime rebuilds
-      // the buffer instead of silently doing nothing — cfg is read live, and a
-      // value that only applied at construction would be a lie.
+      // A change to glowDownscale also rebuilds the buffers.
       var nd = Math.max(1, cfg.glowDownscale);
       if (nw === w && nh === h && ndpr === dpr && nd === glowD && particleBuf) return;
 
@@ -410,15 +324,16 @@
       particleBuf.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       trailBuf.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Glow lives at 1/downscale of DEVICE resolution and is never scaled by
-      // dpr — it is a downsample of the particle buffer, not a drawing surface.
+      // The glow buffer is a shrunk copy of the particle buffer, never drawn on
+      // directly.
       glowBuf = buffer(Math.floor(w * dpr / glowD), Math.floor(h * dpr / glowD), false);
 
-      ditherPatterns = new Array(DITHER_PHASES); // patterns belong to the old ctx
+      ditherPatterns = new Array(DITHER_PHASES); // rebuilt for the new buffer
     }
 
     /* ---- Colour ----------------------------------------------------------- */
 
+    // A hue for one spark: from spec.hues if given, else from cfg.palette.
     function pickHue(spec) {
       var list;
       if (spec && spec.hues && spec.hues.length) {
@@ -430,24 +345,14 @@
       return list[Math.floor(Math.random() * list.length)];
     }
 
+    // A firework's size: spec.scale if given, else cfg.scale.
     function scaleOf(spec) {
       return (spec && spec.scale) || cfg.scale;
     }
 
-    /* How much bigger this canvas is than the size the config was tuned at.
-       1 when the feature is off, so every call site can multiply by it
-       unconditionally.
-
-       `w` and `h` are read live — resize() keeps them current — so dragging
-       the window changes the next burst with nothing to invalidate.
-
-       DELIBERATELY NOT FOLDED INTO scaleOf(). That value feeds four different
-       things: how far the sparkles fly, how thick each spark is drawn, the
-       flash radius, and the rocket's head. Only the first and third should
-       follow the screen — a firework on a big display should be WIDER, not
-       chunkier, and a rocket head that grows with the monitor just looks
-       wrong. Multiplying scaleOf() once would scale all four and is the
-       obvious wrong shortcut here. */
+    /* The screen-size factor from cfg.scaleToScreen (1 when off). Applied
+       only to how far sparks fly and the flash size, NOT to spark thickness
+       or the rocket, so do not fold it into scaleOf(). */
     function screenScale() {
       var S = cfg.scaleToScreen;
       if (!S || !S.enabled) return 1;
@@ -455,35 +360,14 @@
     }
 
     /* ---- Per-firework settings --------------------------------------------
-       A spec may carry `settings`: a flat object of dotted paths and values —
-       { 'count': 200, 'blast.lead': 45, 'shape.type': 'ring' } — that apply to
-       THAT firework and nothing else. They are swapped into cfg, the work is
-       done, and they are swapped straight back, so no other firework and no
-       later frame can see them.
+       spec.settings is a flat list of dotted paths and values, e.g.
+       { 'count': 200, 'blast.lead': 45, 'shape.type': 'ring' }, for ONE
+       firework. This swaps them into cfg, runs fn, then puts the old values
+       back, so no other firework sees them.
 
-       WHY THIS LIVES HERE, AND NOT IN THE CALLER. The overlay used to do this
-       swap itself, on a clock: it solved each rocket's apex arithmetically,
-       opened a window around the answer, and swapped the settings in for any
-       frame landing inside it. That was wrong twice over. The rocket bursts
-       when its own velocity turns over, which ran 50-67ms later than the
-       predicted apex, and the window's trailing pad was 20ms — so the settings
-       were only sometimes live, and WHETHER they were live depended on the
-       viewport height, because the height decides how far the rocket climbs.
-       Measured: at 1024x768 the fireworks silently ran the whole-show config.
-
-       Carrying them on the spec removes the guess entirely. The spec is
-       already handed to launch(), stored on the rocket, passed to burst(),
-       held in pendingBursts across cfg.blast.lead, and passed to
-       spawnSparkles() — so it is present at every moment the settings are
-       needed, including the deferred one a lead later that no single frame
-       window could cover.
-
-       It also lifts a real limit: two fireworks bursting on the SAME frame can
-       now carry different settings, which the window could never express.
-
-       try/finally, not a plain restore: spawn() can throw on a malformed spec,
-       and a config left half-overwritten would silently corrupt every later
-       firework rather than failing where the problem is. */
+       It runs at the burst and again when the sparks spawn (blast.lead ms
+       later). Only values read at those moments can differ per firework.
+       try/finally makes sure cfg is always restored, even after an error. */
     function withSettings(spec, fn) {
       var over = spec && spec.settings;
       if (!over) return fn();
@@ -501,10 +385,8 @@
       }
     }
 
-    // White cannot be expressed as a hue — every sparkle would otherwise take
-    // BASE_SAT — so `spec.white` picks a fraction to draw desaturated and
-    // lifted instead. That is what keeps white exclusive to the bursts asking
-    // for it rather than bleeding into every palette.
+    // Gives a spark its colour. A share of sparks (spec.white) are drawn
+    // near-white; the rest take a hue plus jitter.
     function colour(p, spec) {
       if (spec && spec.white && Math.random() < spec.white) {
         p.h = 45;
@@ -519,10 +401,11 @@
 
     /* ---- Particles -------------------------------------------------------- */
 
-    var particles = [];
-    var pool = [];
+    var particles = [];   // live sparks
+    var pool = [];        // dead spark objects kept for reuse
     var rockets = [];
 
+    // Adds one spark. Returns null if cfg.poolMax sparks are already live.
     function spawn(x, y, vx, vy, spec) {
       if (particles.length >= cfg.poolMax) return null;
       var p = pool.pop() || {};
@@ -536,43 +419,33 @@
       p.size = cfg.size * (1 + (Math.random() - 0.5) * 2 * cfg.sizeSpread) * scaleOf(spec);
       colour(p, spec);
 
-      // Cleared explicitly: particles are POOLED, so without this a shell would
-      // leak its flag into whatever sparkle reuses the object next and that one
-      // would break again for no reason. Any per-particle field added later
-      // needs the same treatment.
+      // Spark objects are reused, so reset every field here. Any new
+      // per-spark field needs resetting too.
       p.shell = false;
 
       particles.push(p);
       return p;      // the caller marks shells — see spawnSparkles()
     }
 
-    /* Hanabi's explode(): an area-uniform disc. sqrt(random) is the whole
-       trick — a plain random radius crowds the centre, because the area of a
-       ring grows with its radius. */
+    // Throws out one burst's sparks, in the configured shape. The first
+    // sub.count sparks become shells that burst again.
     function spawnSparkles(x, y, spec) {
       var scale = scaleOf(spec);
 
-      /* CALL SITE 1 OF 2 for the screen factor: how far the sparkles travel.
-         A firework on a bigger canvas throws its sparks further.
-
-         Note what does NOT get it. `p.subScale` below keeps the plain `scale`,
-         and spawn()'s p.size — the thickness of each spark — reads scaleOf()
-         on its own without it, so sparks stay exactly as thick as they are
-         configured whatever the display. Wider, not chunkier. */
+      // Full speed. The screen factor makes sparks fly further on a bigger
+      // screen; spark thickness is not scaled by it.
       var speed = cfg.explosionSize * FPS_REF * scale * screenScale();
       var n = Math.round(cfg.count);
 
       // Never more shells than there are sparkles to make shells out of.
       var shells = cfg.sub.enabled ? Math.min(Math.round(cfg.sub.count), n) : 0;
 
-      // A shape belongs to the burst, not to the sparkle, so both are read
-      // once out here rather than per particle.
+      // The shape, read once per burst.
       var S = cfg.shape;
       var type = S.type;
 
       for (var i = 0; i < n; i++) {
-        // Angle, and speed as a FRACTION of this burst's maximum. Everything
-        // below is identical whatever the shape returned.
+        // Direction and share of full speed, from the shape.
         var g = shapePoint(i, S, type);
         var a = g[0];
         var r = g[1] * speed;
@@ -583,38 +456,23 @@
           p.shell = true;
           p.subScale = scale;
 
-          // Life IS the fuse. Overwriting decay rather than adding a countdown
-          // is the whole trick: the shard dims as it goes, and it breaks at the
-          // moment it would have died anyway.
-          //
-          // +/-15% on it. With an exact fuse every shell breaks on the same
-          // frame, which reads as one mechanical pop rather than a scatter.
+          // Its life becomes the fuse: it bursts when it dies. +/-15% so the
+          // shells do not all burst on the same frame.
           p.decay = 1 / (cfg.sub.delay * (0.85 + Math.random() * 0.3));
         }
       }
     }
 
-    /* One shell's break. Children inherit the parent's hue, so a red firework
-       does not scatter into gold, and they are never shells themselves —
-       spawn() clears the flag — so this cannot cascade to a third generation.
-
-       ONE DELIBERATE DIFFERENCE FROM ENGINE 1: children take their parent's
-       scale (`p.subScale`), where engine 1 used the global `cfg.scale`. In this
-       show a firework's size comes from its `spec`, not from cfg.scale, so
-       engine 1's version would give a 4.4x firework children sized as though it
-       were 1x — visible as almost nothing. */
+    /* A shell's second burst. Same colour as its parent, sized from the
+       parent's size. Its sparks are never shells, so it cannot chain further.
+       sub.particles, sub.scale and sub.glow are read here, after the
+       per-firework swap is over, so they apply to every firework. */
     function spawnSub(x, y, hue, parentScale) {
       var S = cfg.sub;
       var scale = parentScale * S.scale;
       var spec = { hues: [hue], scale: scale };
 
-      /* The screen factor again, and it is not optional here. spawnBlast()
-         below applies it to this child's flash whatever happens, so leaving it
-         off the travel would give a secondary burst a big flash and a small
-         spray on a large display. Both or neither; this is both.
-
-         `parentScale` arrives unscaled on purpose — see p.subScale in
-         spawnSparkles() — so it is applied once here, not compounded. */
+      // Screen factor applied once here, matching the flash below.
       var speed = cfg.explosionSize * FPS_REF * scale * screenScale();
 
       if (S.glow && cfg.blast.enabled) spawnBlast(x, y, spec);
@@ -626,18 +484,14 @@
       }
     }
 
-    /* A break is the flash and its debris, and the light goes FIRST — the
-       sparkles are held back by cfg.blast.lead so they arrive out of a flash
-       that is already lit, rather than appearing alongside it.
+    /* A burst at (x, y): the flash first, then the sparks blast.lead ms later
+       (queued in pendingBursts).
 
-       NOTE for anyone testing: with a lead set, burst() spawns NO particles on
-       the frame it is called. A hand-stepped check that steps one or two frames
-       and reads the count sees zero and looks like a broken burst. Step past
-       the lead, or set blast.lead = 0 for the test. */
-    /* The WHOLE body is wrapped, not just the spawn calls: `blast.enabled` and
-       `blast.lead` are per-firework, and both are read on the first line. Wrap
-       any less than this and a firework with its own lead would queue itself
-       behind somebody else's. */
+       When testing: with a lead set, no sparks exist on the frame burst() is
+       called. Step past the lead before counting them.
+
+       The whole body is inside withSettings() because blast.enabled and
+       blast.lead can differ per firework. */
     function burst(x, y, spec) {
       withSettings(spec, function () {
         var B = cfg.blast;
@@ -649,27 +503,15 @@
     }
 
     /* ---- The flash --------------------------------------------------------
-       The shell detonating: a bright bloom at the burst point.
-
-       Drawn at COMPOSITE level only, never into particleBuf — that buffer is
-       stamped wholesale into the trail, and a soft gradient this large smeared
-       into the trail leaves a lingering blob sitting over the burst long after
-       the flash itself is gone. */
+       A bright glow at the burst point. Drawn straight onto the visible
+       canvas, never into the particle buffer, or it would smear into the
+       trail and leave a blob. */
 
     var blasts = [];
-    var pendingBursts = [];   // sparkles waiting out cfg.blast.lead
+    var pendingBursts = [];   // sparks waiting out cfg.blast.lead
 
-    // The bloom takes its hue from the same set as its own sparkles, so a red
-    // firework does not detonate gold, and carries the firework's scale so a
-    // 2x burst gets a 2x flash instead of the same fixed blob every time.
-    /* CALL SITE 2 OF 2 for the screen factor: the flash radius.
-
-       Folded in HERE, at spawn, rather than in drawBlasts(): the bloom then
-       carries a fixed size for its whole life, so a window dragged mid-show
-       resizes the next flash instead of swelling one already burning.
-
-       drawBlasts() uses this only as `B.radius * grow * b.scale`, so it moves
-       the radius and nothing else. Brightness is B.peak and is untouched. */
+    // Starts a flash: same colours as its firework, sized by the firework's
+    // size and the screen factor (fixed for the flash's whole life).
     function spawnBlast(x, y, spec) {
       blasts.push({
         x: x, y: y, age: 0,
@@ -678,6 +520,7 @@
       });
     }
 
+    // Ages each flash and removes finished ones.
     function updateBlasts(dt) {
       var B = cfg.blast;
       var span = B.rise + B.hold + B.decay;
@@ -690,6 +533,7 @@
       }
     }
 
+    // Counts down queued bursts and throws their sparks when due.
     function updatePending(dt) {
       for (var i = pendingBursts.length - 1; i >= 0; i--) {
         var q = pendingBursts[i];
@@ -698,18 +542,15 @@
           pendingBursts[i] = pendingBursts[pendingBursts.length - 1];
           pendingBursts.pop();
 
-          /* THE SECOND MOMENT, and the reason a frame-window could never do
-             this job. These sparkles were queued cfg.blast.lead ago, in a
-             different update() call, and everything that shapes them — count,
-             explosionSize, size, lifeDecay, the shape — is read HERE, now.
-             The spec rode along in the queue, so its settings are still to
-             hand; a clock-based swap had to stay open across the whole lead
-             and hope. */
+          // The spark settings (count, size, shape...) are read now, so apply
+          // this firework's own settings again.
           withSettings(q.spec, function () { spawnSparkles(q.x, q.y, q.spec); });
         }
       }
     }
 
+    /* Draws every flash as a radial gradient: it brightens over `rise`, holds
+       for `hold`, fades over `decay`, and grows the whole time. */
     function drawBlasts() {
       var B = cfg.blast;
       var reps = Math.max(1, Math.round(B.stack));
@@ -722,10 +563,7 @@
           alpha = B.peak * up;
           grow = 0.55 + 0.45 * up;         // expands as it ignites
         } else {
-          // Keeps expanding for the whole rest of its life rather than freezing
-          // at the ignition radius — see the note on B.growth. Starts at exactly
-          // 1, where the ramp above ended, so the size never jumps, and
-          // decelerates from there, which is how an expanding bloom behaves.
+          // Keeps growing from 1 up to B.growth, slowing down as it goes.
           var after = (b.age - B.rise) / (B.hold + B.decay);
           grow = 1 + (B.growth - 1) * (1 - (1 - after) * (1 - after));
 
@@ -734,8 +572,7 @@
           } else {
             var down = (b.age - B.rise - B.hold) / B.decay;
             if (down >= 1) continue;
-            // Squared falloff: bright for a moment, then a long soft tail
-            // rather than a linear ramp, which reads as a light source dying.
+            // Squared fade: drops fast, then a long soft tail.
             alpha = B.peak * (1 - down) * (1 - down);
           }
         }
@@ -747,10 +584,7 @@
         g.addColorStop(1, 'hsla(' + b.hue.toFixed(0) + ',100%,60%,0)');
 
         ctx.fillStyle = g;
-        // Built once, then RE-FILLED. Each fill adds to what is already on the
-        // canvas under the additive composite, which is the whole point — it is
-        // repeated draws, not a brighter one, that get past the alpha-clamp
-        // ceiling. See the note on cfg.blast.stack.
+        // Filled `stack` times; each fill adds light on top of the last.
         for (var q = 0; q < reps; q++) {
           ctx.fillRect(b.x - r, b.y - r, r * 2, r * 2);
         }
@@ -758,14 +592,12 @@
     }
 
     /* ---- The rocket -------------------------------------------------------
-       One node, drawn the same way a sparkle is — a stroked segment into the
-       same particle buffer — so it picks up the trail and the glow for free.
+       Sends a rocket up from the bottom to burst at targetY. It is drawn like
+       a spark, so it gets the trail and glow too.
 
-       No drag. The sparkles' damping is what makes a burst snap and hang, but
-       on the ascent it would eat the launch velocity. Gravity alone means the
-       launch speed solves exactly (v = sqrt(2*g*rise)) and the shell bursts at
-       apex — the frame vy turns positive — so it can never stall short or sail
-       past its target. */
+       Only gravity acts on it (no drag), so the launch speed is worked out
+       exactly: v = sqrt(2 * g * rise). It bursts at the top of its climb, the
+       frame it stops rising. */
     function launch(x, targetY, spec) {
       var g = cfg.gravity * FPS_REF * FPS_REF;
       var y0 = h * cfg.rocket.launchY;
@@ -781,7 +613,10 @@
       });
     }
 
-    /* ---- Simulation ------------------------------------------------------- */
+    /* ---- Simulation -------------------------------------------------------
+       Moves everything forward by dt seconds: flashes, queued bursts,
+       rockets (bursting any at the top), then sparks. Shells that die burst
+       again at the end. */
 
     function update(dt) {
       dt = Math.min(dt || 0, cfg.deltaCap);
@@ -793,8 +628,7 @@
       var subQueue = null;   // shells that died this frame, drained below
 
       updateBlasts(dt);
-      // Drained before the integration below, so sparkles released this frame
-      // are moved on the same frame a rocket's own burst would have moved them.
+      // Before moving sparks, so newly released ones move this frame too.
       updatePending(dt);
 
       for (i = rockets.length - 1; i >= 0; i--) {
@@ -805,8 +639,7 @@
         if (r.vy >= 0) {                       // apex
           burst(r.x, r.y, r.spec);
           rockets.splice(i, 1);
-          // After the burst, so anything the hook does sees the flash already
-          // lit rather than a break that has not happened yet.
+          // Tell the caller, after the burst has started.
           if (api.onBurst) api.onBurst(r.x, r.y, r.spec);
         }
       }
@@ -820,12 +653,12 @@
         p.y += p.vy * dt;
         p.life -= p.decay * dt;
         if (p.life <= 0) {
-          // Queued, not spawned here: spawning would push onto the very array
-          // this loop is walking with swap-and-pop.
+          // A dying shell is queued for its second burst (not spawned now,
+          // since this loop is still walking the list).
           if (p.shell) (subQueue || (subQueue = [])).push(p.x, p.y, p.h, p.subScale);
 
-          // swap-and-pop: draw order is irrelevant under additive blending,
-          // and splice would shift the tail on every death.
+          // Remove by swapping in the last spark (order does not matter), and
+          // keep the object for reuse.
           particles[i] = particles[particles.length - 1];
           particles.pop();
           pool.push(p);
@@ -842,10 +675,11 @@
 
     /* ---- Render ----------------------------------------------------------- */
 
-    var idleTime = 0;                              // seconds since the last death
-    var ditherPatterns = new Array(DITHER_PHASES); // built lazily, need the ctx
+    var idleTime = 0;                              // seconds with nothing alive
+    var ditherPatterns = new Array(DITHER_PHASES); // built when first needed
     var ditherPhase = 0;
 
+    // Draws one spark (or rocket) as a line from its last position to now.
     function segment(c, p) {
       c.strokeStyle = 'hsla(' + p.h + ',' + p.s + '%,' + p.l + '%,' + clamp(p.life, 0, 1) + ')';
       c.lineWidth = p.size;
@@ -857,6 +691,7 @@
       c.stroke();
     }
 
+    // Draws one frame, in five steps (numbered below).
     function draw(dt) {
       if (!particleBuf) resize();
       dt = Math.min(dt === undefined ? 1 / 60 : dt, cfg.deltaCap);
@@ -883,26 +718,14 @@
         ditherPatterns[ditherPhase] = tc.createPattern(getDitherMasks()[ditherPhase], 'repeat');
       }
 
-      // Once nothing is alive the erase ramps to full over TRAIL_FADEOUT so the
-      // streaks dissolve. A clearRect would also reach zero, but between two
-      // frames — whatever was still lit snaps out of existence instead.
-      // Rockets count as alive: during an ascent there are no particles yet,
-      // and without this the ramp would erase the rocket's own trail from
-      // under it as it climbs. A burst waiting out blast.lead counts for the
-      // same reason — for those 60ms there is nothing on either list, and the
-      // trail would start dissolving in the gap between the flash and its own
-      // debris.
-      //
-      // A live BLAST deliberately does NOT count. The question this asks is
-      // "is anything about to deposit into the trail", not "is anything on
-      // screen" — the flash never touches the trail buffer, and it outlives the
-      // last sparkle by up to two seconds. Counting it would hold the fade-out
-      // open for that whole time and leave the streaks hanging.
+      // When nothing is alive (no sparks, rockets or queued bursts), the erase
+      // ramps up over TRAIL_FADEOUT so the leftover streaks fade away smoothly.
+      // Flashes do not count, since they never draw into the trail.
       if (particles.length || rockets.length || pendingBursts.length) idleTime = 0;
       else idleTime += dt;
 
-      // Erase strength is raised by the phase count so that, averaged over the
-      // pixels actually hit, the decay rate is the one cfg.trailFade asks for.
+      // Each mask covers 1/12 of the pixels, so erase 12x harder to match
+      // cfg.trailFade on average.
       var erase = Math.min(1, fadeStep * DITHER_PHASES);
       if (idleTime > 0) erase += (1 - erase) * Math.min(1, idleTime / TRAIL_FADEOUT);
 
@@ -913,6 +736,7 @@
       tc.fillRect(0, 0, w, h);
       tc.restore();
 
+      // Then stamp this frame's sparks onto the trail.
       tc.save();
       tc.setTransform(1, 0, 0, 1, 0, 0);
       tc.globalCompositeOperation = 'lighter';
@@ -935,9 +759,7 @@
         ctx.fillStyle = cfg.background;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       } else {
-        // Transparent stage: the page behind shows through and the browser
-        // does the layering. Additive blending has nothing of its own to add
-        // to, which is the one visible difference from an opaque background.
+        // No background: clear to see-through so the page shows behind.
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
       ctx.globalCompositeOperation = 'lighter';
@@ -947,10 +769,7 @@
       ctx.globalAlpha = cfg.glowAlpha;
       ctx.drawImage(glowBuf.canvas, 0, 0, canvas.width, canvas.height);
 
-      /* 5. The flash, still additive and ABOVE the layers: it is a light
-            source, so it washes over the sparkles rather than sitting behind
-            them. Back into CSS pixels first — a blast's x/y is where the burst
-            was asked for, which is not a device-pixel coordinate. */
+      /* 5. The flashes, on top of everything, in CSS pixels. */
       ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = true;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -958,6 +777,7 @@
       ctx.restore();
     }
 
+    // Removes everything and wipes the canvas and buffers.
     function clear() {
       while (particles.length) pool.push(particles.pop());
       rockets.length = 0;
@@ -971,6 +791,7 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
+    // Follow window resizes. destroy() removes the listener.
     function onResize() { resize(); }
     window.addEventListener('resize', onResize);
     resize();
@@ -979,9 +800,8 @@
       window.removeEventListener('resize', onResize);
     }
 
-    /* Held in a variable rather than returned inline, so that update() can
-       reach `onBurst` — which the caller assigns after construction, long
-       after this object is built. */
+    // What the caller gets back. Kept in a variable so update() can call
+    // api.onBurst, which the caller sets later.
     var api = {
       cfg: cfg,
       canvas: canvas,
@@ -1004,36 +824,21 @@
       },
       debug: { particles: particles, pool: pool, rockets: rockets, blasts: blasts },
 
-      /* Called the instant a rocket turns over and breaks, with the burst
-         point and that rocket's spec: fn(x, y, spec). Assign it — fw.onBurst =
-         function (x, y, spec) { ... } — or leave it null.
+      /* Set this to a function(x, y, spec) to be told the moment each rocket
+         bursts. Use it for anything that must happen on a burst, rather than
+         guessing the timing. Every rocket calls it; tag your own rockets'
+         specs to tell them apart.
 
-         IT IS DELIBERATELY NOT ON `cfg`. Consumers serialise cfg to JSON to
-         save a tuning session, and JSON.stringify drops functions without a
-         word, so a hook stored there would survive a copy-paste as a config
-         that looks complete and does nothing.
-
-         This exists because the burst moment cannot be predicted from outside.
-         The overlay used to solve for the apex arithmetically and it ran
-         50-67ms early, by an amount that changed with the viewport height.
-         Anything that has to happen ON a break — clearing a veil a step,
-         starting a sound, counting the show down — should hang off this rather
-         than off a clock.
-
-         EVERY rocket reports, including one launched by a stray canvas click.
-         Callers that only care about a scripted sequence should tag those
-         rockets' specs and ignore the rest; the engine has no idea which
-         rockets are special and should not have to.
-
-         It runs inside update(), so a throw here takes the animation loop down
-         with it. Not caught on purpose — swallowing it would turn a bug in the
-         caller into a show that mysteriously half-works. */
+         Not stored on cfg, because "Copy config" turns cfg into JSON and
+         would silently drop a function. It runs inside update(), so an error
+         in it stops the animation loop. */
       onBurst: null
     };
 
     return api;
   }
 
+  // Extras for the lab: a copy of the defaults, the palettes and FPS_REF.
   createFireworks2.defaults = function () { return JSON.parse(JSON.stringify(DEFAULTS)); };
   createFireworks2.PALETTES = PALETTES;
   createFireworks2.FPS_REF = FPS_REF;
