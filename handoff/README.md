@@ -27,7 +27,7 @@ the page's way (see [Safety](#safety)).
 |---|---|---|
 | `lsa-experience.js` | **Yes** | The whole overlay, fireworks included. 77 KB. |
 | `lsa-experience.css` | **Yes** | Every style. 15 KB. |
-| `assets/` | **Yes** | Five images, 2.3 MB in total (list below). |
+| `assets/` | **Yes** | Five images, 1.2 MB in total (list below). |
 | `lsa-mount.html` | Paste into Liferay | The snippet for the Web Content fragment. |
 | `index.html` | No | Local demo page. |
 | `bg.png` | No | Screenshot of the intranet, the demo's background. |
@@ -40,7 +40,7 @@ The five images, all loaded by the script:
 | `medal.svg` | 286 KB | The medal's face |
 | `Stack.png` | 58 KB | The medal's rim (drawn 68 times, loaded once) |
 | `diamond.png` | 5 KB | The diamonds on the medal, one per 5 years |
-| `card-Back-l.png` | 1.4 MB | The card's silver plate |
+| `card-back.jpg` | 285 KB | The card's silver plate |
 | `gal4.jpg` | 579 KB | The galaxy that lights up the counter |
 
 ---
@@ -110,7 +110,6 @@ Live demo: https://akhilpokle.github.io/sra/ (add `?years=50` the same way).
 7. **Serve with the right file types**: `.svg` as `image/svg+xml`, `.js` as
    `text/javascript`, `.css` as `text/css`.
 
-8. **Mind the capital B** in `card-Back-l.png` on a case-sensitive server.
 
 ### Fonts
 

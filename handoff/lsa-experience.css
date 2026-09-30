@@ -304,7 +304,7 @@
    Holds the medal and the sentence, centred on screen. The black cover hides
    it until the fireworks clear it. The card itself never fades.
 
-   The plate image (card-Back-l.png) is set from lsa-experience.js, not here,
+   The plate image (card-back.jpg) is set from lsa-experience.js, not here,
    so this file loads nothing.
 
    The size is FIXED at 800 x 540, the plate's own shape. Content that grows
@@ -326,9 +326,10 @@
   width: 800px;
   height: 540px;
 
-  /* The plate's rounded corners are in the image, so no background colour
-     and no border-radius. Use these single properties, never the
-     `background` shorthand. */
+  /* The plate image is a square JPG; border-radius rounds its corners to
+     match the artwork (24px at this size). Use these single background
+     properties, never the `background` shorthand. */
+  border-radius: 24px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;

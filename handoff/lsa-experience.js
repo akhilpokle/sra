@@ -101,8 +101,8 @@
   /* The card's silver plate. Set here rather than in the CSS so it goes
      through ASSET_PATH like every other image. Use backgroundImage, never
      the `background` shorthand.
-     The file name has a capital B; on a case-sensitive server it must match. */
-  card.style.backgroundImage = 'url("' + ASSET_PATH + 'card-Back-l.png")';
+     The CSS rounds the card's corners (the JPG itself is square). */
+  card.style.backgroundImage = 'url("' + ASSET_PATH + 'card-back.jpg")';
 
   var medalScene = document.createElement('div');
   medalScene.className = 'lsa-medal-scene';
