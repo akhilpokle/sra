@@ -1819,3 +1819,40 @@ inner disc, r 170. So half of every diamond sits on either side of the ring.
 - The 18° spacing was measured off a small reference image.
 - `diamond.svg` draws its ring gradient with a Figma `foreignObject`. Chrome
   shows it; other renderers may not.
+
+---
+
+## 2026-09-30 (handover) — one lean file, and the handoff docs
+
+**Prep:** `handoff/` rebuilt from the current files; unused images moved to
+`assets/_old/`; throwaway lab files and zips deleted; the card sentence set
+to Public Sans 600, 150% line height, 0 letter spacing; the card plate and
+diamond swapped for the user's compressed `card-Back-l.png` and
+`diamond.png`; `lsa-mount.html` notes brought up to date.
+
+**Comments** in the shipped code were rewritten in plain English, history
+moved out. Code unchanged, checked by comparing the files with comments
+stripped.
+
+**The lean migration**, one step at a time, each checked by a new
+regression checker (`lab/regression/`) that runs the old and new code side by
+side with seeded random numbers and compares canvases and page state:
+
+1. Tag `lab-freeze`; the lab now runs its own engine copy in `lab/`.
+2. The checker, proven to catch a 0.05% gravity change.
+3. Dev panel, `__lsaDev` and reset removed.
+4. Engine moved into `lsa-experience.js`, no global.
+5. Per-firework settings written straight in (`SIDE_LOOK`, `CENTRE_LOOK`).
+6. Unused engine parts cut (palettes, ring and bands shapes, stats).
+7. Settings as plain constants; defaults and copy-and-fill gone.
+8. CSS: panel rules and unused rules removed.
+   Then the switched-off star flash and `--lsa-near` were removed too.
+9. One script tag in `lsa-mount.html`, the demo and `handoff/`.
+10. Safety check: no globals, clean close, 39 scoped CSS rules. The user
+    watched 5 and 50 years and signed off.
+
+Every step passed at 5, 25 and 50 years. From about 3000 lines over two JS
+files to 1936 in one, and 639 to 514 lines of CSS.
+
+**Docs:** `handoff/README.md` is the developer handoff. `handoff.md` points
+to it; its old long version is at `git show lab-freeze:handoff.md`.
