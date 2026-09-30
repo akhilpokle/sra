@@ -1,5 +1,5 @@
 <!--
-  Long Service Award — 5 Year Milestone Overlay
+  Long Service Award — Milestone Overlay
   Mount snippet for a Liferay Web Content fragment.
   ---------------------------------------------------------------------------
   Paste this whole block into the fragment. It carries the mount point plus
@@ -18,21 +18,26 @@
   with a script that defines a global nothing calls, and an overlay that throws
   on load.
 
-  THREE FILES ARE TAGGED HERE, BUT THREE IMAGES ALSO HAVE TO BE HOSTED —
-  assets/medal-face-blank.png and assets/medal-edge.svg for the medallion, and
-  assets/gal4.jpg for the galaxy the counter ignites through. They are not
-  tagged below because nothing loads them from markup: all three are img.src,
-  built in lsa-experience.js against its ASSET_PATH constant, which resolves
+  THREE FILES ARE TAGGED HERE, BUT FIVE IMAGES ALSO HAVE TO BE HOSTED —
+  assets/medal.svg, assets/Stack.png and assets/diamond.png for the
+  medallion, assets/card-Back-l.png for the card, and assets/gal4.jpg for the
+  galaxy the counter ignites through. They are not tagged below because
+  nothing loads them from markup: medal.svg is fetched, the plate is set as
+  the card's background, and the rest are img.src, all built in
+  lsa-experience.js against its ASSET_PATH constant, which resolves
   against THE PAGE. Set that constant to match wherever the folder ends up.
+
+  card-Back-l.png has a capital B. On a case-sensitive server the name must
+  match exactly.
+
+  medal.svg is loaded with fetch(), so the page's Content Security Policy
+  must allow the assets folder under connect-src. If it is blocked, the
+  medal face comes up blank and the rest of the overlay still runs.
 
   ONE PATH RULE, not two, since 2026-09-07. shimmer.png used to be a
   mask-image url() in lsa-experience.css, which resolves against THE STYLESHEET
   and so forced the CSS file and assets/ to stay siblings. The shimmer was
   removed; that constraint went with it, and so did the file.
-
-  Serve .svg as image/svg+xml. Served as application/octet-stream an SVG in an
-  <img> renders as nothing, which silently blanks all 34 of the medallion's
-  edge layers and leaves the face floating with no rim.
 
   Load order matters twice over: the stylesheet must load before the script
   runs, so the overlay never renders unstyled for a frame; and the engine must
@@ -42,22 +47,27 @@
 -->
 
 <!--
-  Aleo, the count-up's typeface. THE ONE CDN IN THIS PROJECT, and the one thing
-  here that is not self-hosted — everything else is served from your own paths.
+  TWO TYPEFACES, ONE REQUEST. Aleo for the count-up, Public Sans for the
+  sentence on the card. THE ONLY CDN IN THIS PROJECT, and the one thing here
+  that is not self-hosted — everything else is served from your own paths.
 
   Two things to check with whoever owns the page's Content Security Policy:
   fonts.googleapis.com must be allowed as a style-src, and fonts.gstatic.com as
   a font-src. If either is refused, delete these three tags and self-host the
-  woff2 in assets/ with an @font-face instead — the overlay does not break
-  without them, the counter just falls back to the system sans (see .lsa-count
-  in lsa-experience.css).
+  woff2 files in assets/ with @font-face rules instead — the overlay does not
+  break without them, the counter and the sentence just fall back to the system
+  sans (see .lsa-count and .lsa-card-text in lsa-experience.css).
 
-  It goes before the stylesheet so the @font-face is known by the time
-  .lsa-count is styled.
+  Only wght 600 of Public Sans is fetched, matching .lsa-card-text. Restyling
+  that rule to another weight needs this URL changed too, or the browser fakes
+  the weight instead of loading it.
+
+  It goes before the stylesheet so both @font-faces are known by the time
+  .lsa-count and .lsa-card-text are styled.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,700;1,700&family=Public+Sans:wght@600&display=swap">
 
 <link rel="stylesheet" href="REPLACE_WITH_ASSET_PATH/lsa-experience.css">
 
@@ -68,8 +78,8 @@
 
   data-years is not just the sentence on the card any more. It is the number
   the charge button counts up to while the user holds their spark on it, so it
-  is on screen for three seconds before the card is ever revealed. A five-year
-  award counts to 5; a fifty-year award counts to 50 in the same three seconds.
+  is on screen before the card is ever revealed. A five-year award counts to 5
+  in 4 seconds; a fifty-year award counts to 50 in 10 seconds.
 
   Any positive whole number works. It is not restricted to multiples of five.
 -->

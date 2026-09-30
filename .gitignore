@@ -3,3 +3,8 @@
 
 # Imported skill file, not project code
 text-blur-reveal.skill
+
+# Replaced artwork kept locally only (too big to commit)
+assets/_old/Backs.png
+assets/_old/Front.png
+assets/_old/card-back.png

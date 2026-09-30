@@ -1,3 +1,5 @@
+/* OLD: ENGINE 1, NOT USED BY THE OVERLAY. The overlay runs fireworks-engine-2.js.
+   Kept only for lab/fireworks-lab.html.
 /* ==========================================================================
    Fireworks engine — the single source of truth.
    --------------------------------------------------------------------------

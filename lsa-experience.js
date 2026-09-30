@@ -183,10 +183,9 @@
      background-clip. Nothing clips on the card itself, but they are one
      property away from each other.
 
-     ⚠ 6.5 MB, which is FIVE TIMES the entire rest of the payload. It is a
-     3200x2160 near-flat cream gradient displayed at about 512px, so almost all
-     of that is headroom nobody asked for. Not compressed yet. */
-  card.style.backgroundImage = 'url("' + ASSET_PATH + 'Backl.png")';
+     card-Back-l.png since 2026-09-30: Backl.png compressed, 1.38 MB against
+     2.7 MB, same 3200x2160. Mind the capital B on a case-sensitive server. */
+  card.style.backgroundImage = 'url("' + ASSET_PATH + 'card-Back-l.png")';
 
   var medalScene = document.createElement('div');
   medalScene.className = 'lsa-medal-scene';
@@ -264,7 +263,7 @@
       var a = (90 + (k - (n - 1) / 2) * GAP) * Math.PI / 180;
       var d = document.createElement('img');
       d.className = 'lsa-medal-diamond';
-      d.src = ASSET_PATH + 'diamond.svg';
+      d.src = ASSET_PATH + 'diamond.png';
       d.alt = '';
       d.style.left = ((CX + R * Math.cos(a)) / W * 100) + '%';
       d.style.top = ((CY + R * Math.sin(a)) / H * 100) + '%';

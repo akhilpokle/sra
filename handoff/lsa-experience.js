@@ -166,6 +166,27 @@
   var card = document.createElement('div');
   card.className = 'lsa-card';
 
+  /* THE CARD'S SURFACE, 2026-09-11 — it replaces the flat white that stood
+     here from 09-10. A cream plate with a 16px gold rim and rounded corners,
+     all of it baked into the artwork, so the CSS carries no colour and no
+     border-radius of its own. The rest of the rule is in .lsa-card.
+
+     IT IS SET FROM HERE, AND THAT IS THE POINT. Written as a url() in the
+     stylesheet it would resolve against the CSS file, which would put the
+     stylesheet and assets/ back to being siblings on Liferay — a constraint
+     that was finally removed on 09-07 when the shimmer's mask went. Through
+     ASSET_PATH it resolves against the PAGE, like every other image here, and
+     there is still exactly one path to swap at integration time.
+
+     NOT card.style.background. The shorthand resets background-clip, and this
+     card contains the count-up, which is gradient text held together by
+     background-clip. Nothing clips on the card itself, but they are one
+     property away from each other.
+
+     card-Back-l.png since 2026-09-30: Backl.png compressed, 1.38 MB against
+     2.7 MB, same 3200x2160. Mind the capital B on a case-sensitive server. */
+  card.style.backgroundImage = 'url("' + ASSET_PATH + 'card-Back-l.png")';
+
   var medalScene = document.createElement('div');
   medalScene.className = 'lsa-medal-scene';
 
@@ -185,11 +206,73 @@
      below. One face for all ten milestones, and the count-up can be aimed at
      the same box rather than at a measured guess. medal-face.png is still on
      disk and nothing loads it. */
-  var medalImg = document.createElement('img');
+  /* medal.svg since 2026-09-30, in place of Front.png, brought over from
+     lab/medal-lab. Its 563x565 viewBox is Front.png's 2250x2260 at a quarter,
+     so it fills the same 320x321 box.
+
+     INLINED, not an <img>. An SVG inside an <img> is a closed document that
+     CSS and JS cannot reach into, and its "image" layer is turned and faded
+     by the tilt — see turnImage(). This div holds the <svg> once it loads.
+
+     ⚠ fetch() is subject to the page's CSP connect-src, which an <img> is
+     not. On Liferay, assets/ must be same-origin or allowed there. */
+  var medalImg = document.createElement('div');
   medalImg.className = 'lsa-medal-img';
-  medalImg.src = ASSET_PATH + 'medal-face-blank.png';
-  medalImg.alt = '';
   coinFront.appendChild(medalImg);
+
+  /* The "image" layer: the round brushed-metal texture in the middle of the
+     face. In the file it is a 387x387 circle filled by a pattern that holds
+     the embedded PNG (#image0_5482_71034). The circle is what draws, so that
+     is what gets the class. */
+  var medalImage = null;
+
+  fetch(ASSET_PATH + 'medal.svg')
+    .then(function (res) { return res.text(); })
+    .then(function (text) {
+      medalImg.innerHTML = text;
+      var svg = medalImg.querySelector('svg');
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+      medalImage = svg.querySelector('rect[fill="url(#pattern0_5482_71034)"]');
+      medalImage.classList.add('lsa-medal-image');
+    });
+
+  /* The diamonds on the ring, since 2026-09-30. One for every 5 years, set
+     along the bottom of the ring and centred on straight down, 18° apart.
+
+     The ring is the edge of medal.svg's inner disc, r 170 about (281.5, 282.5):
+     the line between the textured centre and the plain band around it. Each
+     diamond is CENTRED ON THAT LINE, so half of it always sits on either side,
+     whatever its angle. A straight-up nudge cannot do that, because the ring
+     curves; the radius is the only thing that can.
+
+     All values are in medal.svg's 563x565 units and written as percentages,
+     so the diamonds follow the medal if it is ever resized. Same FACE_SCALE
+     as the face, set where that is. */
+  var medalDiamonds = document.createElement('div');
+  medalDiamonds.className = 'lsa-medal-diamonds';
+  coinFront.appendChild(medalDiamonds);
+
+  function drawDiamonds() {
+    var W = 563, H = 565, CX = 281.5, CY = 282.5, R = 170;
+    var SIZE = 42, GAP = 18;
+
+    var n = Math.floor(YEARS / 5);
+    medalDiamonds.textContent = '';
+    for (var k = 0; k < n; k++) {
+      var a = (90 + (k - (n - 1) / 2) * GAP) * Math.PI / 180;
+      var d = document.createElement('img');
+      d.className = 'lsa-medal-diamond';
+      d.src = ASSET_PATH + 'diamond.png';
+      d.alt = '';
+      d.style.left = ((CX + R * Math.cos(a)) / W * 100) + '%';
+      d.style.top = ((CY + R * Math.sin(a)) / H * 100) + '%';
+      d.style.width = (SIZE / W * 100) + '%';
+      d.style.height = (SIZE / H * 100) + '%';
+      medalDiamonds.appendChild(d);
+    }
+  }
+  drawDiamonds();
 
   /* The milestone, drawn over the blank face instead of baked into it.
 
@@ -203,17 +286,6 @@
   medalNumber.setAttribute('aria-hidden', 'true');
   medalNumber.textContent = String(YEARS);
   coinFront.appendChild(medalNumber);
-
-  /* The sparkle layer, added 2026-09-07. Empty until the centre firework
-     breaks, then the dots that spell the milestone out.
-
-     IT SITS INSIDE coinFront TOO, after the number so it paints over it, and
-     for the same reason the number is here rather than over the card: it has to
-     tilt with the face. See .lsa-medal-sparkle in the stylesheet. */
-  var medalSparkle = document.createElement('canvas');
-  medalSparkle.className = 'lsa-medal-sparkle';
-  medalSparkle.setAttribute('aria-hidden', 'true');
-  coinFront.appendChild(medalSparkle);
 
   medalCoin.appendChild(coinFront);
   medalScene.appendChild(medalCoin);
@@ -242,18 +314,55 @@
      Raising EDGE_STEP without raising EDGE_COUNT opens visible gaps between
      the slices. More layers is a smoother rim at more compositing cost.
 
-     THE STEP HAS A CEILING, and 2.4 is sitting on it. What opens a gap is the
-     PROJECTED distance between slices, which is step x sin(tilt). Worst case
-     here is both axes at MAX_TILT, about 34 degrees of effective rotation, so
-     2.4 projects to ~1.3px — still under the ~1.5px where a seam starts to
-     show. Go deeper than this by raising the COUNT, not the step.
+     What opens a gap is the PROJECTED distance between slices, which is
+     step x sin(rotation). Go deeper by raising the COUNT, not the step.
 
-     Doubled from 1.2 on 2026-09-07: at 40.8px the rim was there but nobody
-     could see it. Checked at 81.6px against a 68-layer stack of the same
-     depth — identical, so the extra layers bought nothing and the count
-     stayed where it was. */
-  var EDGE_COUNT = 34;
-  var EDGE_STEP = 2.4;    // px between layers; 34 x 2.4 gives ~81.6px of depth
+     ⚠ THE COUNT IS 68 AND THE CASE THAT BOUGHT IT IS GONE. The history:
+
+     - It went 1.2 -> 2.4 on 2026-09-07 with the count held at 34, doubling the
+       depth from 40.8px to 81.6px, because at 40.8 the rim was there and nobody
+       could see it.
+     - A 68-layer stack of the same 81.6px depth was compared then and judged
+       IDENTICAL, so the layers were not bought. That judgement was made AT
+       REST, where the coin never turns past ~34 degrees of tilt and 2.4
+       projects to ~1.3px, under the ~1.5px where a seam shows.
+     - The click-to-flip of 2026-09-10 turned it through 90, where the
+       projection is the full 2.4px and every slice is edge-on. The stack came
+       apart into a visible comb, so the count went to 68 to halve the gap.
+
+     The flip was removed on 2026-09-21, which puts the coin back inside that
+     ~34 degrees of tilt for good — the one case where 34 layers at 2.4px was
+     judged identical. So 34 halves the compositing cost for no visible change.
+     LEFT AT 68 because nobody has looked at the two side by side since, and
+     the earlier judgement was made against a black card rather than the cream
+     plate the medal sits on now. */
+  var EDGE_COUNT = 68;
+  var EDGE_STEP = 1.2;    // px between layers; 68 x 1.2 gives ~81.6px of depth
+
+  /* ---- The depth wrapper, and why there is a third nested div -----------
+     ⚠ NOTHING WRITES TO medalCoin OR medalDepth ANY MORE. Both are inert 3D
+     wrappers today: no transform, no transition, no animation. They were built
+     for the click-to-flip, which was removed on 2026-09-21 —
+     medalCoin carried the 180-degree turn and medalDepth carried a keyframed
+     scaleZ squeeze that collapsed the rim while it turned, because 68 flat
+     planes seen edge-on comb apart and let the card show between them.
+
+     KEPT RATHER THAN FLATTENED, deliberately. They are two empty divs carrying
+     preserve-3d, the whole coin hangs off them, and pulling them out means
+     re-parenting 70 elements for nothing anyone can see. They are also exactly
+     where the flip goes if it comes back — one writer per element, which is
+     what made it cheap the first time.
+
+     Full code and the reasoning behind the squeeze's curve:
+     lab/medal-flip.reference.md */
+  var medalDepth = document.createElement('div');
+  medalDepth.className = 'lsa-medal-depth';
+  medalCoin.appendChild(medalDepth);
+
+  // coinFront was parented to medalCoin up in the card block, before this
+  // wrapper existed. appendChild MOVES a node, so this re-parents it rather
+  // than copying it.
+  medalDepth.appendChild(coinFront);
 
   for (var e = 0; e < EDGE_COUNT; e++) {
     var edge = document.createElement('div');
@@ -262,40 +371,137 @@
     var edgeImg = document.createElement('img');
     // Textless on purpose: edge layers are seen from both sides, so any
     // lettering would read mirrored from behind.
-    edgeImg.src = ASSET_PATH + 'medal-edge.svg';
+    edgeImg.src = ASSET_PATH + 'Stack.png';
     edgeImg.alt = '';
     edge.appendChild(edgeImg);
 
-    edge.style.transform =
-      'translateZ(' + ((e - EDGE_COUNT / 2) * EDGE_STEP) + 'px)';
-    medalCoin.appendChild(edge);
+    // No transform here. applyCoinDepth() below places every layer AND both
+    // caps off one formula, and it has to be callable again when the depth
+    // slider moves — so placing them here too would be the same arithmetic in
+    // two places, drifting the moment either is edited.
+    medalDepth.appendChild(edge);
   }
 
-  // DERIVED, never hardcoded: change either constant above and the face
-  // follows the stack instead of ending up buried inside it.
-  coinFront.style.transform =
-    'translateZ(' + ((EDGE_COUNT / 2) * EDGE_STEP) + 'px)';
+  /* THE FRONT CAP IS A SHADE SMALLER THAN ITS OWN BOX, and the number is
+     measured rather than eyeballed. The face and the rim are different assets
+     that were never checked against each other:
+
+         medal-face-blank.png  ink fills 100%   x 99.56% of its canvas
+         medal-edge.svg        path fills 99.16% x 98.81% of its viewBox
+
+     Both are drawn into the same box at 100% width and height, so the cap
+     stood ~0.84% proud of the silhouette behind it — about 1.3px a side at
+     the current 320px, a visible lip all the way round.
+
+     back.png measured 100% x 99.60% and took the same correction while it was
+     the far cap. It is unused since the flip came out on 2026-09-21.
+
+     0.992 is the width ratio; the height ratio is 0.9924 and one uniform scale
+     splits the difference to well under a tenth of a pixel.
+
+     ON THE IMG, NOT ON THE FACE, and that is the whole reason this is safe.
+     coinFront also holds .lsa-medal-number, and the
+     count-up's aim reads the number's LAYOUT position — see medalNumberY(),
+     which cannot see a transform. Scaling the face would move the digit about a
+     quarter-pixel out from under a counter that lands within 0.23px of it.
+     Scaling only the artwork leaves every measured relationship alone. */
+  var FACE_SCALE = 0.992;
+  medalImg.style.transform = 'scale(' + FACE_SCALE + ')';
+  medalDiamonds.style.transform = 'scale(' + FACE_SCALE + ')';
+
+  /* ---- The medal's thickness, and its slider ----------------------------
+     There is no far cap. The stack's back end is open, which nothing can see:
+     the tilt never takes the coin past ~25 degrees, so the far side of the rim
+     stays away from the viewer the whole time.
+
+     It had one until 2026-09-21 — back.png, capping the stack the way coinFront
+     caps the near end — because the coin used to turn all the way over on a
+     click. That came out with the flip. See lab/medal-flip.reference.md. */
+  var coinTune = {
+    depth: EDGE_COUNT * EDGE_STEP   // 81.6px, the current look
+  };
+
+  /* ONE FORMULA FOR ALL 69 PIECES. The layers and the front cap are placed from
+     coinTune.depth here and nowhere else, so the slider and the initial build
+     cannot disagree. EDGE_COUNT stays fixed and the STEP is derived — more
+     layers in the same depth is always the safer direction, and holding the
+     count means the compositing cost does not move while the slider does. */
+  function applyCoinDepth() {
+    var step = coinTune.depth / EDGE_COUNT;
+    var layers = medalDepth.querySelectorAll('.lsa-coin-edge');
+    for (var i = 0; i < layers.length; i++) {
+      layers[i].style.transform =
+        'translateZ(' + ((i - EDGE_COUNT / 2) * step) + 'px)';
+    }
+    coinFront.style.transform =
+      'translateZ(' + ((EDGE_COUNT / 2) * step) + 'px)';
+  }
+
+  applyCoinDepth();
 
   /* Tilt is written on the PERSPECTIVE ROOT, which rotates the whole 3D
      subtree as one rigid body under a fixed perspective. That is what makes it
      feel like an object being turned rather than a picture being spun. The
      0.15s transition on that element in the CSS is where the lag comes from.
 
-     There is no click-to-flip, so back.png goes unused and .lsa-coin-back is
-     never built. */
+     THIS IS THE ONLY ROTATION LEFT, since 2026-09-21. The coin no longer turns
+     over on a click, so back.png goes unused and the stack has no far cap. */
   var MAX_TILT = 25;      // degrees of lean at the edge of the element
+
+  /* WHOLE-SCREEN TRACKING, since 2026-09-10. The medal used to go dead the
+     moment the cursor left its own box and snap flat; it now leans toward the
+     cursor from anywhere on the stage, and only the STRENGTH falls off with
+     distance. Two constants below own that falloff.
+
+     What did NOT change: the lean over the medal itself. Inside its box the
+     strength is a flat 1, so the interaction that was tuned there is the same
+     interaction, and everything outside is new behaviour bolted on around it.
+
+     There is no reset to flat any more, by design — the medal holds its last
+     lean when the pointer leaves the window, the way a tilted object would. */
+  var FAR_TILT = 0.12;    // strength at the far corner of the screen, 0-1
+  var TILT_FALLOFF = 0.6; /* curve between the medal's edge and that corner.
+                             Below 1 it drops fast and then flattens, which is
+                             what puts most of the stage in the subtle band
+                             instead of spreading the decay evenly. Above 1
+                             would keep the lean strong most of the way out. */
 
   /* The listener is on the ROOT, not on the medallion.
 
      The card sits UNDER the canvas so the fireworks burst over it, which means
      the medallion never receives a mouse event of its own and mouseenter /
-     mouseleave never fire on it. So "is the cursor on the medal" is answered
-     from geometry instead: mousemove bubbles up from the canvas to the root,
-     and the cursor is tested against the medallion's own rect.
+     mouseleave never fire on it. So the cursor's position relative to the medal
+     is answered from geometry instead: mousemove bubbles up from the canvas to
+     the root, and the offset is measured there.
 
      One listener for the whole stage, which is also what the overlay used to
      do when it had cursor sparks. */
-  var medalHot = false;   // whether the cursor was over the medal last move
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+  }
+
+  /* THE MEDAL'S BOX IS TAKEN FROM LAYOUT, NOT FROM ITS RECT, and that is not a
+     style preference. The scene is always rotated by the tilt and the coin can
+     be mid-flip, and a rotated element's getBoundingClientRect() is the
+     axis-aligned box of the rotated geometry — it grows and shrinks with the
+     turn. Feeding that back in as the thing the turn is measured against is a
+     loop that feeds on its own output. offsetWidth / offsetLeft are
+     pre-transform layout values, so the target stays still.
+
+     Same trick the counter's aim already uses — see medalNumberY(). The card's
+     own rect is safe to read: it carries a translate, never a rotation. */
+  function medalBox() {
+    var cardRect = card.getBoundingClientRect();
+    var halfW = medalScene.offsetWidth / 2;
+    var halfH = medalScene.offsetHeight / 2;
+    return {
+      halfW: halfW,
+      halfH: halfH,
+      cx: cardRect.left + medalScene.offsetLeft + halfW,
+      cy: cardRect.top + medalScene.offsetTop + halfH
+    };
+  }
 
   function onStageMove(ev) {
     // The spark cursor rides this listener rather than adding a second one.
@@ -306,28 +512,74 @@
     sparkY = ev.clientY;
     sparkSeen = true;
 
-    var r = medalScene.getBoundingClientRect();
+    var b = medalBox();
+    var halfW = b.halfW;
+    var halfH = b.halfH;
 
-    // Cursor offset from the centre, normalised so that the edges of the
-    // element are exactly -1 and +1 — which makes the containment test below
-    // free rather than a second set of comparisons against the rect.
-    var dx = (ev.clientX - (r.left + r.width / 2)) / (r.width / 2);
-    var dy = (ev.clientY - (r.top + r.height / 2)) / (r.height / 2);
+    var px = ev.clientX - b.cx;
+    var py = ev.clientY - b.cy;
 
-    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
-      // Guarded so leaving writes the reset once, rather than on every move
-      // across the rest of the stage.
-      if (medalHot) {
-        medalHot = false;
-        medalScene.style.transform = 'rotateX(0deg) rotateY(0deg)';
-      }
-      return;
-    }
-    medalHot = true;
+    /* DIRECTION and STRENGTH are worked out separately, which is the whole
+       shape of this. Direction is the old normalised offset clamped to the
+       box, so over the medal it is bit-for-bit what it was before; strength is
+       one scalar that only depends on how far away the cursor is. */
+    var dx = clamp(px / halfW, -1, 1);
+    var dy = clamp(py / halfH, -1, 1);
+
+    // Distance from the medal's corner out to the screen's corner, as 0-1.
+    // Measured against the VIEWPORT so "far" means the same thing on a 1024
+    // screen and a 2560 one, rather than the same number of medal-widths.
+    var edge = Math.sqrt(halfW * halfW + halfH * halfH);
+    var reach = Math.sqrt(window.innerWidth * window.innerWidth +
+                          window.innerHeight * window.innerHeight) / 2;
+    var t = clamp((Math.sqrt(px * px + py * py) - edge) /
+                  Math.max(1, reach - edge), 0, 1);
+
+    var k = 1 - (1 - FAR_TILT) * Math.pow(t, TILT_FALLOFF);
 
     // Y inverted, so the medal leans TOWARD the cursor rather than away.
     medalScene.style.transform =
-      'rotateX(' + (-dy * MAX_TILT) + 'deg) rotateY(' + (dx * MAX_TILT) + 'deg)';
+      'rotateX(' + (-dy * MAX_TILT * k) + 'deg) rotateY(' +
+      (dx * MAX_TILT * k) + 'deg)';
+
+    turnImage(px, py);
+
+    /* The image's opacity follows how hard the medal is tilting. mag is the
+       tilt as a fraction of MAX_TILT: 1 at the medal's edge, FAR_TILT at the
+       screen's far corner, and falling to 0 toward the medal's centre, where
+       the lean flattens out. Rescaled so the far corner is fully clear. */
+    if (medalImage) {
+      var mag = Math.min(1, Math.sqrt(dx * dx + dy * dy)) * k;
+      medalImage.style.opacity = clamp((mag - FAR_TILT) / (1 - FAR_TILT), 0, 1);
+    }
+  }
+
+  /* ---- The image turns its dark side away ------------------------------
+     The side of the medal nearest the cursor is the side tipped AWAY from
+     the viewer, so the image's darkest section is turned to face the cursor.
+
+     DARK_ANGLE is where that section sits at rest, in degrees clockwise from
+     the top. Measured off the embedded PNG by averaging brightness around the
+     disc: the darkest wedge is centred at ~105, right and a little below. The
+     other dark lobe, at ~245, is a touch lighter and simply follows. */
+  var DARK_ANGLE = 105;
+  var imageAngle = null;  // unwrapped, so the transition never spins the long way
+
+  function turnImage(px, py) {
+    if (!medalImage) return;  // the SVG has not loaded yet
+
+    // The cursor's direction from the medal's centre, clockwise from the top.
+    var target = Math.atan2(px, -py) * 180 / Math.PI - DARK_ANGLE;
+
+    if (imageAngle === null) {
+      imageAngle = target;
+    } else {
+      // Shortest way round from where it is now.
+      var delta = ((target - imageAngle) % 360 + 540) % 360 - 180;
+      imageAngle += delta;
+    }
+
+    medalImage.style.transform = 'rotate(' + imageAngle + 'deg)';
   }
 
   root.addEventListener('mousemove', onStageMove);
@@ -461,14 +713,11 @@
 
   root.appendChild(chargeBtn);
 
-  // Puts the stage back to how it opened so the show can be watched again.
-  // Scene only — it touches nothing that has been tuned; see resetScene().
-  var resetBtn = document.createElement('button');
-  resetBtn.className = 'lsa-reset';
-  resetBtn.type = 'button';
-  resetBtn.textContent = 'RESET';
-  resetBtn.addEventListener('click', resetScene);
-  root.appendChild(resetBtn);
+  /* THE RESET BUTTON IS GONE, 2026-09-10. It was built unconditionally, so it
+     shipped to production — a bare RESET control on a congratulation page.
+
+     resetScene() itself STAYS and is still called from two places in the dev
+     panel: the milestone picker and Play show. Only the button went. */
 
   /* The spark that replaces the cursor. Its own canvas, ABOVE everything — the
      buttons included. It is the pointer, so nothing may cover it, and sparks
@@ -598,338 +847,6 @@
   }
   // Called further down, once chargeTune exists — `var` hoists the name but not
   // the object, so calling it here would write scale1 onto undefined.
-
-  /* ---- The sparkle field · where the dots are ---------------------------
-     The milestone, as a field of dots sitting in the shape of its own digits.
-
-     THE SHAPE COMES FROM THE FONT, NOT FROM A POINT LIST. The digits are drawn
-     to an offscreen canvas in .lsa-medal-number's own computed font, and every
-     grid square with ink under it becomes a dot. One code path covers all ten
-     milestones, there is no eleventh asset to keep in step, and a change to the
-     typeface or the size carries through on its own. A hand-authored list would
-     have been ten lists, each of them wrong the day the artwork moved.
-
-     AIMED BY ONE READ OF THE STYLESHEET. `top` on .lsa-medal-number IS the ink
-     line — the 0.055em nudge in the CSS is what makes that true — and this
-     canvas shares coinFront's box, so that number is the target with nothing
-     to convert. Same single source medalNumberY() and burstY() already use.
-
-     AND RE-CENTRED ON MEASURED INK, not on where fillText was told to put it.
-     `textBaseline: middle` centres the EM BOX, which is not the ink centre and
-     is off by a different amount for every typeface — the same distinction the
-     0.055em nudge exists for. So the ink's real bounding box is measured out of
-     the pixels and the whole field is shifted onto the target. The fillText
-     placement below only has to be close enough to keep the glyphs on the
-     canvas; the shift fixes the rest. */
-  /* THE TUNED VALUES, all in one object, all with a slider in the dev panel.
-     Split from the constants below on one test: does an eye have to judge it.
-
-     `grid` is the odd one out — every other key is read on the frame it is
-     used, so a drag lands live, but this one is read while SAMPLING. It is in
-     the cache key instead, so moving it re-samples on the next draw. */
-  var sparkleTune = {
-    settle: 1.4,   // seconds from the centre break to the dots arriving
-    fadeIn: 0.6,   // seconds for the field to come up to full
-    hold: 2.8,     // seconds at full
-    fadeOut: 2.0,  // seconds to go
-    grid: 4,       // CSS px between dots — the density
-    floor: 0.16,   // the dim level a dot rests at
-    rate: 1.1,     // flashes per second
-    halo: 3.4      // glow width, against the dot's own radius
-  };
-
-  var SPARKLE_INK = 0.55;      // alpha a pixel must clear to count as ink
-  var SPARKLE_JITTER = 0.85;   // scatter, as a fraction of one grid step
-  var SPARKLE_R = 1.15;        // dot radius in CSS px, before variation
-  var SPARKLE_R_VARY = 0.55;
-
-  /* THE TWINKLE. Every dot runs the same curve at its own speed from its own
-     starting point, which is the whole trick — one shared clock with a random
-     phase per dot costs nothing and never lets the field pulse as one object.
-
-     FLOOR PLUS FLASH, not a plain fade up and down. A dot sits at `floor` so
-     the field always spells the number, and the flash rides on top of that. A
-     twinkle that went to zero would make the digits come apart and reassemble,
-     which is the flying-in effect that was explicitly not wanted.
-
-     SHARP is what makes it read as sparkle rather than as breathing. A raw sine
-     spends half its time near the top, so every dot looks lit and the field
-     just shimmers. Raising it to a power squashes the curve down and leaves
-     short bright peaks with long dim gaps between them — the higher the number,
-     the rarer and quicker the flash. Below about 2 it goes back to breathing.
-
-     SIZE MOVES WITH BRIGHTNESS, deliberately. A point of light that gets bigger
-     as it brightens reads as a spark catching; one that only changes alpha
-     reads as a pixel being faded, which is what it actually is. */
-  var SPARKLE_RATE_VARY = 0.75;  // spread on the rate, so no two dots keep time
-  var SPARKLE_SHARP = 3;         // how peaky one flash is
-  var SPARKLE_R_LIT = 0.45;      // how much of the radius brightness controls
-
-  /* ONE SPRITE, DRAWN ONCE, STAMPED PER DOT.
-
-     A hard-edged arc in the medal's own cream cannot read as light on a cream
-     face — it reads as texture, and the first build of this made the digit look
-     eroded rather than lit. What separates a point of LIGHT from a coloured dot
-     is the falloff around it, so every dot is a soft radial blob: white core,
-     warm middle, transparent edge.
-
-     A gradient per dot per frame would be ~185 gradient objects every frame.
-     Building the blob once into a small canvas and stamping it with drawImage
-     is the same picture for a fraction of the work, and it is why the dots can
-     afford to be this much bigger than their cores.
-
-     WARM ON THE WAY OUT, WHITE IN THE MIDDLE. The core has to beat the face's
-     own cream to read as hotter than it, and the gold edge is what ties it to
-     the fireworks rather than to the medal. */
-  var sparkleSprite = null;
-
-  function sparkleSpriteCanvas() {
-    if (sparkleSprite) return sparkleSprite;
-
-    var S = 64;
-    var c = document.createElement('canvas');
-    c.width = S;
-    c.height = S;
-    var g = c.getContext('2d');
-    var grad = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    grad.addColorStop(0.00, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(0.16, 'rgba(255, 251, 238, 0.82)');
-    grad.addColorStop(0.42, 'rgba(255, 226, 164, 0.24)');
-    grad.addColorStop(1.00, 'rgba(255, 205, 120, 0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, S, S);
-
-    sparkleSprite = c;
-    return c;
-  }
-
-  var sparkleCtx = medalSparkle.getContext('2d');
-  var sparkleDots = null;
-  var sparkleKey = '';
-
-  /* Device pixels, not CSS pixels. A canvas sized in CSS pixels is upscaled by
-     the compositor on any retina display, and a 1px dot is exactly the thing
-     that turns to mush when that happens. */
-  function sizeSparkleCanvas() {
-    var dpr = window.devicePixelRatio || 1;
-    var w = medalSparkle.clientWidth;
-    var h = medalSparkle.clientHeight;
-    if (!(w > 0 && h > 0)) return null;
-
-    var pw = Math.round(w * dpr);
-    var ph = Math.round(h * dpr);
-    // Assigning width/height CLEARS the canvas, so only do it when it moved.
-    if (medalSparkle.width !== pw || medalSparkle.height !== ph) {
-      medalSparkle.width = pw;
-      medalSparkle.height = ph;
-    }
-    return { dpr: dpr, pw: pw, ph: ph };
-  }
-
-  function buildSparkleDots() {
-    var box = sizeSparkleCanvas();
-    if (!box) return null;
-
-    var numStyle = getComputedStyle(medalNumber);
-    var fontPx = parseFloat(numStyle.fontSize);
-    var inkY = parseFloat(numStyle.top);
-    if (!(fontPx > 0) || !isFinite(inkY)) return null;
-
-    var key = YEARS + '|' + box.pw + 'x' + box.ph + '|' + fontPx + '|' +
-              numStyle.fontFamily + '|' + sparkleTune.grid;
-    if (sparkleDots && sparkleKey === key) return sparkleDots;
-
-    var off = document.createElement('canvas');
-    off.width = box.pw;
-    off.height = box.ph;
-    var octx = off.getContext('2d');
-
-    octx.font = numStyle.fontStyle + ' ' + numStyle.fontWeight + ' ' +
-                (fontPx * box.dpr) + 'px ' + numStyle.fontFamily;
-    octx.textAlign = 'center';
-    octx.textBaseline = 'middle';
-    octx.fillStyle = '#ffffff';
-    octx.fillText(String(YEARS), box.pw / 2, inkY * box.dpr);
-
-    var data = octx.getImageData(0, 0, box.pw, box.ph).data;
-    var cut = SPARKLE_INK * 255;
-    var step = Math.max(2, Math.round(sparkleTune.grid * box.dpr));
-    var pts = [];
-    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-
-    /* ONE PASS, doing two jobs. The bounding box is taken from EVERY pixel,
-       because a box measured off the grid samples alone is coarse by up to a
-       whole step and would throw the centring by half of one. The dots are
-       taken on the grid, because keeping every inked pixel is thousands of
-       draws for a field the eye reads as texture. */
-    for (var y = 0; y < box.ph; y++) {
-      var onRow = (y % step) === 0;
-      var rowStart = y * box.pw;
-      for (var x = 0; x < box.pw; x++) {
-        if (data[(rowStart + x) * 4 + 3] < cut) continue;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        if (onRow && (x % step) === 0) pts.push({ x: x, y: y, r: 0 });
-      }
-    }
-    if (!pts.length) return null;
-
-    /* JITTER IS NOT DECORATION. Dots on an exact grid read as a dot-matrix
-       display rather than as sparkle — the eye finds the rows instantly. Half a
-       step of scatter in each axis breaks the rows while every dot stays inside
-       the glyph it came from. Rolled once, here, so the field does not crawl. */
-    var dx = box.pw / 2 - (minX + maxX) / 2;
-    var dy = inkY * box.dpr - (minY + maxY) / 2;
-    var jit = SPARKLE_JITTER * step;
-
-    for (var i = 0; i < pts.length; i++) {
-      pts[i].x += dx + (Math.random() - 0.5) * jit;
-      pts[i].y += dy + (Math.random() - 0.5) * jit;
-      pts[i].r = Math.max(
-        0.3,
-        (SPARKLE_R + (Math.random() - 0.5) * SPARKLE_R_VARY * 2) * box.dpr
-      );
-      /* Rolled once, here, and never again. Re-rolling either of these per
-         frame would make each dot flicker at random instead of pulsing, which
-         is static, not sparkle.
-
-         `rateMul` is the SPREAD only, not the speed. The speed itself is
-         applied at draw time, so the slider changes the whole field live
-         instead of needing a re-sample to take effect. */
-      pts[i].phase = Math.random();
-      pts[i].rateMul = 1 + (Math.random() - 0.5) * SPARKLE_RATE_VARY * 2;
-    }
-
-    /* CACHE ONLY ONCE ALEO HAS ACTUALLY ARRIVED. The font is a CDN link and the
-       fallback in the stack is Georgia, so sampling early gives a Georgia-shaped
-       field — which would then be cached and never corrected, because the key
-       cannot see the difference. Leaving the key empty makes the next call
-       re-sample. In a real run this is moot: nothing draws until a rocket
-       breaks, seconds after load. It is the dev hook that can be early. */
-    if (document.fonts && document.fonts.status !== 'loaded') {
-      sparkleKey = '';
-      sparkleDots = null;
-      return pts;
-    }
-
-    sparkleDots = pts;
-    sparkleKey = key;
-    return pts;
-  }
-
-  function clearSparkleField() {
-    sparkleCtx.clearRect(0, 0, medalSparkle.width, medalSparkle.height);
-  }
-
-  /* ---- The sparkle field · when it runs ---------------------------------
-     Hung off the CENTRE firework breaking, and then a wait.
-
-     THE CENTRE IS NUMBER 3 AND IT GOES FIRST. goSequence is inside-out — 3 at
-     `at: 0`, then 2+4, then 1+5 — so this is the show's opening break, not its
-     last. It is also the only firework carrying sub-bursts, which re-break
-     0.7s after the main one, so "its sparkles have settled" is a good deal
-     later than the burst itself. That is what `settle` is buying.
-
-     THE ENGRAVED NUMBER STAYS VISIBLE UNDER IT. The dots are a flare over a
-     digit that is already there, not the thing that puts it on the medal. */
-  var SPARKLE_FIREWORK = 3;
-
-  var sparkleT = -1;   // seconds since the centre broke; -1 is "not armed"
-
-  /* The whole field's level over its life: up, flat, down. Every dot is
-     multiplied by this, so it is the envelope and the twinkle is what rides
-     inside it.
-
-     THE TWINKLE KEEPS RUNNING THROUGH THE FADE, which is what stops the exit
-     reading as one object being turned down. Dots that happen to be flashing
-     as the level drops hang on a moment longer than dots that happen to be
-     dim, so the field thins out unevenly and the last few wink out on their
-     own. That is free here and would have cost a per-dot exit time to fake. */
-  function sparkleEnv(age) {
-    var T = sparkleTune;
-    if (age < T.fadeIn) return age / T.fadeIn;
-
-    var going = age - T.fadeIn - T.hold;
-    if (going <= 0) return 1;
-    if (going >= T.fadeOut) return 0;
-    return 1 - going / T.fadeOut;
-  }
-
-  /* Repainted every frame, because the twinkle moves. Cheap: 88 dots at 5
-     years and 185 at 50, each one a stamp on a 320px canvas. */
-  function sparkleTick(dt) {
-    if (sparkleT < 0) return;
-    sparkleT += dt;
-
-    var age = sparkleT - sparkleTune.settle;
-    if (age < 0) return;
-
-    /* DISARMS ITSELF at the end rather than sitting at zero repainting an empty
-       canvas for the rest of the show. Also means the one wipe happens here, so
-       nothing is left half-lit if the last frame lands mid-step.
-
-       TESTED ON TIME, NOT ON THE LEVEL. `env <= 0` was the obvious test and it
-       was wrong: the envelope is zero at BOTH ends, so on the very first frame
-       — age 0, still climbing — it read as finished and wiped the field before
-       a single dot was ever drawn. The effect silently did nothing. */
-    var T = sparkleTune;
-    if (age >= T.fadeIn + T.hold + T.fadeOut) {
-      sparkleT = -1;
-      clearSparkleField();
-      return;
-    }
-    var env = sparkleEnv(age);
-
-    /* THE TWINKLE'S CLOCK IS `age`, NOT `sparkleT`. Every dot's phase is rolled
-       against zero, so starting the wave at the settle point is what makes the
-       field come up already scattered instead of every dot leaving the floor
-       together on the first frame. */
-    drawSparkleField(env, age);
-  }
-
-  /* `env` is the whole field's level, 0 to 1 — the fade up, and later the fade
-     out. `age` is seconds since the field arrived, and drives the twinkle.
-
-     `lighter` so overlapping dots ADD. Two dots landing on the same spot should
-     be brighter than one, which is what makes the denser parts of a glyph read
-     as hotter; source-over would just paint the second one over the first. */
-  function drawSparkleField(env, age) {
-    var pts = buildSparkleDots();
-    if (!pts) return 0;
-
-    var ctx = sparkleCtx;
-    ctx.clearRect(0, 0, medalSparkle.width, medalSparkle.height);
-    if (env <= 0) return pts.length;
-    ctx.globalCompositeOperation = 'lighter';
-
-    var sprite = sparkleSpriteCanvas();
-    var t = age || 0;
-    var floor = sparkleTune.floor;
-
-    for (var i = 0; i < pts.length; i++) {
-      var p = pts[i];
-      var turns = t * sparkleTune.rate * p.rateMul + p.phase;
-      var wave = Math.sin(Math.PI * 2 * turns) * 0.5 + 0.5;
-      var lit = floor + (1 - floor) * Math.pow(wave, SPARKLE_SHARP);
-      var a = lit * env;
-      // Below this the dot is a rounding error but still costs a full stamp.
-      if (a <= 0.004) continue;
-
-      /* globalAlpha, not a colour — the sprite carries its own falloff and
-         scaling that by one number keeps the whole shape of the glow. Writing
-         alpha into a fill colour would only work for a flat disc. */
-      ctx.globalAlpha = a;
-      var d = p.r * sparkleTune.halo * 2 *
-              (1 - SPARKLE_R_LIT + SPARKLE_R_LIT * lit);
-      ctx.drawImage(sprite, p.x - d / 2, p.y - d / 2, d, d);
-    }
-
-    // Left set, this leaks onto the next thing to draw on this context.
-    ctx.globalAlpha = 1;
-    return pts.length;
-  }
 
   /* ---- Config -----------------------------------------------------------
      The lab's settings, at the values it was left tuned to, plus the keys only
@@ -1765,14 +1682,6 @@
   fw.onBurst = function (x, y, spec) {
     if (!spec || !spec.n) return;
 
-    /* ARMED ABOVE THE ONE-PER-FRAME GUARD, deliberately. That guard exists so
-       two rockets breaking on the same frame only move the veil once; this
-       wants the opposite — it is asking "did THIS firework break", and the
-       answer must not depend on whether something else broke first on the same
-       frame. Today firework 3 breaks alone and the two would agree, but that is
-       a fact about the current goSequence, not a thing to rely on. */
-    if (spec.n === SPARKLE_FIREWORK) sparkleT = 0;
-
     if (revealStepped) return;
     revealStepped = true;
 
@@ -1931,13 +1840,13 @@
     }
   }
 
-  // Click launches a rocket that bursts where you clicked, rather than
-  // bursting there outright — the lab had no ascent to exercise.
-  function onCanvasClick(e) {
-    var r = canvas.getBoundingClientRect();
-    fw.launch(e.clientX - r.left, e.clientY - r.top);
-  }
-  canvas.addEventListener('click', onCanvasClick);
+  /* Clicking the stage used to launch a rocket that burst where you clicked.
+     Removed 2026-09-21 at the client's request — the charge button is the only
+     way to set anything off now. `fw.launch()` itself stays: the sequence uses
+     it, and __lsaDev exposes it for tuning.
+
+     A click on the medal used to flip the coin instead. That came out earlier
+     the same day; see lab/medal-flip.reference.md. */
 
   // Kept as the one entry point that starts the show, so the charge button
   // below and the dev hook both go through the same door. Guarded so a second
@@ -1951,35 +1860,24 @@
      Hold the cursor on the button and it fills; take it away and it drains.
      The show starts when it reaches the top.
 
-     ONE INTERVAL PER NUMBER, AT EVERY MILESTONE. The hold is no longer a fixed
-     length — it lasts exactly as long as it takes to walk the step list at a
-     constant pace, so a number is on screen for the same 800ms at 5 years as
-     at 50 and the counter is never rushed at the big ones.
+     THE HOLD IS SPREAD EVENLY FROM 4s TO 10s, since 2026-09-30. 5 years is
+     4s, 50 is 10s, and every milestone between adds the same ~0.67s. Numbers
+     past 50 stop at 10s. The time for one number is that hold divided by how
+     many numbers the counter walks, so the gap is NOT the same at every
+     milestone any more:
 
-          5y    5 steps ->  4.0s charge,  8.0s drain
-         25y   13 steps -> 10.4s charge, 20.8s drain
-         50y   18 steps -> 14.4s charge, 28.8s drain
+          5y    5 steps ->  4.0s charge, 800ms a number
+         10y   10 steps ->  4.7s charge, 467ms a number
+         50y   18 steps -> 10.0s charge, 556ms a number
 
-     THIS IS THE THIRD DURATION MODEL and both of the others were rejected on
-     sight. A flat 3 seconds for everyone ran 50 years at ~17 numbers a second.
-     A 3s-to-5s curve capped 50 at 5s, which is 278ms a number, and that was
-     still called "wayy too quick". Capping the hold and giving every milestone
-     the same treatment cannot both be had; the cap is what went.
-
-     ⚠ THE TOP END HAS NOT BEEN WATCHED. 800ms was dialled in by eye at 5
-     years, where it is a 4-second hold. At 50 it is 14.4 seconds of holding a
-     cursor motionless, and 28.8 seconds to drain, which makes slipping off
-     near the top close to unrecoverable. This is the one value in the charge
-     most likely to need moving, and the slider is in the dev panel.
-
-     ⚠ IT ALSO MADE 5 YEARS LONGER, 4.0s against the old flat 3.0s. That is the
-     price of one pace for everybody, and it moves with stepMs. */
+     It replaced a flat 800ms a number, which made 50 years a 14.4s hold. */
   /* TUNED BY EYE on 2026-09-04 in lab/charge-test.html. These are not defaults
      anybody guessed at — every one of them was dialled in against the real
      effect on a real screen, which is more than can be said for most of the
      numbers in this file. Do not "clean them up" to rounder values. */
   var chargeTune = {
-    stepMs: 800,   // how long ONE number is on screen. Sets the whole charge.
+    minS: 4,       // the hold at 5 years, in seconds
+    maxS: 10,      // the hold at 50 years, in seconds
 
     /* How big the number is, as a multiple of the stylesheet's 88px.
 
@@ -2064,7 +1962,13 @@
   /* Read per frame rather than cached in a constant, so moving the slider
      mid-charge takes effect immediately instead of finishing at the old rate. */
   function chargeSeconds() {
-    return steps.length * (chargeTune.stepMs / 1000);
+    var t = Math.min(1, Math.max(0, (YEARS - 5) / 45));
+    return chargeTune.minS + (chargeTune.maxS - chargeTune.minS) * t;
+  }
+
+  // How long one number is on screen. Varies by milestone; see above.
+  function stepSeconds() {
+    return chargeSeconds() / steps.length;
   }
 
   /* Draining is SLOWER than charging, so a moment's wobble off the button
@@ -2169,6 +2073,7 @@
     // The medal's number is DOM text now, so a milestone actually reaches the
     // artwork. It used to be baked into the PNG, and a 20-year award showed 5.
     medalNumber.textContent = String(YEARS);
+    drawDiamonds();
     // A longer sentence can reflow the card and move the medal, so the counter
     // has to be re-aimed at it. Dev-only in practice — YEARS cannot move on
     // Liferay — but the aim would be silently stale otherwise.
@@ -2194,10 +2099,9 @@
 
      THE DURATION ADAPTS TO THE MILESTONE, or would if maxMs let it. It takes
      `frac` of one step's interval so a shorter step gives a shorter swap, then
-     caps at `maxMs` — at the current 800ms step the cap is what binds (250ms
-     against 680ms), which leaves better than half a second of the number
-     sitting still and readable before the next swap starts. Drop stepMs far
-     enough and the fraction takes over instead.
+     caps at `maxMs`. Steps run 467ms to 800ms now (see chargeSeconds), and
+     85% of even the shortest is 397ms, so the 250ms cap binds at every
+     milestone and the number always sits still for a while between swaps.
 
      shownCount starts at -1 so the first frame always writes. It matters more
      than it looks: the loop runs 60 times a second and the number only changes
@@ -2365,14 +2269,14 @@
         // First write of this run. Nothing to blur out of, so just put it on.
         countValue.textContent = text;
       } else {
-        /* Restarted from the top even if a swap is already running. Turn
-           stepMs down far enough and the next change can land before the last
+        /* Restarted from the top even if a swap is already running. Shorten
+           the step far enough and the next change can land before the last
            swap has finished; riding the curve from the start keeps the number
            continuously soft rather than snapping to sharp between two blurs. */
         swapTo = text;
         swapT = 0;
         swapDur = Math.min(chargeTune.maxMs / 1000,
-                           (chargeTune.stepMs / 1000) * chargeTune.frac);
+                           stepSeconds() * chargeTune.frac);
       }
       shownCount = count;
     }
@@ -2725,13 +2629,6 @@
        screen could explain. */
     galaxy.style.removeProperty('transition');
     galaxy.style.removeProperty('opacity');
-    /* The dots, disarmed and wiped. Without this the second run opens with the
-       first run's field already lit on the medal, which reads as the effect
-       having fired before its firework. `sparkleDots` is NOT cleared — that is
-       the sampled shape, and it is keyed on the milestone and the size, so it
-       is still correct and re-sampling it would be work for nothing. */
-    sparkleT = -1;
-    clearSparkleField();
     drawCharge();
   }
 
@@ -2869,10 +2766,6 @@
     dischargeTick(dt);
     proximityTick();
 
-    // The dots on the medal. After the engine, because what starts its clock is
-    // fw.onBurst firing from inside fw.update() above.
-    sparkleTick(dt);
-
     sparkTick(dt);
 
     // Separate canvases, so the order of these is a formality — but they are
@@ -2960,9 +2853,7 @@
       // NOT on cfg, deliberately. chargeTune belongs to the show's chrome, not
       // to the engine, and Copy config dumps cfg for the engine's benefit.
       if (def.kind === 'charge') return chargeTune[def.path];
-      // Same reasoning as charge: the dots on the medal are the show's chrome,
-      // not the engine's, so they are not on cfg and Copy config ignores them.
-      if (def.kind === 'sparkle') return sparkleTune[def.path];
+      if (def.kind === 'coin') return coinTune[def.path];
       // A <select>'s value is a string, and YEARS is a number.
       if (def.kind === 'years') return String(YEARS);
       if (def.kind === 'color') { var r = seqRowOf(); return r ? r.color : ''; }
@@ -2974,7 +2865,13 @@
       if (def.kind === 'global') { writePath(cfg, def.path, v); return; }
       if (def.kind === 'ambient') { writePath(cfg.ambientLook, def.path, v); return; }
       if (def.kind === 'charge') { chargeTune[def.path] = v; return; }
-      if (def.kind === 'sparkle') { sparkleTune[def.path] = v; return; }
+      // `depth` is the only coin value left, and it lands live — it re-places
+      // 69 elements and shows at once with nothing to replay.
+      if (def.kind === 'coin') {
+        coinTune[def.path] = v;
+        applyCoinDepth();
+        return;
+      }
       /* The one control that changes the SCENE rather than a tuned value, so
          it is also the one that resets. Without the reset the new milestone
          would not appear until something else put the counter back, and a
@@ -3124,28 +3021,15 @@
       { kind: 'charge', path: 'galaxyFade', label: 'Galaxy fades over (s)',
         min: 0.1, max: 4, step: 0.1 },
 
-      /* The dots on the medal. Every one of these lands LIVE except the
-         density, which re-samples the glyph on the next frame — so the whole
-         section can be judged during a single run rather than a run per
-         value. Press Play show, then drag. */
-      { head: 'The sparkle on the number' },
-      { note: 'Dots in the shape of the milestone, set off by the CENTRE ' +
-              'firework breaking. The engraved number stays visible under ' +
-              'them the whole time.' },
-      { kind: 'sparkle', path: 'settle', label: 'Wait after the burst (s)',
-        min: 0, max: 4, step: 0.1 },
-      { kind: 'sparkle', path: 'hold', label: 'Stays for (s)',
-        min: 0.2, max: 8, step: 0.1 },
-      { kind: 'sparkle', path: 'fadeOut', label: 'Fades out over (s)',
-        min: 0.2, max: 5, step: 0.1 },
-      { kind: 'sparkle', path: 'grid', label: 'Dot spacing (px)',
-        min: 2, max: 12, step: 0.5 },
-      { kind: 'sparkle', path: 'floor', label: 'Unlit dots show at (x)',
-        min: 0, max: 1, step: 0.01 },
-      { kind: 'sparkle', path: 'rate', label: 'Flashes per second',
-        min: 0.1, max: 4, step: 0.05 },
-      { kind: 'sparkle', path: 'halo', label: 'Glow width (x)',
-        min: 1, max: 8, step: 0.1 }
+      /* The medal's thickness. Judge it by moving the cursor across the stage
+         so the coin leans — face-on there is no rim to see. */
+      { head: 'Medal thickness' },
+      { note: 'The rim is 68 flat copies of one silhouette, not real ' +
+              'geometry, so it only reads as solid while the coin is turned ' +
+              'a little. Raising this without raising the layer count opens ' +
+              'gaps between them. Lands live.' },
+      { kind: 'coin', path: 'depth', label: 'Rim thickness (px)',
+        min: 0, max: 160, step: 1.2 }
     ];
 
     /* The milestone. DEV ONLY — on Liferay this comes from data-years and
@@ -3286,8 +3170,6 @@
     closeBtn.removeEventListener('click', teardown);
     chargeBtn.removeEventListener('mouseenter', onChargeEnter);
     chargeBtn.removeEventListener('mouseleave', onChargeLeave);
-    resetBtn.removeEventListener('click', resetScene);
-    canvas.removeEventListener('click', onCanvasClick);
     root.removeEventListener('mousemove', onStageMove);
     cancelAnimationFrame(rafId);
     // Both engines, each of which owns its own resize listener and observer.
@@ -3302,6 +3184,8 @@
   // by putting data-lsa-dev on <html>. The Liferay markup does not, so on the
   // intranet this branch never runs and no global is ever created.
   if (document.documentElement.hasAttribute('data-lsa-dev')) {
+    /* Hidden on 2026-09-10 and back the same day: the coin's three values need
+       somewhere to live, and this is where sliders go. */
     buildDevPanel();
 
     window.__lsaDev = {
@@ -3322,18 +3206,6 @@
       step: function (n, dt) {
         var d = dt || 1 / 60;
         for (var i = 0; i < (n || 1); i++) frame(d);
-      },
-      /* The sparkle field, drawn on demand. Step 1 has no trigger and no
-         motion yet, so this is the only way to see it. */
-      sparkle: {
-        // (level 0-1, seconds of twinkle) — paints one frame of the field at
-        // any point in its life, with no run and no waiting.
-        show: function (env, age) {
-          return drawSparkleField(env == null ? 1 : env, age || 0);
-        },
-        hide: clearSparkleField,
-        dots: function () { return buildSparkleDots(); },
-        tune: sparkleTune
       }
     };
   }

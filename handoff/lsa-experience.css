@@ -609,9 +609,68 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* The box is taller than the content now — see the ratio note below — so the
+     column has to be centred in it or the medallion sits high with a band of
+     bare plate under the sentence. */
+  justify-content: center;
   gap: 32px;
   box-sizing: border-box;
-  padding: 56px 72px;
+  padding: 24px;
+
+  /* ---- THE PLATE'S OWN PROPORTIONS, since 2026-09-21 --------------------
+     card-back.png is 3200x2160, a landscape 1.4815. The card used to size
+     itself from its contents — 464 x 566, a PORTRAIT 0.82 — and
+     background-size: 100% 100% stretched the artwork across that, squashing it
+     to 1.8x taller than it was drawn. The 16px rim came out ~2.3px at the
+     sides and ~4.2px top and bottom.
+
+     Now the box carries the ratio, so the artwork lands undistorted and the
+     16px rim is even all the way round. 800 x 540 is the plate's own 1.4815 to
+     four decimal places, so height is written out rather than derived — an
+     aspect-ratio here would compute the same number and hide the pairing.
+
+     ** THE BOX MUST STAY TALLER THAN WHAT IS INSIDE IT. ** A fixed height
+     means content that outgrows it OVERFLOWS rather than pushing the box, so
+     the rim would end up crossing the sentence with nothing to warn you.
+     Measured at 24px padding and 20px type: the column is 404px tall with the
+     usual two-line sentence and 432px when a long name pushes it to three. 540
+     clears both. Re-measure if the padding, the gap, the medallion or the
+     sentence's 420px measure ever move.
+
+     background-size: 100% 100% now means the same thing as `contain`, since the
+     box and the image agree. It is left as 100% 100% so a future change to the
+     ratio shows up as a stretch rather than as bare card down the sides. */
+  width: 800px;
+  height: 540px;
+
+  /* A REAL SURFACE, since 2026-09-10: white first, then the card-back.png
+     artwork on 2026-09-11. The card was transparent over black from 08-30
+     until now, so this padding boxed nothing you could see; it is the
+     container's inset now.
+
+     THE url() IS NOT HERE, IT IS IN lsa-experience.js. This stylesheet has
+     loaded nothing since the shimmer went on 09-07, and that is the reason the
+     CSS file no longer has to sit next to assets/ on Liferay. Putting the
+     plate's url() here would hand that constraint straight back. It goes
+     through ASSET_PATH with every other image instead — see the card block in
+     lsa-experience.js.
+
+     NO background-color BEHIND IT and NO border-radius. The artwork carries its
+     own rounded corners in its alpha, so a colour would square them off again
+     and a radius would be a second, disagreeing rounding on top of the first.
+     The cost is that a failed load leaves the card transparent with dark text
+     on it, the same bet the medallion's own images already take.
+
+     Individual properties, never the `background` shorthand: the shorthand
+     also resets background-clip, which is the exact way the count-up's gradient
+     text was broken once already.
+
+     Note the medallion's own artwork was judged against black. Its cream face
+     and gold rim now sit on this cream plate, which is a by-eye call nobody has
+     made. */
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
 
   /* Inert for good: the card sits under the canvas, which takes the pointer
      events, so this only makes explicit what the stacking already decides. */
@@ -629,6 +688,16 @@
   /* ONE SOURCE FOR THE MEDAL'S SIZE. The number drawn on the face sizes itself
      off this, and so does the count-up that has to land on it, so a medallion
      that grows takes both with it. Change it here and nowhere else. */
+  /* 320 x 321 — the height is the width carried through the artwork's 563x565
+     viewBox, which is why it is not square on the nose.
+
+     It was briefly 374 x 375 earlier on 2026-09-21, sized to fill the 800 x 540
+     card's inner box with one pixel to spare. Called back to 320 the same day.
+     At this size the column is 409px in a 492px box, so there is 83px of
+     headroom with the usual two-line sentence and 55px when a long name pushes
+     it to three. ** .lsa-card's height is FIXED **, so content that outgrows it
+     overflows and crosses the rim with nothing to warn you — that headroom is
+     the only thing between here and that. */
   --lsa-medal-w: 320px;
 
   width: var(--lsa-medal-w);
@@ -638,6 +707,16 @@
   transition: transform 0.15s ease-out;   /* the tilt's lag and weight */
 }
 
+/* Two inert 3D wrappers. NOTHING writes a transform to either any more.
+
+   They carried the click-to-flip until 2026-09-21: .lsa-medal-coin took the
+   180-degree turn on a 0.9s ease-in-out, and .lsa-medal-depth took a keyframed
+   scaleZ squeeze that collapsed the rim while it turned. Both are kept because
+   the whole coin hangs off them and they are where the flip goes if it comes
+   back. Full rules in lab/medal-flip.reference.md.
+
+   preserve-3d on both is load-bearing — it is what keeps the edge stack's Z
+   offsets in one space rather than flattening them into the parent. */
 .lsa-medal-coin {
   position: relative;
   width: 100%;
@@ -645,12 +724,19 @@
   transform-style: preserve-3d;
 }
 
+.lsa-medal-depth {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+/* No backface-visibility, since 2026-09-21. It was here to swap the front and
+   back caps over as the coin flipped; there is no back cap now, and the tilt
+   never takes the face past 25 degrees, so nothing ever turns away. */
 .lsa-medal-face {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
 }
 
 /* Placeholder only. The edge builder in lsa-experience.js overwrites this with
@@ -664,8 +750,7 @@
 
    NO backface-visibility here, deliberately: the rim has to stay visible from
    every angle, and hiding the away-facing half would make it disappear as the
-   coin tilts. The asymmetry with .lsa-medal-face above is intentional — it is
-   not an oversight, and it should not be "fixed". */
+   coin tilts. It should not be "fixed". */
 .lsa-coin-edge {
   position: absolute;
   inset: 0;
@@ -688,6 +773,45 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* medal.svg is inlined into .lsa-medal-img since 2026-09-30. */
+.lsa-medal-img svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The medal's "image" layer: the round brushed-metal texture in the middle of
+   the face. Tagged from lsa-experience.js once the SVG is inlined.
+
+   JS writes a rotate() here on every mousemove. It turns about its own
+   centre, and the circle shape means only the texture appears to move.
+   Same 0.15s lag as the tilt so the two move together.
+
+   JS also writes its opacity, from the tilt strength. That overrides the
+   file's own opacity="0.7". Starts at 0 until the cursor moves. */
+.lsa-medal-image {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+/* The diamonds on the ring, one per 5 years. lsa-experience.js places each
+   one by its centre, in percentages of the medal; see drawDiamonds(). */
+.lsa-medal-diamonds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lsa-medal-diamond {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -758,7 +882,10 @@
      background-clip: text needs a transparent fill to show through; the
      text-shadow still paints, because it is drawn from the glyph shape rather
      than from the fill colour. */
-  background-image: linear-gradient(166deg, #AE9C8D 19.49%, #A69384 80.64%);
+  /* SILVER since 2026-09-30, when Front.png replaced the brown face. Levelled
+     to that face's own "Years", sampled at #949494 to #9D9D9D. The brown
+     stops above were #AE9C8D / #A69384. */
+  background-image: linear-gradient(166deg, #A0A0A0 19.49%, #949494 80.64%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -770,31 +897,6 @@
   user-select: none;
 }
 
-/* THE SPARKLE LAYER, added 2026-09-07. The dots that spell the milestone out
-   when the centre firework breaks.
-
-   SAME PARENT AS .lsa-medal-number, and for the same reason: it has to ride the
-   3D tilt with the face. A layer over the card instead would slide off the
-   digits the moment the cursor moved the coin.
-
-   inset 0 makes this box coinFront's box exactly, so a point in this canvas's
-   CSS pixels is a point in the space .lsa-medal-number's computed `top` is
-   measured in. That is what lets the dots be aimed with one read of the
-   stylesheet rather than a second set of fractions nobody can keep in step.
-
-   NO transform, NO filter, NO opacity below 1 in this rule. The frame loop
-   paints this canvas, so any of the three would be a second writer easing
-   toward values the loop has already moved past. Same rule .lsa-count and
-   .lsa-charge live under. Fade it by drawing it fainter, not by fading it. */
-.lsa-medal-sparkle {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
 /* The cursor-tracking shimmer was REMOVED on 2026-09-07. It was a warm gradient
    masked by assets/shimmer.png, swept across the medal by --lsa-sx / --lsa-sy.
    It was not earning its place, and the mask was a 542 KB PNG of which only the
@@ -804,14 +906,31 @@
    This was also the ONE url() in this stylesheet, and the only reason the CSS
    file and assets/ had to stay siblings on Liferay. That constraint is gone. */
 
+/* THE INK FOLLOWED THE SURFACE. This was #ffffff for as long as the card was
+   transparent over black; the white container on 2026-09-10 would have made it
+   invisible, so it is dark slate now. #1b2733 is the dark already used by the
+   lab pages rather than a new colour, and it is a GUESS at the brand ink — see
+   open question K, which is still unanswered for the blue. */
 .lsa-card-text {
   max-width: 420px;
   margin: 0;
-  color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 24px;
+  color: #1b2733;
+
+  /* PUBLIC SANS, from Google Fonts — the SECOND CDN font in this project, after
+     Aleo on the count-up. It rides the same css2 request as Aleo, so it is one
+     more family on a link that was already there, not a second round trip.
+
+     Only wght 600 is fetched, which is the weight below. Changing font-weight
+     here without adding that weight to the request in lsa-demo.html AND
+     lsa-mount.html gets you a browser-synthesised fake, not Public Sans.
+
+     The system stack stays behind it. If the CDN is blocked by the page's CSP
+     the sentence falls back to it and nothing breaks, same as .lsa-count. */
+  font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 150%;
+  letter-spacing: 0px;
   text-align: center;
 }
 
@@ -988,16 +1107,16 @@
   top: 40px;
   right: 40px;
   z-index: 4;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-  font-size: 20px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   pointer-events: auto;

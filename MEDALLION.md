@@ -1,3 +1,5 @@
+> **OUT OF DATE.** This was the first spec for the medal. The click-to-flip and the shimmer it describes were both removed. See handoff.md for the medal as it is now.
+
 # 3D Medallion Component — Implementation Spec
 
 Build an interactive 3D medallion: a coin-shaped medal that sits at full size, tilts
