@@ -1354,6 +1354,13 @@
     if (revealed >= REVEAL_STEPS.length) return;
     black.classList.add(REVEAL_STEPS[revealed]);
     revealed++;
+
+    // Fully revealed: the spark cursor fades away and the normal cursor
+    // comes back (see .lsa-root--revealed in the CSS).
+    if (revealed === REVEAL_STEPS.length) {
+      sparkOff = true;
+      root.classList.add('lsa-root--revealed');
+    }
   }
 
   /* The engine calls this each time a rocket bursts. Only the five show
@@ -1725,6 +1732,7 @@
   var sparks = [];
   var sparkX = -1000, sparkY = -1000;
   var sparkSeen = false;      // has the pointer been inside the overlay yet
+  var sparkOff = false;       // true once the card is revealed: no new sparks
   var sparkDebt = 0;          // fractional embers carried between frames
   var sparkW = 0, sparkH = 0, sparkDpr = 0;
 
@@ -1746,7 +1754,9 @@
     if (!sparkSeen) return;
 
     // Sparks per second, not per frame, so a 120Hz screen gets the same number.
+    // Once the card is revealed no new ones start; the last ones fade out.
     sparkDebt += SPARK_PER_SEC * dt;
+    if (sparkOff) sparkDebt = 0;
     while (sparkDebt >= 1) {
       sparkDebt -= 1;
       if (sparks.length < SPARK_MAX) {
@@ -1805,7 +1815,8 @@
     sparkCtx.globalAlpha = 1;
 
     // The glow at the cursor: a bright centre fading out. Rebuilt every frame
-    // because the cursor moves.
+    // because the cursor moves. Not drawn once the normal cursor is back.
+    if (sparkOff) { sparkCtx.globalCompositeOperation = 'source-over'; return; }
     var glowR = SPARK_GLOW_RADIUS;
     var glow = sparkCtx.createRadialGradient(sparkX, sparkY, 0, sparkX, sparkY, glowR);
     glow.addColorStop(0,    'rgba(255, 250, 235, 0.95)');

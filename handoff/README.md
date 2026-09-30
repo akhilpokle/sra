@@ -12,7 +12,8 @@ employee's service milestone (5, 10 … 50 years).
    number. Each burst clears a third of the black cover.
 5. A card is revealed: a 3D silver medal that leans toward the cursor, and
    the line *"Congratulation {name} on completing {years} years with DBS."*
-   Soft fireworks keep going in the background.
+   Soft fireworks keep going in the background, and the normal cursor
+   comes back.
 6. The close button (top right) removes everything.
 
 Plain HTML, CSS and JavaScript. No framework, no build step, no npm. It is

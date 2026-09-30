@@ -299,6 +299,13 @@
   cursor: none;
 }
 
+/* Once the card is fully revealed the spark goes and the normal cursor comes
+   back. Must stay after the rule above to win. */
+.lsa-root--revealed,
+.lsa-root--revealed * {
+  cursor: auto;
+}
+
 /* ---- The card -------------------------------------------------------------
 
    Holds the medal and the sentence, centred on screen. The black cover hides
