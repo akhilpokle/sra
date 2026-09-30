@@ -536,6 +536,45 @@
   }
   // Called further down, once chargeTune exists.
 
+  /* ---- Each firework's look ---------------------------------------------------
+     How each of the five fireworks throws its sparks, 1 to 5 left to right.
+     These replace cfg's values for that firework's own sparks. Second-burst
+     sparks still use cfg's values.
+
+     1, 2, 4 and 5 are the same. 3, the centre, is a six-point star burst that
+     flies further and bursts a second time. */
+  var SIDE_LOOK = {
+    count: 200,             // sparks
+    explosionSize: 10,      // how far they fly
+    size: 0.5,              // spark thickness, px
+    sizeSpread: 0.5,        // +/- share of that, per spark
+    lifeDecay: 0.024,       // how fast they die
+    lifeSpread: 0.35,       // +/- share of that, per spark
+    shape: { type: 'normal' },
+    jitterHue: 5,
+    jitterSat: 10,
+    jitterLight: 10,
+    blast: { enabled: true, lead: 45 },           // flash, and ms before sparks
+    sub: { enabled: false, count: 6, delay: 0.7 } // second bursts
+  };
+
+  var CENTRE_LOOK = {
+    count: 200,
+    explosionSize: 18.5,
+    size: 0.5,
+    sizeSpread: 0.3,
+    lifeDecay: 0.029,
+    lifeSpread: 0.25,
+    shape: { type: 'star burst', starPoints: 6, starInner: 0.45 },
+    jitterHue: 5,
+    jitterSat: 10,
+    jitterLight: 10,
+    blast: { enabled: true, lead: 45 },
+    sub: { enabled: true, count: 6, delay: 0.7 }  // 6 sparks burst again after ~0.7s
+  };
+
+  var FIREWORK_LOOK = { 1: SIDE_LOOK, 2: SIDE_LOOK, 3: CENTRE_LOOK, 4: SIDE_LOOK, 5: SIDE_LOOK };
+
   /* ---- Fireworks settings ---------------------------------------------------
      The settings for the main show's fireworks. Keys the engine knows and
      this object leaves out take the engine's defaults. The engine reads these
@@ -620,10 +659,8 @@
     },
 
     /* ---- Second bursts -----------------------------------------------------
-       Some sparks burst again when they die. Off by default; the centre
-       firework turns it on in fireworkCfg below.
-       `enabled`, `count` and `delay` can be set per firework. `particles`,
-       `scale` and `glow` apply to every firework, even if set per firework. */
+       Some sparks burst again when they die. Only the centre firework does
+       (see CENTRE_LOOK). `particles`, `scale` and `glow` here apply to it. */
     sub: {
       enabled: false,
       count: 6,
@@ -634,8 +671,7 @@
     },
 
     /* ---- Burst shape --------------------------------------------------------
-       Default shape for every firework. Each firework can override it in
-       fireworkCfg below. */
+       Not used by the show: each firework has its own shape (FIREWORK_LOOK). */
     shape: {
       type: 'normal',       // normal | ring | star burst | concentric
       starPoints: 5,
@@ -666,132 +702,6 @@
       5: 4.4                // far right
     },
 
-    /* ---- Per-firework settings --------------------------------------------
-       Settings for each firework, 1 to 5 left to right. A key here beats the
-       same key above, for that firework only.
-
-       Each row is complete, so changing a value above does NOT reach these
-       five until you change them here too.
-
-       1, 2, 4 and 5 are the same. 3, the centre, has its own settings and
-       bursts a second time (sub.enabled). */
-    fireworkCfg: {
-      1: {
-        'count': 200,
-        'explosionSize': 10,
-        'size': 0.5,
-        'sizeSpread': 0.5,
-        'lifeDecay': 0.024,
-        'lifeSpread': 0.35,
-        'shape.type': 'normal',
-        'shape.ringThickness': 0.08,
-        'shape.starPoints': 5,
-        'shape.starInner': 0.3,
-        'shape.rings': 3,
-        'shape.ringWidth': 0.04,
-        'jitterHue': 5,
-        'jitterSat': 10,
-        'jitterLight': 10,
-        'blast.enabled': true,
-        'blast.lead': 45,
-        'sub.enabled': false,
-        'sub.count': 6,
-        'sub.delay': 0.7
-      },
-      2: {
-        'count': 200,
-        'explosionSize': 10,
-        'size': 0.5,
-        'sizeSpread': 0.5,
-        'lifeDecay': 0.024,
-        'lifeSpread': 0.35,
-        'shape.type': 'normal',
-        'shape.ringThickness': 0.08,
-        'shape.starPoints': 5,
-        'shape.starInner': 0.3,
-        'shape.rings': 3,
-        'shape.ringWidth': 0.04,
-        'jitterHue': 5,
-        'jitterSat': 10,
-        'jitterLight': 10,
-        'blast.enabled': true,
-        'blast.lead': 45,
-        'sub.enabled': false,
-        'sub.count': 6,
-        'sub.delay': 0.7
-      },
-      4: {
-        'count': 200,
-        'explosionSize': 10,
-        'size': 0.5,
-        'sizeSpread': 0.5,
-        'lifeDecay': 0.024,
-        'lifeSpread': 0.35,
-        'shape.type': 'normal',
-        'shape.ringThickness': 0.08,
-        'shape.starPoints': 5,
-        'shape.starInner': 0.3,
-        'shape.rings': 3,
-        'shape.ringWidth': 0.04,
-        'jitterHue': 5,
-        'jitterSat': 10,
-        'jitterLight': 10,
-        'blast.enabled': true,
-        'blast.lead': 45,
-        'sub.enabled': false,
-        'sub.count': 6,
-        'sub.delay': 0.7
-      },
-      5: {
-        'count': 200,
-        'explosionSize': 10,
-        'size': 0.5,
-        'sizeSpread': 0.5,
-        'lifeDecay': 0.024,
-        'lifeSpread': 0.35,
-        'shape.type': 'normal',
-        'shape.ringThickness': 0.08,
-        'shape.starPoints': 5,
-        'shape.starInner': 0.3,
-        'shape.rings': 3,
-        'shape.ringWidth': 0.04,
-        'jitterHue': 5,
-        'jitterSat': 10,
-        'jitterLight': 10,
-        'blast.enabled': true,
-        'blast.lead': 45,
-        'sub.enabled': false,
-        'sub.count': 6,
-        'sub.delay': 0.7
-      },
-
-      /* The centre firework: a six-point star burst, the widest of the five,
-         and it bursts a second time. For this shape only `starPoints` and
-         `starInner` matter; the ring values are unused. */
-      3: {
-        'count': 200,
-        'explosionSize': 18.5,
-        'size': 0.5,
-        'sizeSpread': 0.3,
-        'lifeDecay': 0.029,
-        'lifeSpread': 0.25,
-        'shape.type': 'star burst',
-        'shape.ringThickness': 0.42,
-        'shape.starPoints': 6,
-        'shape.starInner': 0.45,
-        'shape.rings': 6,
-        'shape.ringWidth': 0.16,
-        'jitterHue': 5,
-        'jitterSat': 10,
-        'jitterLight': 10,
-        'blast.enabled': true,
-        'blast.lead': 45,
-        'sub.enabled': true,
-        'sub.count': 6,
-        'sub.delay': 0.7
-      }
-    },
-
     /* Burst height as a share of the screen height (0.5 = the middle). Only
        used if the medal's number cannot be found; normally the fireworks
        burst on the number itself (see burstY()). */
@@ -802,7 +712,7 @@
        x: across the screen, 0 left to 1 right.
        at: ms after the star is full.
        color: a set from goColors.
-       n: which firework, 1-5 left to right (its size and settings). */
+       n: which firework, 1-5 left to right (its size and look). */
     goSequence: [
       { x: 0.50, at: 0,    color: 'mix',  n: 3 },
       { x: 0.30, at: 500,  color: 'gold', n: 2 },
@@ -964,11 +874,11 @@
      `spec`, the optional last argument to burst/launch, describes one
      firework:
 
-         { hues: [357, 352, 2], white: 0.33, scale: 1.5, settings: {...} }
+         { hues: [357, 352, 2], white: 0.33, scale: 1.5, look: {...} }
 
      hues: colours to pick from. white: share of sparks drawn white.
-     scale: size. settings: config values for this firework only (see
-     withSettings()). Leave it out and cfg.palette and cfg.scale are used.
+     scale: size. look: count, size, shape, flash and second-burst values
+     for this firework only (see lookOf()). Leave any out and cfg is used.
 
      fw.onBurst(x, y, spec), if set, is called each time a rocket bursts.
 
@@ -1092,21 +1002,6 @@
 
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-    /* Read or write a nested config value by a dotted path, e.g. 'blast.lead'.
-       Used by withSettings(). lsa-experience.js has its own copy on purpose,
-       so neither file depends on the other. */
-
-    function readPath(o, path) {
-      var parts = path.split('.');
-      for (var i = 0; i < parts.length; i++) o = o[parts[i]];
-      return o;
-    }
-
-    function writePath(o, path, v) {
-      var parts = path.split('.');
-      for (var i = 0; i < parts.length - 1; i++) o = o[parts[i]];
-      o[parts[parts.length - 1]] = v;
-    }
 
     /* ---- Burst shapes -----------------------------------------------------
        A shape only decides, for spark `i`, its direction and its share of full
@@ -1268,43 +1163,22 @@
         return Math.min(w, h) / Math.max(1, S.reference);
       }
 
-      /* ---- Per-firework settings --------------------------------------------
-         spec.settings is a flat list of dotted paths and values, e.g.
-         { 'count': 200, 'blast.lead': 45, 'shape.type': 'ring' }, for ONE
-         firework. This swaps them into cfg, runs fn, then puts the old values
-         back, so no other firework sees them.
-
-         It runs at the burst and again when the sparks spawn (blast.lead ms
-         later). Only values read at those moments can differ per firework.
-         try/finally makes sure cfg is always restored, even after an error. */
-      function withSettings(spec, fn) {
-        var over = spec && spec.settings;
-        if (!over) return fn();
-
-        var saved = {}, k;
-        for (k in over) {
-          if (!Object.prototype.hasOwnProperty.call(over, k)) continue;
-          saved[k] = readPath(cfg, k);
-          writePath(cfg, k, over[k]);
-        }
-        try {
-          fn();
-        } finally {
-          for (k in saved) writePath(cfg, k, saved[k]);
-        }
-      }
+      // The values that shape a firework's own sparks: spec.look if the show
+      // gave one, otherwise cfg (second-burst and background sparks).
+      function lookOf(spec) { return (spec && spec.look) || cfg; }
 
       // Gives a spark its colour. A share of sparks (spec.white) are drawn
       // near-white; the rest take a hue plus jitter.
       function colour(p, spec) {
+        var L = lookOf(spec);
         if (spec && spec.white && Math.random() < spec.white) {
           p.h = 45;
-          p.s = clamp(8 + (Math.random() - 0.5) * 2 * cfg.jitterSat, 0, 20);
-          p.l = clamp(95 + (Math.random() - 0.5) * cfg.jitterLight, 80, 100);
+          p.s = clamp(8 + (Math.random() - 0.5) * 2 * L.jitterSat, 0, 20);
+          p.l = clamp(95 + (Math.random() - 0.5) * L.jitterLight, 80, 100);
         } else {
-          p.h = pickHue(spec) + (Math.random() - 0.5) * 2 * cfg.jitterHue;
-          p.s = clamp(BASE_SAT + (Math.random() - 0.5) * 2 * cfg.jitterSat, 30, 100);
-          p.l = clamp(BASE_LIGHT + (Math.random() - 0.5) * 2 * cfg.jitterLight, 30, 100);
+          p.h = pickHue(spec) + (Math.random() - 0.5) * 2 * L.jitterHue;
+          p.s = clamp(BASE_SAT + (Math.random() - 0.5) * 2 * L.jitterSat, 30, 100);
+          p.l = clamp(BASE_LIGHT + (Math.random() - 0.5) * 2 * L.jitterLight, 30, 100);
         }
       }
 
@@ -1322,10 +1196,11 @@
         p.px = x; p.py = y;   // last frame's position — see the stroke in draw()
         p.vx = vx; p.vy = vy;
 
-        var base = 1 / (cfg.lifeDecay * FPS_REF);
+        var L = lookOf(spec);
+        var base = 1 / (L.lifeDecay * FPS_REF);
         p.life = 1;
-        p.decay = 1 / (base * (1 + (Math.random() - 0.5) * 2 * cfg.lifeSpread));
-        p.size = cfg.size * (1 + (Math.random() - 0.5) * 2 * cfg.sizeSpread) * scaleOf(spec);
+        p.decay = 1 / (base * (1 + (Math.random() - 0.5) * 2 * L.lifeSpread));
+        p.size = L.size * (1 + (Math.random() - 0.5) * 2 * L.sizeSpread) * scaleOf(spec);
         colour(p, spec);
 
         // Spark objects are reused, so reset every field here. Any new
@@ -1339,18 +1214,19 @@
       // Throws out one burst's sparks, in the configured shape. The first
       // sub.count sparks become shells that burst again.
       function spawnSparkles(x, y, spec) {
+        var L = lookOf(spec);
         var scale = scaleOf(spec);
 
         // Full speed. The screen factor makes sparks fly further on a bigger
         // screen; spark thickness is not scaled by it.
-        var speed = cfg.explosionSize * FPS_REF * scale * screenScale();
-        var n = Math.round(cfg.count);
+        var speed = L.explosionSize * FPS_REF * scale * screenScale();
+        var n = Math.round(L.count);
 
         // Never more shells than there are sparkles to make shells out of.
-        var shells = cfg.sub.enabled ? Math.min(Math.round(cfg.sub.count), n) : 0;
+        var shells = L.sub.enabled ? Math.min(Math.round(L.sub.count), n) : 0;
 
         // The shape, read once per burst.
-        var S = cfg.shape;
+        var S = L.shape;
         var type = S.type;
 
         for (var i = 0; i < n; i++) {
@@ -1367,15 +1243,14 @@
 
             // Its life becomes the fuse: it bursts when it dies. +/-15% so the
             // shells do not all burst on the same frame.
-            p.decay = 1 / (cfg.sub.delay * (0.85 + Math.random() * 0.3));
+            p.decay = 1 / (L.sub.delay * (0.85 + Math.random() * 0.3));
           }
         }
       }
 
       /* A shell's second burst. Same colour as its parent, sized from the
          parent's size. Its sparks are never shells, so it cannot chain further.
-         sub.particles, sub.scale and sub.glow are read here, after the
-         per-firework swap is over, so they apply to every firework. */
+         Its sparks use cfg's values, and cfg.sub's particles, scale and glow. */
       function spawnSub(x, y, hue, parentScale) {
         var S = cfg.sub;
         var scale = parentScale * S.scale;
@@ -1397,18 +1272,13 @@
          (queued in pendingBursts).
 
          When testing: with a lead set, no sparks exist on the frame burst() is
-         called. Step past the lead before counting them.
-
-         The whole body is inside withSettings() because blast.enabled and
-         blast.lead can differ per firework. */
+         called. Step past the lead before counting them. */
       function burst(x, y, spec) {
-        withSettings(spec, function () {
-          var B = cfg.blast;
-          if (!B.enabled) { spawnSparkles(x, y, spec); return; }
-          spawnBlast(x, y, spec);
-          if (B.lead > 0) pendingBursts.push({ x: x, y: y, t: B.lead / 1000, spec: spec });
-          else spawnSparkles(x, y, spec);
-        });
+        var B = lookOf(spec).blast;
+        if (!B.enabled) { spawnSparkles(x, y, spec); return; }
+        spawnBlast(x, y, spec);
+        if (B.lead > 0) pendingBursts.push({ x: x, y: y, t: B.lead / 1000, spec: spec });
+        else spawnSparkles(x, y, spec);
       }
 
       /* ---- The flash --------------------------------------------------------
@@ -1451,9 +1321,7 @@
             pendingBursts[i] = pendingBursts[pendingBursts.length - 1];
             pendingBursts.pop();
 
-            // The spark settings (count, size, shape...) are read now, so apply
-            // this firework's own settings again.
-            withSettings(q.spec, function () { spawnSparkles(q.x, q.y, q.spec); });
+            spawnSparkles(q.x, q.y, q.spec);
           }
         }
       }
@@ -1762,7 +1630,6 @@
   var fw = Fireworks2(canvas, cfg);
 
   // REQUIRED. The engine made its own copy of cfg, so point cfg at that copy.
-  // Without this, the per-firework settings change nothing.
   cfg = fw.cfg;
 
   /* The background fireworks get their own engine on their own canvas, so
@@ -1851,15 +1718,14 @@
         t: row.at / 1000,
         x: row.x * w,
         y: y,
-        /* What makes this firework itself: colour, size, its settings row
-           and `n`,
+        /* What makes this firework itself: colour, size, its look, and `n`,
            which tags it as a show firework for fw.onBurst. */
         spec: {
           hues: c.hues,
           white: c.white,
           scale: cfg.fireworkSize[row.n],
           n: row.n,
-          settings: cfg.fireworkCfg[row.n]
+          look: FIREWORK_LOOK[row.n]
         }
       });
     });
