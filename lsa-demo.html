@@ -10,8 +10,10 @@
   then open http://localhost:8126/lsa-demo.html. The window must be at least
   1024px wide.
 
-  To try another milestone or name, change data-years or data-name on the
-  mount element below and reload.
+  To try another milestone or name, add it to the address:
+      lsa-demo.html?years=50
+      lsa-demo.html?years=25&name=Priya
+  or change data-years or data-name on the mount element below.
 
   The inline <style> is demo dressing only; the CSP rules apply to Liferay,
   not to this page.
@@ -45,6 +47,19 @@
 <body>
 
   <div id="lsa-mount" data-name="Akhil" data-years="5"></div>
+
+  <!-- Demo only: ?years=50 and ?name=Priya in the address override the mount
+       element, so any milestone can be shown by URL. On Liferay the server
+       fills these in instead. -->
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var mount = document.getElementById('lsa-mount');
+      var years = parseInt(q.get('years'), 10);
+      if (years > 0) mount.setAttribute('data-years', String(years));
+      if (q.has('name')) mount.setAttribute('data-name', q.get('name'));
+    })();
+  </script>
 
   <script src="lsa-experience.js"></script>
 

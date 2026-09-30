@@ -48,7 +48,8 @@
 
   /* ---- Name and milestone ----------------------------------------------
      Read from data-name and data-years on #lsa-mount, which Liferay fills in
-     per user. If either is missing, the defaults below are used.
+     per user. With no name, the sentence leaves the name out. With no valid
+     years, it uses 5.
 
      YEARS drives the counter, the number on the medal, the diamonds and the
      sentence. A value that is not a positive number is ignored, so a bad
@@ -56,7 +57,7 @@
      multiples of five. */
   var mount = document.getElementById('lsa-mount');
 
-  var NAME = (mount && mount.getAttribute('data-name')) || 'Akhil';
+  var NAME = (mount && mount.getAttribute('data-name')) || '';
 
   var YEARS = 5;
   var yearsAttr = mount && parseInt(mount.getAttribute('data-years'), 10);
@@ -184,8 +185,10 @@
   medalScene.appendChild(medalCoin);
   card.appendChild(medalScene);
 
-  // The sentence on the card.
+  // The sentence on the card. Without a name: "Congratulations on completing
+  // 5 years with DBS."
   function cardLine() {
+    if (!NAME) return 'Congratulations on completing ' + YEARS + ' years with DBS.';
     return 'Congratulation ' + NAME + ' on completing ' + YEARS +
            ' years with DBS.';
   }

@@ -10,8 +10,8 @@ how the code is laid out. The `handoff/` folder is what the Liferay team gets.
   `lsa-experience.css`, `lsa-mount.html` and `assets/`. `handoff/` holds
   copies. After changing a root file, copy it into `handoff/` again.
 - **Demo:** `node .claude/serve.js . 8126`, then
-  `http://localhost:8126/lsa-demo.html`. Change `data-years` or `data-name` on
-  the mount element to try another milestone or name.
+  `http://localhost:8126/lsa-demo.html?years=50` (or `&name=Priya`). Live at
+  https://akhilpokle.github.io/sra/?years=50.
 - **Regression checker:** `lab/regression/index.html`. It runs the saved
   version in `lab/regression/before/` against the current files with the same
   random numbers and compares them frame by frame at 5, 25 and 50 years. To

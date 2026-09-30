@@ -1,16 +1,14 @@
 <!DOCTYPE html>
 <!--
-  GitHub Pages entry point. The demo lives in lsa-demo.html; this only exists
-  so the bare repo URL resolves instead of 404ing. Deliberately a redirect
-  rather than a second copy of the harness — a duplicated page is exactly what
-  lsa-demo.html used to be, and it drifted.
+  GitHub Pages entry point. Sends the visitor to the demo, keeping anything
+  after the "?" so links like ?years=50 still work.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url=lsa-demo.html">
-  <link rel="canonical" href="lsa-demo.html">
-  <title>Long Service Award — 5 Year Milestone Overlay</title>
+  <title>Long Service Award — Milestone Overlay</title>
+  <script>location.replace('lsa-demo.html' + location.search);</script>
+  <noscript><meta http-equiv="refresh" content="0; url=lsa-demo.html"></noscript>
 </head>
 <body>
   <p><a href="lsa-demo.html">Long Service Award overlay demo</a></p>

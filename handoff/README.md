@@ -55,8 +55,12 @@ Then open `http://localhost:8126/`. The window must be **at least 1024px
 wide**; below that the overlay does nothing. Opening `index.html` straight
 from disk (`file://`) will not work.
 
-To try another person or milestone, change `data-name` or `data-years` on
-the `<div id="lsa-mount">` in `index.html` and reload.
+To try another milestone or name, add it to the address, for example
+`http://localhost:8126/?years=50` or `?years=25&name=Priya`. (That URL
+trick is the demo page only; on Liferay the server fills in the mount
+element.)
+
+Live demo: https://akhilpokle.github.io/sra/ (add `?years=50` the same way).
 
 ---
 
@@ -80,8 +84,9 @@ the `<div id="lsa-mount">` in `index.html` and reload.
    - `data-years` drives the counter, the number on the medal, the number of
      diamonds (one per 5 years), the sentence, and the length of the hold.
      Any positive whole number works.
-   - If either is missing or invalid the script falls back to `"Akhil"` and
-     `5`. **Always send both.**
+   - If `data-name` is missing, the sentence leaves the name out
+     (*"Congratulations on completing 5 years with DBS."*). If `data-years`
+     is missing or invalid, it uses 5. **Always send both.**
 
 5. **Decide who sees it, on the server.** The overlay plays every time the
    snippet is on the page. It has no "seen it" memory of its own, on
