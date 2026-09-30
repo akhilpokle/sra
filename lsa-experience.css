@@ -119,10 +119,6 @@
    The user holds the cursor here to charge the show. The circle is the target;
    the star inside it is the art. */
 .lsa-charge {
-  /* How close the cursor is, 0 to 1. Written by the script. Nothing reads it
-     right now. */
-  --lsa-near: 0;
-
   /* How full the star is, 0 to 1. Written by the script. The outline uses it
      to brighten as the star fills. */
   --lsa-fill: 0;
@@ -180,27 +176,6 @@
 .lsa-charge .lsa-spark-halo {
   stroke: none;
   opacity: 0;
-}
-
-/* A white flash when the star is full.
-
-   OFF (chargeTune.pop is false). Do not turn it back on as it is: under the
-   galaxy it shows as a black disc behind the star. A replacement should be
-   drawn from the star's own shape, not from a box-shadow. */
-@keyframes lsa-charge-pop {
-  0% {
-    box-shadow: 0 0 18px rgba(240, 194, 75, 0.5);
-  }
-  35% {
-    box-shadow: 0 0 64px 12px rgba(255, 240, 200, 0.95);
-  }
-  100% {
-    box-shadow: 0 0 18px rgba(240, 194, 75, 0);
-  }
-}
-
-.lsa-charge--pop {
-  animation: lsa-charge-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
 /* When the first firework bursts, the counter and the star fade out and stop

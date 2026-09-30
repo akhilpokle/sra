@@ -140,7 +140,7 @@ window.__h.snapshot = function () {
     countY: q('.lsa-count') ? q('.lsa-count').style.getPropertyValue('--lsa-count-y') : 'missing',
     label: q('.lsa-charge-label') ? q('.lsa-charge-label').textContent : 'missing',
     chargeClass: q('.lsa-charge') ? q('.lsa-charge').className : 'missing',
-    chargeStyle: attr('.lsa-charge', 'style'),
+    chargeFill: q('.lsa-charge') ? q('.lsa-charge').style.getPropertyValue('--lsa-fill') : 'missing',
     sparkArt: st('.lsa-spark-art', 'transform'),
     coreA: attr('#lsa-spark-core-a', 'offset'),
     coreB: attr('#lsa-spark-core-b', 'offset'),

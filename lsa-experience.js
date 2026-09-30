@@ -1485,12 +1485,8 @@
     peak:  0.65,   // where in the swap the text actually changes
     power: 1,      // curve shape. >1 holds sharp longer, then blurs hard.
 
-    /* When the star is full.
-       pop: a white flash on the star. OFF: under the galaxy it shows as a
-       black disc. A replacement should use the star's own shape.
-       galaxyFade: seconds for the galaxy to fade out. The rockets take about
-       2.4s to burst; if the fade is longer, cutGalaxyShort() ends it. */
-    pop: false,
+    // Seconds for the galaxy to fade out once the star is full. The rockets
+    // take about 2.4s to burst; if the fade is longer, cutGalaxyShort() ends it.
     galaxyFade: 2.3
   };
 
@@ -1518,9 +1514,6 @@
 
   // Pause in seconds between the star filling and the first launch.
   var RELEASE_PAUSE = 0.25;
-
-  // How close the cursor must be, in px, before the star starts reacting.
-  var NEAR_RADIUS = 260;
 
   /* ---- Which numbers the counter shows ----------------------------------------
      Every number up to 10, then every five, always ending on the milestone:
@@ -1600,8 +1593,7 @@
   chargeBtn.addEventListener('mouseleave', onChargeLeave);
 
   /* Runs every frame from frame(). Fills or drains the charge. When it is
-     full: starts the release pause, fades the galaxy, and flashes the star
-     if `pop` is on. */
+     full: starts the release pause and fades the galaxy. */
   function chargeTick(dt) {
     if (charged) return;
 
@@ -1615,9 +1607,6 @@
       charging = false;
       // The show starts after RELEASE_PAUSE; see releaseSparks().
       releaseIn = RELEASE_PAUSE;
-
-      // The white flash. Off by default; see chargeTune.pop.
-      if (chargeTune.pop) chargeBtn.classList.add('lsa-charge--pop');
 
       // Start fading the galaxy now, so it is gone before the fireworks
       // burst. The fade time is set on the root, never on the image itself.
@@ -1697,24 +1686,6 @@
     // The label under the star.
     chargeLabel.textContent = charged ? 'Charged'
       : (charging ? 'Charging' : 'Hold your spark here');
-  }
-
-  /* How close the cursor is to the star, 0 to 1, written to --lsa-near
-     every frame. Nothing in the CSS uses it right now. */
-  function proximityTick() {
-    var near = 0;
-
-    if (sparkSeen && !charged) {
-      var b = chargeBtn.getBoundingClientRect();
-      var dx = sparkX - (b.left + b.width / 2);
-      var dy = sparkY - (b.top + b.height / 2);
-      var dist = Math.sqrt(dx * dx + dy * dy);
-      near = Math.max(0, 1 - dist / NEAR_RADIUS);
-      // Squared, so it stays low until the cursor is quite close.
-      near *= near;
-    }
-
-    chargeBtn.style.setProperty('--lsa-near', near.toFixed(3));
   }
 
   // Draw once now so the star and label show before the first frame.
@@ -1936,7 +1907,6 @@
 
     // The pause before launch.
     dischargeTick(dt);
-    proximityTick();
 
     // Move the cursor sparks.
     sparkTick(dt);
